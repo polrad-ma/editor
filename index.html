@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>POLRAD MAPPING — Editor</title>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
+/>
+
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        font-family: Arial, sans-serif;
+    }
+
+    #map {
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Header */
+    #app-header {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 2000;
+
+        width: 250px;
+        background: rgba(25, 25, 25, 0.95);
+        color: white;
+
+        padding: 12px;
+        border-radius: 8px;
+
+        box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+
+    #title {
+        font-size: 17px;
+        font-weight: bold;
+    }
+
+    #editor-status {
+        margin-top: 5px;
+        font-size: 11px;
+        color: #aaa;
+    }
+
+    /* Toolbar */
+    #toolbar {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2000;
+
+        display: flex;
+        gap: 5px;
+    }
+
+    .tool-button {
+        border: none;
+        background: rgba(25,25,25,0.95);
+        color: white;
+
+        padding: 9px 12px;
+        border-radius: 6px;
+
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    .tool-button:hover {
+        background: rgba(55,55,55,0.95);
+    }
+
+    /* Login */
+    #login-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+
+        background: #111;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #login-box {
+        width: 300px;
+        background: #222;
+        padding: 25px;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+    }
+
+    #login-box h2 {
+        margin-top: 0;
+    }
+
+    #password {
+        width: 100%;
+        box-sizing: border-box;
+
+        padding: 10px;
+        margin: 10px 0;
+
+        background: #111;
+        border: 1px solid #555;
+        border-radius: 5px;
+
+        color: white;
+    }
+
+    #login-button {
+        width: 100%;
+        padding: 10px;
+
+        border: none;
+        border-radius: 5px;
+
+        background: #444;
+        color: white;
+
+        cursor: pointer;
+    }
+
+    #login-button:hover {
+        background: #555;
+    }
+
+    #login-error {
+        color: #ff6666;
+        font-size: 12px;
+        margin-top: 8px;
+        display: none;
+    }
+
+    /* Layer panel */
+    #layers-panel {
+        position: absolute;
+        top: 60px;
+        right: 10px;
+
+        z-index: 2000;
+
+        width: 230px;
+
+        background: rgba(25,25,25,0.95);
+        color: white;
+
+        padding: 12px;
+        border-radius: 8px;
+
+        display: none;
+    }
+
+    #layers-panel.show {
+        display: block;
+    }
+
+    .layer-item {
+        padding: 7px;
+        margin-bottom: 4px;
+
+        background: #333;
+        border-radius: 5px;
+
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .layer-item:hover {
+        background: #444;
+    }
+
+    /* Save indicator */
+    #save-status {
+        position: absolute;
+        bottom: 25px;
+        left: 50%;
+
+        transform: translateX(-50%);
+
+        z-index: 2000;
+
+        background: rgba(25,25,25,0.95);
+        color: white;
+
+        padding: 7px 12px;
+        border-radius: 6px;
+
+        font-size: 12px;
+
+        display: none;
+    }
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+
+    <div id="login-box">
+
+        <h2>POLRAD MAPPING</h2>
+        <div style="font-size:13px;color:#aaa;">
+            Editor
+        </div>
+
+        <input
+            id="password"
+            type="password"
+            placeholder="Password"
+        >
+
+        <button id="login-button">
+            Log in
+        </button>
+
+        <div id="login-error">
+            Incorrect password
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- MAP -->
+<div id="map"></div>
+
+
+<!-- HEADER -->
+<div id="app-header">
+
+    <div id="title">
+        POLRAD MAPPING — EDITOR
+    </div>
+
+    <div id="editor-status">
+        Editor mode
+    </div>
+
+</div>
+
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+
+    <button class="tool-button" id="layers-button">
+        Layers
+    </button>
+
+    <button class="tool-button" id="save-button">
+        Save
+    </button>
+
+    <button class="tool-button" id="download-button">
+        Download
+    </button>
+
+    <button class="tool-button" id="reset-button">
+        Reset
+    </button>
+
+</div>
+
+
+<!-- LAYERS -->
+<div id="layers-panel">
+
+    <b>Map layers</b>
+
+    <div id="layer-list" style="margin-top:8px;"></div>
+
+</div>
+
+
+<div id="save-status">
+    Changes saved
+</div>
+
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+
+
+<script>
+
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+
+/*
+   IMPORTANT:
+
+   This is only a temporary login.
+
+   A password written inside JavaScript is NOT secure.
+   Later we'll replace this with real authentication.
+*/
+
+const EDITOR_PASSWORD = "CHANGE_THIS_PASSWORD";
+
+
+/*
+   Your GeoJSON files.
+
+   Put these files into a "data" folder in the repository.
+*/
+
+const GEOJSON_FILES = {
+
+    "Russian-controlled territory":
+        "data/Russian-controlled%20territory.geojson",
+
+    "Ukrainian-controlled territory":
+        "data/Ukrainian-controlled%20territory.geojson",
+
+    "Ukrainian advances":
+        "data/Ukrainian%20advances.geojson",
+
+    "Russian advances":
+        "data/Russian%20advances.geojson",
+
+    "Territories regained in the last month":
+        "data/Territories%20regained%20in%20the%20last%20month.geojson",
+
+    "Land corridor to Crimea":
+        "data/Land%20corridor%20to%20Crimea.geojson",
+
+    "Region borders":
+        "data/Region%20borders.geojson"
+
+};
+
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+const loginScreen = document.getElementById("login-screen");
+const passwordInput = document.getElementById("password");
+const loginButton = document.getElementById("login-button");
+const loginError = document.getElementById("login-error");
+
+function login() {
+
+    if (passwordInput.value === EDITOR_PASSWORD) {
+
+        loginScreen.style.display = "none";
+
+        initializeEditor();
+
+    } else {
+
+        loginError.style.display = "block";
+
+    }
+
+}
+
+loginButton.addEventListener("click", login);
+
+passwordInput.addEventListener("keydown", function(e) {
+
+    if (e.key === "Enter") {
+        login();
+    }
+
+});
+
+
+/* =========================================================
+   MAP
+========================================================= */
+
+let map;
+let loadedLayers = {};
+let originalData = {};
+
+function initializeEditor() {
+
+    map = L.map("map", {
+
+        center: [48.0, 37.75],
+        zoom: 7,
+
+        zoomControl: true,
+        scrollWheelZoom: true
+
+    });
+
+
+    /*
+       Main map.
+
+       We use Esri satellite imagery so there is
+       no Google API required.
+    */
+
+    const satellite = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {
+            attribution: "Tiles © Esri"
+        }
+    );
+
+
+    satellite.addTo(map);
+
+
+    /*
+       Add Geoman editing controls.
+    */
+
+    map.pm.addControls({
+
+        position: "topleft",
+
+        drawText: false,
+        drawCircle: false,
+        drawCircleMarker: false,
+        drawPolyline: true,
+        drawMarker: false,
+        drawRectangle: true,
+
+        editMode: true,
+        dragMode: true,
+        cutPolygon: true,
+        removalMode: true
+
+    });
+
+
+    loadGeoJSONLayers();
+
+}
+
+
+/* =========================================================
+   LOAD GEOJSON
+========================================================= */
+
+async function loadGeoJSONLayers() {
+
+    const layerList =
+        document.getElementById("layer-list");
+
+    for (const [name, url] of Object.entries(GEOJSON_FILES)) {
+
+        try {
+
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error("File not found");
+            }
+
+            const data = await response.json();
+
+            originalData[name] = data;
+
+
+            const layer = L.geoJSON(data, {
+
+                style: {
+
+                    color: "#ffffff",
+                    weight: 2,
+                    fillOpacity: 0.35
+
+                },
+
+                onEachFeature: function(feature, layer) {
+
+                    /*
+                       Every polygon can be edited.
+                    */
+
+                    layer.pm.enable({
+
+                        allowSelfIntersection: false
+
+                    });
+
+                }
+
+            });
+
+
+            layer.addTo(map);
+
+            loadedLayers[name] = layer;
+
+
+            /* Layer list */
+
+            const item =
+                document.createElement("div");
+
+            item.className = "layer-item";
+
+            item.textContent = name;
+
+            item.onclick = function() {
+
+                if (map.hasLayer(layer)) {
+
+                    map.removeLayer(layer);
+
+                    item.style.opacity = "0.5";
+
+                } else {
+
+                    layer.addTo(map);
+
+                    item.style.opacity = "1";
+
+                }
+
+            };
+
+
+            layerList.appendChild(item);
+
+
+        } catch (error) {
+
+            console.error(
+                "Could not load:",
+                name,
+                error
+            );
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   LAYERS BUTTON
+========================================================= */
+
+document
+    .getElementById("layers-button")
+    .addEventListener("click", function() {
+
+        document
+            .getElementById("layers-panel")
+            .classList.toggle("show");
+
+    });
+
+
+/* =========================================================
+   SAVE
+========================================================= */
+
+document
+    .getElementById("save-button")
+    .addEventListener("click", function() {
+
+        const savedData = {};
+
+        for (const [name, layer] of Object.entries(loadedLayers)) {
+
+            savedData[name] =
+                layer.toGeoJSON();
+
+        }
+
+
+        /*
+           Temporary local save.
+
+           This saves the edited polygons in THIS browser.
+
+           Later this button will save them to a database.
+        */
+
+        localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(savedData)
+        );
+
+
+        showSaveStatus();
+
+    });
+
+
+function showSaveStatus() {
+
+    const status =
+        document.getElementById("save-status");
+
+    status.style.display = "block";
+
+    setTimeout(function() {
+
+        status.style.display = "none";
+
+    }, 2000);
+
+}
+
+
+/* =========================================================
+   DOWNLOAD GEOJSON
+========================================================= */
+
+document
+    .getElementById("download-button")
+    .addEventListener("click", function() {
+
+        const allData = {};
+
+        for (const [name, layer] of Object.entries(loadedLayers)) {
+
+            allData[name] =
+                layer.toGeoJSON();
+
+        }
+
+
+        const blob = new Blob(
+
+            [JSON.stringify(allData, null, 2)],
+
+            {
+                type: "application/json"
+            }
+
+        );
+
+
+        const url =
+            URL.createObjectURL(blob);
+
+
+        const link =
+            document.createElement("a");
+
+        link.href = url;
+
+        link.download =
+            "polrad-edited-data.json";
+
+        link.click();
+
+
+        URL.revokeObjectURL(url);
+
+    });
+
+
+/* =========================================================
+   RESET
+========================================================= */
+
+document
+    .getElementById("reset-button")
+    .addEventListener("click", function() {
+
+        if (!confirm(
+            "Reset all polygon changes?"
+        )) {
+            return;
+        }
+
+
+        for (const [name, layer] of Object.entries(loadedLayers)) {
+
+            map.removeLayer(layer);
+
+        }
+
+
+        loadedLayers = {};
+
+
+        loadGeoJSONLayers();
+
+    });
+
+
+</script>
+
+</body>
+</html>
