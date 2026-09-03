@@ -6,218 +6,298 @@
 
 <title>POLRAD MAPPING — Editor</title>
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
-/>
+<link rel="stylesheet"
+      href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
 
 <style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        font-family: Arial, sans-serif;
-    }
 
-    #map {
-        width: 100%;
-        height: 100%;
-    }
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: Arial, sans-serif;
+}
 
-    /* Header */
-    #app-header {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        z-index: 2000;
+#map {
+    width: 100%;
+    height: 100%;
+}
 
-        width: 250px;
-        background: rgba(25, 25, 25, 0.95);
-        color: white;
 
-        padding: 12px;
-        border-radius: 8px;
+/* =========================
+   LOGIN
+========================= */
 
-        box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-    }
+#login-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
 
-    #title {
-        font-size: 17px;
-        font-weight: bold;
-    }
+    background: #111;
 
-    #editor-status {
-        margin-top: 5px;
-        font-size: 11px;
-        color: #aaa;
-    }
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-    /* Toolbar */
-    #toolbar {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 2000;
+#login-box {
+    width: 300px;
 
-        display: flex;
-        gap: 5px;
-    }
+    background: #222;
+    color: white;
 
-    .tool-button {
-        border: none;
-        background: rgba(25,25,25,0.95);
-        color: white;
+    padding: 25px;
+    border-radius: 10px;
 
-        padding: 9px 12px;
-        border-radius: 6px;
+    text-align: center;
+}
 
-        cursor: pointer;
-        font-size: 13px;
-    }
+#login-box h2 {
+    margin-top: 0;
+}
 
-    .tool-button:hover {
-        background: rgba(55,55,55,0.95);
-    }
+#password {
+    width: 100%;
+    box-sizing: border-box;
 
-    /* Login */
-    #login-screen {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
+    padding: 10px;
+    margin: 12px 0;
 
-        background: #111;
+    background: #111;
+    color: white;
 
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+    border: 1px solid #555;
+    border-radius: 5px;
+}
 
-    #login-box {
-        width: 300px;
-        background: #222;
-        padding: 25px;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-    }
+#login-button {
+    width: 100%;
 
-    #login-box h2 {
-        margin-top: 0;
-    }
+    padding: 10px;
 
-    #password {
-        width: 100%;
-        box-sizing: border-box;
+    border: none;
+    border-radius: 5px;
 
-        padding: 10px;
-        margin: 10px 0;
+    background: #444;
+    color: white;
 
-        background: #111;
-        border: 1px solid #555;
-        border-radius: 5px;
+    cursor: pointer;
+}
 
-        color: white;
-    }
+#login-button:hover {
+    background: #555;
+}
 
-    #login-button {
-        width: 100%;
-        padding: 10px;
+#login-error {
+    display: none;
 
-        border: none;
-        border-radius: 5px;
+    margin-top: 8px;
 
-        background: #444;
-        color: white;
+    color: #ff6666;
+    font-size: 12px;
+}
 
-        cursor: pointer;
-    }
 
-    #login-button:hover {
-        background: #555;
-    }
+/* =========================
+   POLRAD HEADER
+========================= */
 
-    #login-error {
-        color: #ff6666;
-        font-size: 12px;
-        margin-top: 8px;
-        display: none;
-    }
+#app-header {
+    position: absolute;
 
-    /* Layer panel */
-    #layers-panel {
-        position: absolute;
-        top: 60px;
-        right: 10px;
+    top: 10px;
+    left: 70px;
 
-        z-index: 2000;
+    z-index: 2000;
 
-        width: 230px;
+    width: 250px;
 
-        background: rgba(25,25,25,0.95);
-        color: white;
+    background: rgba(25,25,25,0.95);
+    color: white;
 
-        padding: 12px;
-        border-radius: 8px;
+    padding: 12px;
 
-        display: none;
-    }
+    border-radius: 8px;
 
-    #layers-panel.show {
-        display: block;
-    }
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
 
-    .layer-item {
-        padding: 7px;
-        margin-bottom: 4px;
+#title {
+    font-size: 17px;
+    font-weight: bold;
+}
 
-        background: #333;
-        border-radius: 5px;
+#editor-status {
+    margin-top: 5px;
 
-        cursor: pointer;
-        font-size: 12px;
-    }
+    color: #aaa;
 
-    .layer-item:hover {
-        background: #444;
-    }
+    font-size: 11px;
+}
 
-    /* Save indicator */
-    #save-status {
-        position: absolute;
-        bottom: 25px;
-        left: 50%;
 
-        transform: translateX(-50%);
+/* =========================
+   TOOLBAR
+========================= */
 
-        z-index: 2000;
+#toolbar {
+    position: absolute;
 
-        background: rgba(25,25,25,0.95);
-        color: white;
+    top: 10px;
+    right: 10px;
 
-        padding: 7px 12px;
-        border-radius: 6px;
+    z-index: 2000;
 
-        font-size: 12px;
+    display: flex;
+    gap: 5px;
+}
 
-        display: none;
-    }
+.tool-button {
+    border: none;
+
+    background: rgba(25,25,25,0.95);
+    color: white;
+
+    padding: 9px 12px;
+
+    border-radius: 6px;
+
+    cursor: pointer;
+
+    font-size: 13px;
+}
+
+.tool-button:hover {
+    background: rgba(55,55,55,0.95);
+}
+
+
+/* =========================
+   LAYERS PANEL
+========================= */
+
+#layers-panel {
+    position: absolute;
+
+    top: 55px;
+    right: 10px;
+
+    z-index: 2000;
+
+    width: 240px;
+
+    background: rgba(25,25,25,0.95);
+    color: white;
+
+    padding: 12px;
+
+    border-radius: 8px;
+
+    display: none;
+
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+
+#layers-panel.show {
+    display: block;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+
+    padding: 7px;
+    margin-top: 5px;
+
+    background: #333;
+
+    border-radius: 5px;
+
+    cursor: pointer;
+
+    font-size: 12px;
+}
+
+.layer-item:hover {
+    background: #444;
+}
+
+.layer-color {
+    width: 13px;
+    height: 13px;
+
+    border-radius: 3px;
+
+    margin-right: 8px;
+
+    flex-shrink: 0;
+}
+
+
+/* =========================
+   SAVE STATUS
+========================= */
+
+#save-status {
+    position: absolute;
+
+    bottom: 25px;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    z-index: 2000;
+
+    background: rgba(25,25,25,0.95);
+    color: white;
+
+    padding: 7px 12px;
+
+    border-radius: 6px;
+
+    font-size: 12px;
+
+    display: none;
+}
+
+
+/* =========================
+   SELECTED POLYGON
+========================= */
+
+.polrad-selected {
+    stroke-width: 4 !important;
+}
+
+
+/* Keep Leaflet controls above the map/header */
+
+.leaflet-top,
+.leaflet-bottom {
+    z-index: 1500;
+}
+
 </style>
 </head>
 
+
 <body>
 
-<!-- LOGIN -->
+
+<!-- =========================
+     LOGIN
+========================= -->
+
 <div id="login-screen">
 
     <div id="login-box">
 
         <h2>POLRAD MAPPING</h2>
+
         <div style="font-size:13px;color:#aaa;">
             Editor
         </div>
@@ -241,11 +321,17 @@
 </div>
 
 
-<!-- MAP -->
+<!-- =========================
+     MAP
+========================= -->
+
 <div id="map"></div>
 
 
-<!-- HEADER -->
+<!-- =========================
+     HEADER
+========================= -->
+
 <div id="app-header">
 
     <div id="title">
@@ -259,7 +345,10 @@
 </div>
 
 
-<!-- TOOLBAR -->
+<!-- =========================
+     TOOLBAR
+========================= -->
+
 <div id="toolbar">
 
     <button class="tool-button" id="layers-button">
@@ -281,12 +370,15 @@
 </div>
 
 
-<!-- LAYERS -->
+<!-- =========================
+     LAYERS PANEL
+========================= -->
+
 <div id="layers-panel">
 
     <b>Map layers</b>
 
-    <div id="layer-list" style="margin-top:8px;"></div>
+    <div id="layer-list"></div>
 
 </div>
 
@@ -307,22 +399,19 @@
    CONFIGURATION
 ========================================================= */
 
+
 /*
-   IMPORTANT:
+   TEMPORARY PASSWORD
 
-   This is only a temporary login.
-
-   A password written inside JavaScript is NOT secure.
-   Later we'll replace this with real authentication.
+   Change this if you want.
+   This is NOT secure authentication yet.
 */
 
 const EDITOR_PASSWORD = "CHANGE_THIS_PASSWORD";
 
 
 /*
-   Your GeoJSON files.
-
-   Put these files into a "data" folder in the repository.
+   Your five editable layers.
 */
 
 const GEOJSON_FILES = {
@@ -340,29 +429,73 @@ const GEOJSON_FILES = {
         "data/Russian%20advances.geojson",
 
     "Territories regained in the last month":
-        "data/Territories%20regained%20in%20the%20last%20month.geojson",
-
-    "Land corridor to Crimea":
-        "data/Land%20corridor%20to%20Crimea.geojson",
-
-    "Region borders":
-        "data/Region%20borders.geojson"
+        "data/Territories%20regained%20in%20the%20last%20month.geojson"
 
 };
+
+
+/*
+   Layer colors.
+
+   We can change these later.
+*/
+
+const LAYER_COLORS = {
+
+    "Russian-controlled territory":
+        "#d94b4b",
+
+    "Ukrainian-controlled territory":
+        "#4b83d9",
+
+    "Ukrainian advances":
+        "#f2c94c",
+
+    "Russian advances":
+        "#9b59b6",
+
+    "Territories regained in the last month":
+        "#42b883"
+
+};
+
+
+/* =========================================================
+   VARIABLES
+========================================================= */
+
+let map = null;
+
+let loadedLayers = {};
+
+let originalData = {};
+
+let selectedLayer = null;
 
 
 /* =========================================================
    LOGIN
 ========================================================= */
 
-const loginScreen = document.getElementById("login-screen");
-const passwordInput = document.getElementById("password");
-const loginButton = document.getElementById("login-button");
-const loginError = document.getElementById("login-error");
+const loginScreen =
+    document.getElementById("login-screen");
+
+const passwordInput =
+    document.getElementById("password");
+
+const loginButton =
+    document.getElementById("login-button");
+
+const loginError =
+    document.getElementById("login-error");
+
 
 function login() {
 
-    if (passwordInput.value === EDITOR_PASSWORD) {
+    if (
+        passwordInput.value ===
+        EDITOR_PASSWORD
+    ) {
 
         loginScreen.style.display = "none";
 
@@ -376,75 +509,91 @@ function login() {
 
 }
 
-loginButton.addEventListener("click", login);
 
-passwordInput.addEventListener("keydown", function(e) {
+loginButton.addEventListener(
+    "click",
+    login
+);
 
-    if (e.key === "Enter") {
-        login();
+
+passwordInput.addEventListener(
+    "keydown",
+    function(e) {
+
+        if (e.key === "Enter") {
+            login();
+        }
+
     }
-
-});
+);
 
 
 /* =========================================================
-   MAP
+   INITIALIZE MAP
 ========================================================= */
-
-let map;
-let loadedLayers = {};
-let originalData = {};
 
 function initializeEditor() {
 
     map = L.map("map", {
 
-        center: [48.0, 37.75],
+        center: [
+            48.0,
+            37.75
+        ],
+
         zoom: 7,
 
-        zoomControl: true,
-        scrollWheelZoom: true
+        scrollWheelZoom: true,
+
+        zoomControl: true
 
     });
 
 
     /*
-       Main map.
-
-       We use Esri satellite imagery so there is
-       no Google API required.
+       Esri satellite imagery.
+       No Google API required.
     */
 
-    const satellite = L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-            attribution: "Tiles © Esri"
-        }
-    );
+    const satellite =
+        L.tileLayer(
+
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+
+            {
+                attribution:
+                    "Tiles © Esri"
+            }
+
+        );
 
 
     satellite.addTo(map);
 
 
     /*
-       Add Geoman editing controls.
+       Geoman controls.
+
+       IMPORTANT:
+       Editing is NOT automatically
+       enabled for every polygon.
     */
 
     map.pm.addControls({
 
         position: "topleft",
 
-        drawText: false,
-        drawCircle: false,
-        drawCircleMarker: false,
-        drawPolyline: true,
         drawMarker: false,
-        drawRectangle: true,
+        drawCircleMarker: false,
+        drawPolyline: false,
+        drawRectangle: false,
+        drawCircle: false,
+        drawText: false,
 
-        editMode: true,
-        dragMode: true,
-        cutPolygon: true,
-        removalMode: true
+        editMode: false,
+        dragMode: false,
+        cutPolygon: false,
+        removalMode: false
 
     });
 
@@ -461,90 +610,173 @@ function initializeEditor() {
 async function loadGeoJSONLayers() {
 
     const layerList =
-        document.getElementById("layer-list");
+        document.getElementById(
+            "layer-list"
+        );
 
-    for (const [name, url] of Object.entries(GEOJSON_FILES)) {
+
+    for (
+        const [name, url]
+        of Object.entries(GEOJSON_FILES)
+    ) {
 
         try {
 
-            const response = await fetch(url);
+            const response =
+                await fetch(url);
+
 
             if (!response.ok) {
-                throw new Error("File not found");
+
+                throw new Error(
+                    "HTTP " +
+                    response.status
+                );
+
             }
 
-            const data = await response.json();
 
-            originalData[name] = data;
+            const data =
+                await response.json();
 
 
-            const layer = L.geoJSON(data, {
+            originalData[name] =
+                data;
 
-                style: {
 
-                    color: "#ffffff",
-                    weight: 2,
-                    fillOpacity: 0.35
+            const color =
+                LAYER_COLORS[name] ||
+                "#ffffff";
 
-                },
 
-                onEachFeature: function(feature, layer) {
+            const layer =
+                L.geoJSON(
+                    data,
+                    {
 
-                    /*
-                       Every polygon can be edited.
-                    */
+                        style: {
 
-                    layer.pm.enable({
+                            color: color,
 
-                        allowSelfIntersection: false
+                            weight: 2,
 
-                    });
+                            fillColor: color,
 
-                }
+                            fillOpacity: 0.35
 
-            });
+                        },
+
+                        /*
+                           DO NOT enable editing here.
+                        */
+
+                        onEachFeature:
+                            function(
+                                feature,
+                                featureLayer
+                            ) {
+
+                                setupPolygon(
+                                    featureLayer,
+                                    name
+                                );
+
+                            }
+
+                    }
+                );
 
 
             layer.addTo(map);
 
-            loadedLayers[name] = layer;
+
+            loadedLayers[name] =
+                layer;
 
 
-            /* Layer list */
+            /* =========================
+               Layer panel entry
+            ========================= */
 
             const item =
-                document.createElement("div");
-
-            item.className = "layer-item";
-
-            item.textContent = name;
-
-            item.onclick = function() {
-
-                if (map.hasLayer(layer)) {
-
-                    map.removeLayer(layer);
-
-                    item.style.opacity = "0.5";
-
-                } else {
-
-                    layer.addTo(map);
-
-                    item.style.opacity = "1";
-
-                }
-
-            };
+                document.createElement(
+                    "div"
+                );
 
 
-            layerList.appendChild(item);
+            item.className =
+                "layer-item";
+
+
+            const colorBox =
+                document.createElement(
+                    "div"
+                );
+
+
+            colorBox.className =
+                "layer-color";
+
+
+            colorBox.style.background =
+                color;
+
+
+            item.appendChild(
+                colorBox
+            );
+
+
+            const label =
+                document.createElement(
+                    "span"
+                );
+
+
+            label.textContent =
+                name;
+
+
+            item.appendChild(
+                label
+            );
+
+
+            item.onclick =
+                function() {
+
+                    if (
+                        map.hasLayer(layer)
+                    ) {
+
+                        map.removeLayer(
+                            layer
+                        );
+
+                        item.style.opacity =
+                            "0.5";
+
+                    } else {
+
+                        layer.addTo(map);
+
+                        item.style.opacity =
+                            "1";
+
+                    }
+
+                };
+
+
+            layerList.appendChild(
+                item
+            );
 
 
         } catch (error) {
 
             console.error(
-                "Could not load:",
+                "Could not load " +
                 name,
                 error
             );
@@ -557,18 +789,174 @@ async function loadGeoJSONLayers() {
 
 
 /* =========================================================
+   POLYGON SETUP
+========================================================= */
+
+function setupPolygon(
+    featureLayer,
+    layerName
+) {
+
+    /*
+       Clicking a polygon selects ONLY
+       that polygon.
+    */
+
+    featureLayer.on(
+        "click",
+        function(e) {
+
+            /*
+               Prevent map click.
+            */
+
+            L.DomEvent.stopPropagation(
+                e
+            );
+
+
+            selectPolygon(
+                featureLayer
+            );
+
+        }
+    );
+
+
+    /*
+       Tooltip showing the polygon name
+       when available.
+    */
+
+    if (
+        featureLayer.feature &&
+        featureLayer.feature.properties &&
+        featureLayer.feature.properties.Name
+    ) {
+
+        featureLayer.bindTooltip(
+
+            featureLayer.feature
+                .properties
+                .Name,
+
+            {
+                sticky: true
+            }
+
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   SELECT POLYGON
+========================================================= */
+
+function selectPolygon(layer) {
+
+    /*
+       Disable previous polygon.
+    */
+
+    if (
+        selectedLayer &&
+        selectedLayer !== layer
+    ) {
+
+        selectedLayer.pm.disable();
+
+        selectedLayer.setStyle({
+
+            weight: 2
+
+        });
+
+    }
+
+
+    /*
+       If clicking the already-selected
+       polygon, leave it selected.
+    */
+
+    selectedLayer = layer;
+
+
+    /*
+       Highlight selected polygon.
+    */
+
+    selectedLayer.setStyle({
+
+        weight: 4
+
+    });
+
+
+    /*
+       Enable editing ONLY here.
+    */
+
+    selectedLayer.pm.enable({
+
+        allowSelfIntersection: false
+
+    });
+
+}
+
+
+/* =========================================================
+   CLICK EMPTY MAP
+========================================================= */
+
+mapClickHandler();
+
+
+function mapClickHandler() {
+
+    /*
+       This function is attached after
+       the map is initialized.
+    */
+
+}
+
+
+/*
+   We need to attach the event after
+   map creation.
+*/
+
+const originalInitialize =
+    initializeEditor;
+
+
+/* =========================================================
    LAYERS BUTTON
 ========================================================= */
 
 document
-    .getElementById("layers-button")
-    .addEventListener("click", function() {
+    .getElementById(
+        "layers-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
 
-        document
-            .getElementById("layers-panel")
-            .classList.toggle("show");
+            document
+                .getElementById(
+                    "layers-panel"
+                )
+                .classList.toggle(
+                    "show"
+                );
 
-    });
+        }
+    );
 
 
 /* =========================================================
@@ -576,101 +964,151 @@ document
 ========================================================= */
 
 document
-    .getElementById("save-button")
-    .addEventListener("click", function() {
+    .getElementById(
+        "save-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
 
-        const savedData = {};
+            const savedData = {};
 
-        for (const [name, layer] of Object.entries(loadedLayers)) {
 
-            savedData[name] =
-                layer.toGeoJSON();
+            for (
+                const [name, layer]
+                of Object.entries(
+                    loadedLayers
+                )
+            ) {
+
+                savedData[name] =
+                    layer.toGeoJSON();
+
+            }
+
+
+            localStorage.setItem(
+
+                "polrad_editor_data",
+
+                JSON.stringify(
+                    savedData
+                )
+
+            );
+
+
+            showSaveStatus();
 
         }
-
-
-        /*
-           Temporary local save.
-
-           This saves the edited polygons in THIS browser.
-
-           Later this button will save them to a database.
-        */
-
-        localStorage.setItem(
-            "polrad_editor_data",
-            JSON.stringify(savedData)
-        );
-
-
-        showSaveStatus();
-
-    });
+    );
 
 
 function showSaveStatus() {
 
     const status =
-        document.getElementById("save-status");
+        document.getElementById(
+            "save-status"
+        );
 
-    status.style.display = "block";
 
-    setTimeout(function() {
+    status.style.display =
+        "block";
 
-        status.style.display = "none";
 
-    }, 2000);
+    setTimeout(
+        function() {
+
+            status.style.display =
+                "none";
+
+        },
+        2000
+    );
 
 }
 
 
 /* =========================================================
-   DOWNLOAD GEOJSON
+   DOWNLOAD
 ========================================================= */
 
 document
-    .getElementById("download-button")
-    .addEventListener("click", function() {
+    .getElementById(
+        "download-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
 
-        const allData = {};
-
-        for (const [name, layer] of Object.entries(loadedLayers)) {
-
-            allData[name] =
-                layer.toGeoJSON();
-
-        }
+            const allData = {};
 
 
-        const blob = new Blob(
+            for (
+                const [name, layer]
+                of Object.entries(
+                    loadedLayers
+                )
+            ) {
 
-            [JSON.stringify(allData, null, 2)],
+                allData[name] =
+                    layer.toGeoJSON();
 
-            {
-                type: "application/json"
             }
 
-        );
+
+            const blob =
+                new Blob(
+
+                    [
+                        JSON.stringify(
+                            allData,
+                            null,
+                            2
+                        )
+                    ],
+
+                    {
+                        type:
+                            "application/json"
+                    }
+
+                );
 
 
-        const url =
-            URL.createObjectURL(blob);
+            const url =
+                URL.createObjectURL(
+                    blob
+                );
 
 
-        const link =
-            document.createElement("a");
-
-        link.href = url;
-
-        link.download =
-            "polrad-edited-data.json";
-
-        link.click();
+            const link =
+                document.createElement(
+                    "a"
+                );
 
 
-        URL.revokeObjectURL(url);
+            link.href = url;
 
-    });
+            link.download =
+                "polrad-edited-data.json";
+
+
+            document.body.appendChild(
+                link
+            );
+
+            link.click();
+
+            link.remove();
+
+
+            URL.revokeObjectURL(
+                url
+            );
+
+        }
+    );
 
 
 /* =========================================================
@@ -678,29 +1116,52 @@ document
 ========================================================= */
 
 document
-    .getElementById("reset-button")
-    .addEventListener("click", function() {
+    .getElementById(
+        "reset-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
 
-        if (!confirm(
-            "Reset all polygon changes?"
-        )) {
-            return;
+            if (
+                !confirm(
+                    "Reset all polygon changes?"
+                )
+            ) {
+                return;
+            }
+
+
+            for (
+                const layer
+                of Object.values(
+                    loadedLayers
+                )
+            ) {
+
+                map.removeLayer(
+                    layer
+                );
+
+            }
+
+
+            loadedLayers = {};
+
+            selectedLayer = null;
+
+
+            document
+                .getElementById(
+                    "layer-list"
+                )
+                .innerHTML = "";
+
+
+            loadGeoJSONLayers();
+
         }
-
-
-        for (const [name, layer] of Object.entries(loadedLayers)) {
-
-            map.removeLayer(layer);
-
-        }
-
-
-        loadedLayers = {};
-
-
-        loadGeoJSONLayers();
-
-    });
+    );
 
 
 </script>
