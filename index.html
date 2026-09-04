@@ -1119,7 +1119,112 @@ function saveData() {
 
 }
 
+/* =========================================================
+   PUBLISH
+========================================================= */
 
+async function publishData() {
+
+    if (
+        !confirm(
+            "Publish all current changes to the public map?"
+        )
+    ) {
+        return;
+    }
+
+    const WORKER_URL =
+        "https://polrad-editor-api.streetviewfun066.workers.dev/";
+
+
+    const files = {};
+
+
+    for (
+        const [name, layer]
+        of Object.entries(loadedLayers)
+    ) {
+
+        files[name] =
+            layer.toGeoJSON();
+
+    }
+
+
+    const publishButton =
+        document.getElementById(
+            "publishButton"
+        );
+
+
+    publishButton.disabled = true;
+
+    publishButton.textContent =
+        "Publishing...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                WORKER_URL,
+                {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        files: files
+                    })
+
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (!response.ok || !result.success) {
+
+            throw new Error(
+                result.error ||
+                "Publishing failed."
+            );
+
+        }
+
+
+        alert(
+            "Published successfully! 🎉\n\n" +
+            "The public map data has been updated."
+        );
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert(
+            "Publishing failed:\n\n" +
+            error.message
+        );
+
+
+    } finally {
+
+        publishButton.disabled = false;
+
+        publishButton.textContent =
+            "Publish";
+
+    }
+
+}
 /* =========================================================
    DOWNLOAD
 ========================================================= */
@@ -1274,6 +1379,12 @@ document.getElementById(
 ).addEventListener(
     "click",
     saveData
+);
+    document.getElementById(
+    "publishButton"
+).addEventListener(
+    "click",
+    publishData
 );
 
 
