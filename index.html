@@ -238,6 +238,42 @@
       font-size: 12px;
       margin-top: 8px;
     }
+
+    #mapSearchBox {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: min(420px, calc(100% - 40px));
+    }
+    #mapSearch {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: 1px solid #ccc;
+      border-radius: 7px;
+      background: rgba(255,255,255,.97);
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+      outline: none;
+    }
+    #mapSearchResults {
+      display: none;
+      margin-top: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .mapSearchResult {
+      padding: 9px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+    }
+    .mapSearchResult:hover { background: #f1f5f9; }
   </style>
 </head>
 
@@ -295,6 +331,13 @@
   </div>
 
   <div id="map"></div>
+
+  <div id="mapSearchBox">
+    <input id="mapSearch" type="text" placeholder="🔍 Search towns, cities or coordinates..." autocomplete="off">
+    <div id="mapSearchResults"></div>
+  </div>
+
+
 
   <script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
@@ -782,6 +825,72 @@
 
       setStatus("New polygon added to " + config(targetId)[1] + ".");
     }
+
+
+    // Map search
+    const searchInput = document.getElementById("mapSearch");
+    const searchResults = document.getElementById("mapSearchResults");
+    let searchMarker = null;
+
+    function hideSearchResults() {
+      searchResults.style.display = "none";
+      searchResults.innerHTML = "";
+    }
+
+    async function performMapSearch() {
+      const q = searchInput.value.trim();
+      if (!q) { hideSearchResults(); return; }
+
+      const coord = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (coord) {
+        const lat = Number(coord[1]);
+        const lng = Number(coord[2]);
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          map.setView([lat, lng], 13);
+          if (searchMarker) map.removeLayer(searchMarker);
+          searchMarker = L.marker([lat, lng]).addTo(map).bindPopup(`${lat}, ${lng}`).openPopup();
+          hideSearchResults();
+          return;
+        }
+      }
+
+      searchResults.innerHTML = '<div class="mapSearchResult">Searching...</div>';
+      searchResults.style.display = "block";
+      try {
+        const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&accept-language=en&q=" + encodeURIComponent(q);
+        const response = await fetch(url, { headers: { "Accept": "application/json" } });
+        const places = await response.json();
+        searchResults.innerHTML = "";
+        if (!places.length) {
+          searchResults.innerHTML = '<div class="mapSearchResult">No results found.</div>';
+          return;
+        }
+        places.forEach(place => {
+          const item = document.createElement("div");
+          item.className = "mapSearchResult";
+          item.textContent = place.display_name;
+          item.addEventListener("click", () => {
+            const lat = Number(place.lat);
+            const lng = Number(place.lon);
+            map.setView([lat, lng], 13);
+            if (searchMarker) map.removeLayer(searchMarker);
+            searchMarker = L.marker([lat, lng]).addTo(map).bindPopup(place.display_name).openPopup();
+            hideSearchResults();
+          });
+          searchResults.appendChild(item);
+        });
+      } catch (e) {
+        searchResults.innerHTML = '<div class="mapSearchResult">Search failed.</div>';
+      }
+    }
+
+    searchInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") performMapSearch();
+      if (e.key === "Escape") hideSearchResults();
+    });
+    document.addEventListener("click", e => {
+      if (!document.getElementById("mapSearchBox").contains(e.target)) hideSearchResults();
+    });
 
     async function load() {
       // If the user has clicked Save before, restore that edited map first.
