@@ -283,7 +283,9 @@ html, body {
 }
 
 
-/* Keep Leaflet controls above the map/header */
+/* =========================
+   LEAFLET CONTROLS
+========================= */
 
 .leaflet-top,
 .leaflet-bottom {
@@ -360,11 +362,11 @@ html, body {
 
 <div id="toolbar">
 
-    <button class="tool-button" id="undo-button">
+    <button class="tool-button" id="undo-button" disabled>
         ↶ Undo
     </button>
 
-    <button class="tool-button" id="redo-button">
+    <button class="tool-button" id="redo-button" disabled>
         ↷ Redo
     </button>
 
@@ -420,19 +422,12 @@ html, body {
    CONFIGURATION
 ========================================================= */
 
-
-/*
-   TEMPORARY PASSWORD
-
-   This is NOT secure authentication yet.
-*/
-
 const EDITOR_PASSWORD = "l!aatt?a-q,ss";
 
 
-/*
-   Five editable layers.
-*/
+/* =========================
+   GEOJSON FILES
+========================= */
 
 const GEOJSON_FILES = {
 
@@ -454,9 +449,9 @@ const GEOJSON_FILES = {
 };
 
 
-/*
-   Layer colors.
-*/
+/* =========================
+   LAYER COLORS
+========================= */
 
 const LAYER_COLORS = {
 
@@ -492,16 +487,31 @@ let selectedLayer = null;
 
 
 /*
-   Undo / redo history.
+   Undo/redo history.
 
-   Each entry stores the complete map state.
+   Every history entry is a complete snapshot
+   of all polygons.
 */
 
 let undoStack = [];
 
 let redoStack = [];
 
+
+/*
+   Prevent history being created while
+   restoring an old state.
+*/
+
 let restoringState = false;
+
+
+/*
+   Prevent multiple history checkpoints
+   during one editing session.
+*/
+
+let editHistoryCreated = false;
 
 
 /* =========================================================
@@ -585,9 +595,9 @@ function initializeEditor() {
     });
 
 
-    /*
-       Esri satellite imagery.
-    */
+    /* =========================
+       ESRI SATELLITE
+    ========================= */
 
     const satellite =
         L.tileLayer(
@@ -607,12 +617,9 @@ function initializeEditor() {
     satellite.addTo(map);
 
 
-    /*
-       Geoman controls.
-
-       We do NOT enable global editing.
-       Only the selected polygon can be edited.
-    */
+    /* =========================
+       GEOMAN
+    ========================= */
 
     map.pm.addControls({
 
@@ -633,18 +640,35 @@ function initializeEditor() {
     });
 
 
+    /*
+       IMPORTANT:
+       Clicking empty map deselects
+       the current polygon.
+    */
+
+    map.on(
+        "click",
+        function() {
+
+            deselectPolygon();
+
+        }
+    );
+
+
     loadGeoJSONLayers();
 
 }
 
 
 /* =========================================================
-   GET CURRENT MAP STATE
+   CURRENT MAP STATE
 ========================================================= */
 
 function getCurrentState() {
 
     const state = {};
+
 
     for (
         const [name, layer]
@@ -658,30 +682,34 @@ function getCurrentState() {
 
     }
 
+
     return state;
 
 }
 
 
 /* =========================================================
-   CREATE HISTORY CHECKPOINT
+   CREATE HISTORY ENTRY
 ========================================================= */
 
-function createHistoryCheckpoint() {
+function createHistoryEntry() {
 
     if (restoringState) {
         return;
     }
 
+
     undoStack.push(
+
         JSON.stringify(
             getCurrentState()
         )
+
     );
 
 
     /*
-       Limit history to 50 actions.
+       Keep maximum 50 undo actions.
     */
 
     if (
@@ -694,8 +722,7 @@ function createHistoryCheckpoint() {
 
 
     /*
-       Any new action after undo
-       creates a new branch.
+       New action destroys redo history.
     */
 
     redoStack = [];
@@ -746,7 +773,11 @@ async function loadGeoJSONLayers() {
 
 
             originalData[name] =
-                data;
+                JSON.parse(
+                    JSON.stringify(
+                        data
+                    )
+                );
 
 
             addGeoJSONLayer(
@@ -806,6 +837,7 @@ function addGeoJSONLayer(
 
                 },
 
+
                 onEachFeature:
                     function(
                         feature,
@@ -830,9 +862,9 @@ function addGeoJSONLayer(
         layer;
 
 
-    /*
-       Layer panel entry.
-    */
+    /* =========================
+       LAYER PANEL
+    ========================= */
 
     const item =
         document.createElement(
@@ -879,7 +911,17 @@ function addGeoJSONLayer(
 
 
     item.onclick =
-        function() {
+        function(e) {
+
+            /*
+               Don't accidentally select
+               a polygon underneath.
+            */
+
+            L.DomEvent.stopPropagation(
+                e
+            );
+
 
             if (
                 map.hasLayer(layer)
@@ -942,7 +984,7 @@ function setupPolygon(
 
 
     /*
-       Show polygon name.
+       Polygon tooltip.
     */
 
     if (
@@ -969,31 +1011,43 @@ function setupPolygon(
 
 
     /*
-       When editing starts, create
-       an undo checkpoint.
+       IMPORTANT:
+
+       Create the undo snapshot BEFORE
+       the actual polygon editing begins.
     */
 
     featureLayer.on(
         "pm:editstart",
         function() {
 
-            createHistoryCheckpoint();
+            if (
+                !editHistoryCreated &&
+                !restoringState
+            ) {
+
+                createHistoryEntry();
+
+                editHistoryCreated =
+                    true;
+
+            }
 
         }
     );
 
 
     /*
-       Make sure the polygon remains
-       selected after editing.
+       When editing ends, allow another
+       edit to create a new history entry.
     */
 
     featureLayer.on(
-        "pm:edit",
+        "pm:editend",
         function() {
 
-            selectedLayer =
-                featureLayer;
+            editHistoryCreated =
+                false;
 
         }
     );
@@ -1008,7 +1062,8 @@ function setupPolygon(
 function selectPolygon(layer) {
 
     /*
-       Disable previous polygon.
+       If another polygon is selected,
+       disable it first.
     */
 
     if (
@@ -1024,10 +1079,6 @@ function selectPolygon(layer) {
 
         });
 
-        selectedLayer.removeClassName(
-            "polrad-selected"
-        );
-
     }
 
 
@@ -1036,7 +1087,16 @@ function selectPolygon(layer) {
 
 
     /*
-       Highlight selected polygon.
+       Reset edit-history flag because
+       this is a new selected polygon.
+    */
+
+    editHistoryCreated =
+        false;
+
+
+    /*
+       Highlight polygon.
     */
 
     selectedLayer.setStyle({
@@ -1047,7 +1107,7 @@ function selectPolygon(layer) {
 
 
     /*
-       Enable editing ONLY here.
+       Enable editing ONLY for this polygon.
     */
 
     selectedLayer.pm.enable({
@@ -1061,7 +1121,52 @@ function selectPolygon(layer) {
 
 
 /* =========================================================
-   DELETE SELECTED POLYGON
+   DESELECT POLYGON
+========================================================= */
+
+function deselectPolygon() {
+
+    if (!selectedLayer) {
+
+        return;
+
+    }
+
+
+    /*
+       Disable editing.
+    */
+
+    selectedLayer.pm.disable();
+
+
+    /*
+       Return normal line width.
+    */
+
+    selectedLayer.setStyle({
+
+        weight: 2
+
+    });
+
+
+    /*
+       Remove selection.
+    */
+
+    selectedLayer =
+        null;
+
+
+    editHistoryCreated =
+        false;
+
+}
+
+
+/* =========================================================
+   DELETE POLYGON
 ========================================================= */
 
 document
@@ -1095,15 +1200,16 @@ document
 
 
             /*
-               Save state BEFORE deletion.
+               Save the state BEFORE
+               deleting the polygon.
             */
 
-            createHistoryCheckpoint();
+            createHistoryEntry();
 
 
             /*
-               Find the parent GeoJSON
-               layer and remove the polygon.
+               Find which GeoJSON layer
+               contains the polygon.
             */
 
             for (
@@ -1134,6 +1240,10 @@ document
                 null;
 
 
+            editHistoryCreated =
+                false;
+
+
             updateHistoryButtons();
 
         }
@@ -1162,19 +1272,21 @@ document
 
 
             /*
-               Save current state
-               for Redo.
+               Save current state for Redo.
             */
 
             redoStack.push(
+
                 JSON.stringify(
                     getCurrentState()
                 )
+
             );
 
 
             /*
-               Retrieve previous state.
+               Get the state from BEFORE
+               the last action.
             */
 
             const previousState =
@@ -1186,6 +1298,10 @@ document
             restoreEditorState(
                 previousState
             );
+
+
+            editHistoryCreated =
+                false;
 
 
             updateHistoryButtons();
@@ -1216,19 +1332,20 @@ document
 
 
             /*
-               Save current state
-               for Undo.
+               Save current state for Undo.
             */
 
             undoStack.push(
+
                 JSON.stringify(
                     getCurrentState()
                 )
+
             );
 
 
             /*
-               Retrieve next state.
+               Get the state that was undone.
             */
 
             const nextState =
@@ -1240,6 +1357,10 @@ document
             restoreEditorState(
                 nextState
             );
+
+
+            editHistoryCreated =
+                false;
 
 
             updateHistoryButtons();
@@ -1256,7 +1377,19 @@ function restoreEditorState(
     state
 ) {
 
-    restoringState = true;
+    restoringState =
+        true;
+
+
+    /*
+       Deselect current polygon.
+    */
+
+    if (selectedLayer) {
+
+        selectedLayer.pm.disable();
+
+    }
 
 
     selectedLayer =
@@ -1286,7 +1419,7 @@ function restoreEditorState(
 
 
     /*
-       Rebuild layer panel.
+       Rebuild layer list.
     */
 
     const layerList =
@@ -1300,7 +1433,7 @@ function restoreEditorState(
 
 
     /*
-       Rebuild every GeoJSON layer.
+       Rebuild all layers.
     */
 
     for (
@@ -1319,34 +1452,35 @@ function restoreEditorState(
     }
 
 
-    restoringState = false;
+    restoringState =
+        false;
+
+
+    updateHistoryButtons();
 
 }
 
 
 /* =========================================================
-   HISTORY BUTTON STATES
+   HISTORY BUTTONS
 ========================================================= */
 
 function updateHistoryButtons() {
 
-    const undoButton =
-        document.getElementById(
+    document
+        .getElementById(
             "undo-button"
-        );
+        )
+        .disabled =
+            undoStack.length === 0;
 
-    const redoButton =
-        document.getElementById(
+
+    document
+        .getElementById(
             "redo-button"
-        );
-
-
-    undoButton.disabled =
-        undoStack.length === 0;
-
-
-    redoButton.disabled =
-        redoStack.length === 0;
+        )
+        .disabled =
+            redoStack.length === 0;
 
 }
 
@@ -1542,23 +1676,29 @@ document
 
             /*
                Save current state so
-               Reset can be undone.
+               Reset itself can be undone.
             */
 
-            createHistoryCheckpoint();
+            createHistoryEntry();
 
 
             /*
-               Restore original files.
+               Restore original GeoJSON.
             */
 
             restoreEditorState(
+
                 JSON.parse(
                     JSON.stringify(
                         originalData
                     )
                 )
+
             );
+
+
+            editHistoryCreated =
+                false;
 
 
             updateHistoryButtons();
