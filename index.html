@@ -6,35 +6,31 @@
 
 <title>POLRAD MAPPING — Editor</title>
 
-<!-- Leaflet -->
 <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 />
 
-<!-- Leaflet Geoman -->
 <link
-    rel="stylesheet"
-    href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
+  rel="stylesheet"
+  href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
 />
 
 <style>
 
-* {
-    box-sizing: border-box;
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #111;
 }
 
-html,
-body,
 #map {
     width: 100%;
     height: 100%;
-    margin: 0;
-}
-
-body {
-    font-family: Arial, Helvetica, sans-serif;
-    overflow: hidden;
 }
 
 /* =========================================================
@@ -44,148 +40,189 @@ body {
 #loginScreen {
     position: fixed;
     inset: 0;
-    z-index: 99999;
+    z-index: 5000;
 
     display: flex;
     align-items: center;
     justify-content: center;
 
-    background: rgba(0, 0, 0, 0.88);
+    background: #111;
 }
 
 #loginBox {
-    width: 360px;
-    max-width: calc(100vw - 30px);
+    width: 320px;
+    padding: 30px;
 
-    background: #171717;
-    color: white;
-
-    border: 1px solid #444;
+    background: #1c1c1c;
+    border: 1px solid #333;
     border-radius: 10px;
 
-    padding: 25px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
 
-    box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    text-align: center;
 }
 
 #loginBox h2 {
-    margin: 0 0 8px;
-}
-
-#loginBox p {
-    color: #aaa;
-    font-size: 13px;
-    margin: 0 0 18px;
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: white;
 }
 
 #passwordInput {
+    box-sizing: border-box;
+
     width: 100%;
-    height: 40px;
+    height: 42px;
 
     padding: 0 12px;
 
-    border: 1px solid #555;
-    border-radius: 6px;
-
-    background: #252525;
+    background: #111;
     color: white;
+
+    border: 1px solid #444;
+    border-radius: 6px;
 
     outline: none;
 }
 
 #loginButton {
     width: 100%;
-    height: 40px;
+    height: 42px;
 
-    margin-top: 10px;
+    margin-top: 12px;
 
-    border: 1px solid #555;
-    border-radius: 6px;
-
-    background: #292929;
+    background: #3478db;
     color: white;
 
+    border: none;
+    border-radius: 6px;
+
     cursor: pointer;
+    font-size: 15px;
 }
 
 #loginButton:hover {
-    background: #3a3a3a;
-}
-
-#loginButton:disabled {
-    opacity: .6;
-    cursor: wait;
+    background: #2865bd;
 }
 
 #loginError {
-    display: none;
-
-    margin-top: 10px;
-
-    color: #ff6666;
-    font-size: 13px;
+    margin-top: 12px;
+    color: #ff6b6b;
+    font-size: 14px;
 }
 
 /* =========================================================
-   TOOLBAR
+   TOP TOOLBAR
 ========================================================= */
 
 #toolbar {
     position: fixed;
 
     top: 10px;
-    left: 60px;
+    left: 10px;
 
-    z-index: 5000;
+    z-index: 3000;
 
-    display: none;
+    display: flex;
+    gap: 5px;
 
-    align-items: center;
-    gap: 6px;
+    padding: 5px;
 
-    padding: 7px;
+    background: rgba(23,23,23,.94);
 
-    background: rgba(20,20,20,.94);
-
-    border: 1px solid rgba(255,255,255,.2);
+    border: 1px solid rgba(255,255,255,.15);
     border-radius: 8px;
 
-    color: white;
-
-    box-shadow: 0 3px 15px rgba(0,0,0,.4);
-}
-
-#toolbarTitle {
-    font-weight: bold;
-    margin: 0 8px 0 3px;
-    white-space: nowrap;
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
 }
 
 .toolButton {
-    border: 1px solid #555;
+    height: 34px;
+
+    padding: 0 11px;
 
     background: #292929;
     color: white;
 
+    border: none;
     border-radius: 6px;
 
-    padding: 8px 10px;
-
     cursor: pointer;
+
+    font-size: 14px;
 }
 
 .toolButton:hover {
-    background: #3b3b3b;
+    background: #3a3a3a;
 }
 
-#status {
-    margin-left: 5px;
+/* =========================================================
+   SEARCH
+========================================================= */
 
+#search-box {
+    position: fixed;
+
+    top: 12px;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    z-index: 3000;
+
+    display: flex;
+
+    width: min(420px, calc(100vw - 40px));
+
+    background: rgba(23,23,23,.94);
+
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+
+    padding: 5px;
+
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+
+#search-input {
+    flex: 1;
+
+    min-width: 0;
+
+    height: 34px;
+
+    border: none;
+    outline: none;
+
+    background: transparent;
+    color: white;
+
+    padding: 0 9px;
+
+    font-size: 14px;
+}
+
+#search-input::placeholder {
     color: #aaa;
+}
 
-    font-size: 12px;
+#search-button {
+    width: 38px;
+    height: 34px;
 
-    white-space: nowrap;
+    border: none;
+    border-radius: 6px;
+
+    background: #292929;
+    color: white;
+
+    cursor: pointer;
+
+    font-size: 16px;
+}
+
+#search-button:hover {
+    background: #383838;
 }
 
 /* =========================================================
@@ -195,92 +232,68 @@ body {
 #layerPanel {
     position: fixed;
 
-    top: 62px;
-    left: 60px;
+    top: 60px;
+    left: 10px;
 
-    z-index: 5000;
+    z-index: 3000;
 
     display: none;
 
-    width: 300px;
-    max-height: calc(100vh - 80px);
-
-    overflow-y: auto;
+    width: 260px;
 
     padding: 12px;
 
-    background: rgba(20,20,20,.95);
+    background: rgba(23,23,23,.96);
 
-    border: 1px solid rgba(255,255,255,.2);
+    border: 1px solid rgba(255,255,255,.15);
     border-radius: 8px;
 
     color: white;
 
-    box-shadow: 0 3px 15px rgba(0,0,0,.4);
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
 }
 
 #layerPanel h3 {
-    margin: 0 0 10px;
-
-    font-size: 15px;
+    margin: 0 0 10px 0;
+    font-size: 16px;
 }
 
 .layerRow {
     display: flex;
     align-items: center;
 
-    gap: 8px;
-
-    margin: 7px 0;
+    margin-bottom: 8px;
 
     font-size: 13px;
 }
 
-.layerColor {
-    width: 13px;
-    height: 13px;
-
-    border-radius: 3px;
-
-    flex-shrink: 0;
-}
-
 .layerRow input {
-    cursor: pointer;
-}
-
-/* =========================================================
-   MAP
-========================================================= */
-
-#map {
-    background: #ddd;
+    margin-right: 8px;
 }
 
 /* =========================================================
    MOBILE
 ========================================================= */
 
-@media (max-width: 800px) {
+@media (max-width: 700px) {
 
     #toolbar {
-        left: 10px;
-        right: 10px;
-
         flex-wrap: wrap;
+        max-width: calc(100vw - 20px);
     }
 
-    #toolbarTitle {
-        width: 100%;
+    .toolButton {
+        padding: 0 8px;
+        font-size: 12px;
+    }
+
+    #search-box {
+        top: 65px;
     }
 
     #layerPanel {
-        left: 10px;
-        top: 125px;
-
-        width: calc(100vw - 20px);
+        top: 120px;
     }
-
 }
 
 </style>
@@ -288,56 +301,65 @@ body {
 
 <body>
 
-<!-- =========================================================
-     MAP
-========================================================= -->
-
-<div id="map"></div>
-
-
-<!-- =========================================================
-     LOGIN SCREEN
-========================================================= -->
+<!-- =======================================================
+     LOGIN
+======================================================= -->
 
 <div id="loginScreen">
 
     <div id="loginBox">
 
-        <h2>POLRAD MAPPING</h2>
-
-        <p>
-            Private editor access
-        </p>
+        <h2>Log in (Polrad Ukraine Map)</h2>
 
         <input
             id="passwordInput"
             type="password"
             placeholder="Password"
-            autocomplete="current-password"
         >
 
         <button id="loginButton">
             Log in
         </button>
 
-        <div id="loginError">
-            Incorrect password.
-        </div>
+        <div id="loginError"></div>
 
     </div>
 
 </div>
 
 
-<!-- =========================================================
+<!-- =======================================================
+     MAP
+======================================================= -->
+
+<div id="map"></div>
+
+
+<!-- =======================================================
+     SEARCH
+======================================================= -->
+
+<div id="search-box">
+
+    <input
+        id="search-input"
+        type="text"
+        placeholder="Search town, city or coordinates..."
+        autocomplete="off"
+    >
+
+    <button id="search-button">
+        🔍
+    </button>
+
+</div>
+
+
+<!-- =======================================================
      TOOLBAR
-========================================================= -->
+======================================================= -->
 
-<div id="toolbar">
-
-    <span id="toolbarTitle">
-        POLRAD MAPPING — EDITOR
-    </span>
+<div id="toolbar" style="display:none;">
 
     <button class="toolButton" id="undoButton">
         ↶ Undo
@@ -371,33 +393,47 @@ body {
         Publish
     </button>
 
-    <span id="status">
-        Ready
-    </span>
-
 </div>
 
 
-<!-- =========================================================
+<!-- =======================================================
      LAYER PANEL
-========================================================= -->
+======================================================= -->
 
 <div id="layerPanel">
 
-    <h3>Editable layers</h3>
+    <h3>Layers</h3>
 
-    <div id="layerList"></div>
+    <label class="layerRow">
+        <input type="checkbox" id="layerRussianControlled" checked>
+        Russian-controlled territory
+    </label>
+
+    <label class="layerRow">
+        <input type="checkbox" id="layerUkrainianControlled" checked>
+        Ukrainian-controlled territory
+    </label>
+
+    <label class="layerRow">
+        <input type="checkbox" id="layerUkrainianAdvances" checked>
+        Ukrainian advances
+    </label>
+
+    <label class="layerRow">
+        <input type="checkbox" id="layerRussianAdvances" checked>
+        Russian advances
+    </label>
+
+    <label class="layerRow">
+        <input type="checkbox" id="layerRegained" checked>
+        Territories regained in the last month
+    </label>
 
 </div>
 
 
-<!-- =========================================================
-     LEAFLET
-========================================================= -->
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- Geoman -->
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
 
 
@@ -411,66 +447,63 @@ const WORKER_URL =
     "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
 
-const LAYER_CONFIG = [
+const layerFiles = {
 
-    {
-        name: "Russian-controlled territory",
-        file: "data/Russian-controlled%20territory.geojson",
-        color: "#d94b4b"
-    },
+    "Russian-controlled territory":
+        "data/Russian-controlled territory.geojson",
 
-    {
-        name: "Ukrainian-controlled territory",
-        file: "data/Ukrainian-controlled%20territory.geojson",
-        color: "#4b83d9"
-    },
+    "Ukrainian-controlled territory":
+        "data/Ukrainian-controlled territory.geojson",
 
-    {
-        name: "Ukrainian advances",
-        file: "data/Ukrainian%20advances.geojson",
-        color: "#6fb7ff"
-    },
+    "Ukrainian advances":
+        "data/Ukrainian advances.geojson",
 
-    {
-        name: "Russian advances",
-        file: "data/Russian%20advances.geojson",
-        color: "#f1c40f"
-    },
+    "Russian advances":
+        "data/Russian advances.geojson",
 
-    {
-        name: "Territories regained in the last month",
-        file: "data/Territories%20regained%20in%20the%20last%20month.geojson",
-        color: "#42b883"
-    }
+    "Territories regained in the last month":
+        "data/Territories regained in the last month.geojson"
 
-];
+};
+
+
+const layerColors = {
+
+    "Russian-controlled territory":
+        "#d94b4b",
+
+    "Ukrainian-controlled territory":
+        "#4b83d9",
+
+    "Ukrainian advances":
+        "#6fb7ff",
+
+    "Russian advances":
+        "#f1c40f",
+
+    "Territories regained in the last month":
+        "#42b883"
+
+};
 
 
 /* =========================================================
    GLOBAL VARIABLES
 ========================================================= */
 
-let map = null;
-
-let loggedIn = false;
-
-let selectedLayer = null;
-
-let selectedLayerName = null;
+let map;
 
 let loadedLayers = {};
 
-let originalData = {};
+let selectedLayer = null;
 
 let undoStack = [];
 
 let redoStack = [];
 
-let isRestoring = false;
-
 
 /* =========================================================
-   DOM
+   LOGIN
 ========================================================= */
 
 const loginScreen =
@@ -485,122 +518,66 @@ const loginButton =
 const loginError =
     document.getElementById("loginError");
 
-const toolbar =
-    document.getElementById("toolbar");
 
-const layerPanel =
-    document.getElementById("layerPanel");
-
-const layerList =
-    document.getElementById("layerList");
-
-const status =
-    document.getElementById("status");
+loginButton.addEventListener("click", login);
 
 
-/* =========================================================
-   STATUS
-========================================================= */
+passwordInput.addEventListener("keydown", event => {
 
-function setStatus(text) {
+    if (event.key === "Enter") {
+        login();
+    }
 
-    status.textContent = text;
-
-}
+});
 
 
-/* =========================================================
-   LOGIN
-========================================================= */
-
-async function attemptLogin() {
+async function login() {
 
     const password =
         passwordInput.value;
 
-    if (!password) {
-
-        loginError.textContent =
-            "Please enter the password.";
-
-        loginError.style.display =
-            "block";
-
-        return;
-
-    }
+    loginError.textContent = "";
 
     loginButton.disabled = true;
-
-    loginButton.textContent =
-        "Checking...";
-
-    loginError.style.display =
-        "none";
+    loginButton.textContent = "Logging in...";
 
 
     try {
 
-        const response =
-            await fetch(
-                WORKER_URL,
-                {
-                    method: "POST",
+        const response = await fetch(
+            WORKER_URL,
+            {
+                method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
+                headers: {
+                    "Content-Type": "application/json"
+                },
 
-                    body: JSON.stringify({
-                        action: "login",
-                        password: password
-                    })
-                }
-            );
+                body: JSON.stringify({
+                    action: "login",
+                    password: password
+                })
+            }
+        );
 
 
-        let result;
+        const result =
+            await response.json();
 
-        try {
 
-            result =
-                await response.json();
+        if (!response.ok || !result.success) {
 
-        } catch {
+            loginError.textContent =
+                "Incorrect password.";
 
-            throw new Error(
-                "Worker returned an invalid response."
-            );
-
+            return;
         }
 
 
-        if (
-            !response.ok ||
-            !result.success
-        ) {
+        loginScreen.style.display = "none";
 
-            throw new Error(
-                result.error ||
-                "Login failed."
-            );
-
-        }
-
-
-        /* SUCCESS */
-
-        loggedIn = true;
-
-        loginScreen.style.display =
-            "none";
-
-        toolbar.style.display =
-            "flex";
-
-        layerPanel.style.display =
-            "block";
+        document.getElementById("toolbar")
+            .style.display = "flex";
 
 
         initializeMap();
@@ -608,85 +585,48 @@ async function attemptLogin() {
 
     } catch (error) {
 
-        console.error(
-            "Login error:",
-            error
-        );
+        console.error(error);
 
         loginError.textContent =
-            error.message ||
-            "Could not connect to the login server.";
-
-        loginError.style.display =
-            "block";
+            "Login failed. Check the connection.";
 
     } finally {
 
         loginButton.disabled = false;
-
-        loginButton.textContent =
-            "Log in";
+        loginButton.textContent = "Log in";
 
     }
 
 }
 
 
-loginButton.addEventListener(
-    "click",
-    attemptLogin
-);
-
-
-passwordInput.addEventListener(
-    "keydown",
-    event => {
-
-        if (event.key === "Enter") {
-
-            attemptLogin();
-
-        }
-
-    }
-);
-
-
 /* =========================================================
    INITIALIZE MAP
 ========================================================= */
 
-function initializeMap() {
-
-    if (map) {
-        return;
-    }
-
+async function initializeMap() {
 
     map = L.map("map", {
 
-        center: [
-            48.0,
-            37.75
-        ],
+        zoomControl: true,
 
-        zoom: 7,
+        center: [48.5, 37.0],
 
-        zoomControl: true
+        zoom: 7
 
     });
 
 
-    /* ESRI SATELLITE */
+    /* =====================================================
+       BASE MAP
+    ===================================================== */
 
     const satellite =
         L.tileLayer(
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
             {
-                maxZoom: 19,
-
                 attribution:
-                    "Tiles © Esri"
+                    "© Esri"
             }
         );
 
@@ -694,7 +634,9 @@ function initializeMap() {
     satellite.addTo(map);
 
 
-    /* GEOMAN CONTROLS */
+    /* =====================================================
+       GEOMAN
+    ===================================================== */
 
     map.pm.addControls({
 
@@ -723,12 +665,43 @@ function initializeMap() {
     });
 
 
-    setStatus(
-        "Loading polygons..."
-    );
+    /* =====================================================
+       LOAD GEOJSON
+    ===================================================== */
+
+    await loadAllLayers();
 
 
-    loadAllLayers();
+    /* =====================================================
+       HISTORY
+    ===================================================== */
+
+    saveHistory();
+
+
+    /* =====================================================
+       GEOJSON EDIT EVENTS
+    ===================================================== */
+
+    map.on("pm:edit", () => {
+
+        saveHistory();
+
+    });
+
+
+    map.on("pm:create", event => {
+
+        saveHistory();
+
+    });
+
+
+    map.on("pm:remove", event => {
+
+        saveHistory();
+
+    });
 
 }
 
@@ -739,163 +712,101 @@ function initializeMap() {
 
 async function loadAllLayers() {
 
-    loadedLayers = {};
-
-    originalData = {};
-
-
     for (
-        const config
-        of LAYER_CONFIG
+        const [name, path]
+        of Object.entries(layerFiles)
     ) {
 
-        await loadLayer(config);
+        try {
 
-    }
+            const response =
+                await fetch(path);
 
-
-    buildLayerPanel();
-
-    setStatus(
-        "Ready — click a polygon to edit it"
-    );
-
-}
+            const data =
+                await response.json();
 
 
-/* =========================================================
-   LOAD ONE LAYER
-========================================================= */
+            const layer =
+                L.geoJSON(
+                    data,
+                    {
 
-async function loadLayer(config) {
+                        style: {
+                            color:
+                                layerColors[name],
 
-    try {
+                            fillColor:
+                                layerColors[name],
 
-        const response =
-            await fetch(
-                config.file +
-                "?v=" +
-                Date.now()
-            );
+                            weight: 2,
+
+                            fillOpacity: 0.45
+                        },
+
+                        onEachFeature:
+                            function (
+                                feature,
+                                featureLayer
+                            ) {
+
+                                setupPolygon(
+                                    featureLayer,
+                                    name
+                                );
+
+                            }
+
+                    }
+                );
 
 
-        if (!response.ok) {
+            layer.addTo(map);
 
-            throw new Error(
-                "HTTP " +
-                response.status
+
+            loadedLayers[name] = layer;
+
+
+        } catch (error) {
+
+            console.error(
+                "Could not load:",
+                name,
+                error
             );
 
         }
 
-
-        const data =
-            await response.json();
-
-
-        originalData[config.name] =
-            deepClone(data);
-
-
-        const geoJsonLayer =
-            L.geoJSON(
-                data,
-                {
-
-                    style: {
-
-                        color: config.color,
-
-                        weight: 1,
-
-                        fillColor:
-                            config.color,
-
-                        fillOpacity: 0.45
-
-                    },
-
-                    onEachFeature:
-                        function(
-                            feature,
-                            featureLayer
-                        ) {
-
-                            setupPolygon(
-                                featureLayer,
-                                config.name
-                            );
-
-                        }
-
-                }
-            );
-
-
-        geoJsonLayer.addTo(map);
-
-
-        loadedLayers[config.name] =
-            geoJsonLayer;
-
-
-    } catch (error) {
-
-        console.error(
-            "Could not load:",
-            config.name,
-            error
-        );
-
-        setStatus(
-            "Error loading " +
-            config.name
-        );
-
     }
 
 }
 
 
 /* =========================================================
-   SETUP POLYGON
+   POLYGON SELECTION
 ========================================================= */
 
 function setupPolygon(
-    layer,
+    featureLayer,
     layerName
 ) {
 
-    layer.on(
+    featureLayer.on(
         "click",
-        function(event) {
-
-            L.DomEvent.stopPropagation(
-                event
-            );
+        function () {
 
             selectPolygon(
-                layer,
-                layerName
+                featureLayer
             );
 
         }
     );
 
 
-    layer.on(
+    featureLayer.on(
         "pm:edit",
-        function() {
+        function () {
 
-            if (!isRestoring) {
-
-                saveHistory();
-
-            }
-
-            setStatus(
-                "Polygon changed"
-            );
+            saveHistory();
 
         }
     );
@@ -903,47 +814,35 @@ function setupPolygon(
 }
 
 
-/* =========================================================
-   SELECT POLYGON
-========================================================= */
+function selectPolygon(layer) {
 
-function selectPolygon(
-    layer,
-    layerName
-) {
+    /* Disable previously selected polygon */
 
-    /* Disable previous polygon */
-
-    if (selectedLayer) {
+    if (
+        selectedLayer &&
+        selectedLayer !== layer
+    ) {
 
         try {
 
             selectedLayer.pm.disable();
 
-        } catch {}
+            selectedLayer.setStyle({
+                weight: 2
+            });
 
-        selectedLayer.setStyle({
-
-            weight: 1
-
-        });
+        } catch (error) {}
 
     }
 
 
-    selectedLayer =
-        layer;
-
-    selectedLayerName =
-        layerName;
+    selectedLayer = layer;
 
 
     /* Highlight */
 
     selectedLayer.setStyle({
-
         weight: 4
-
     });
 
 
@@ -951,226 +850,54 @@ function selectPolygon(
 
     try {
 
-        selectedLayer.pm.enable({
-            allowSelfIntersection: false
-        });
+        selectedLayer.pm.enable();
 
     } catch (error) {
 
-        console.error(
-            "Could not enable editing:",
-            error
-        );
-
-    }
-
-
-    setStatus(
-        "Editing: " +
-        layerName
-    );
-
-}
-
-
-/* =========================================================
-   MAP CLICK
-========================================================= */
-
-mapClickHandler = null;
-
-
-/* =========================================================
-   LAYER PANEL
-========================================================= */
-
-function buildLayerPanel() {
-
-    layerList.innerHTML = "";
-
-
-    for (
-        const config
-        of LAYER_CONFIG
-    ) {
-
-        const row =
-            document.createElement(
-                "div"
-            );
-
-        row.className =
-            "layerRow";
-
-
-        const checkbox =
-            document.createElement(
-                "input"
-            );
-
-        checkbox.type =
-            "checkbox";
-
-        checkbox.checked =
-            true;
-
-
-        checkbox.addEventListener(
-            "change",
-            function() {
-
-                const layer =
-                    loadedLayers[
-                        config.name
-                    ];
-
-                if (!layer) {
-                    return;
-                }
-
-
-                if (checkbox.checked) {
-
-                    map.addLayer(
-                        layer
-                    );
-
-                } else {
-
-                    map.removeLayer(
-                        layer
-                    );
-
-                }
-
-            }
-        );
-
-
-        const color =
-            document.createElement(
-                "span"
-            );
-
-        color.className =
-            "layerColor";
-
-        color.style.background =
-            config.color;
-
-
-        const label =
-            document.createElement(
-                "span"
-            );
-
-        label.textContent =
-            config.name;
-
-
-        row.appendChild(
-            checkbox
-        );
-
-        row.appendChild(
-            color
-        );
-
-        row.appendChild(
-            label
-        );
-
-
-        layerList.appendChild(
-            row
-        );
+        console.error(error);
 
     }
 
 }
-
-
-/* =========================================================
-   TOGGLE LAYERS
-========================================================= */
-
-document
-    .getElementById("layersButton")
-    .addEventListener(
-        "click",
-        function() {
-
-            if (
-                layerPanel.style.display ===
-                "block"
-            ) {
-
-                layerPanel.style.display =
-                    "none";
-
-            } else {
-
-                layerPanel.style.display =
-                    "block";
-
-            }
-
-        }
-    );
 
 
 /* =========================================================
    HISTORY
 ========================================================= */
 
-function snapshotCurrentState() {
+function getCurrentData() {
 
-    const snapshot = {};
+    const data = {};
+
 
     for (
-        const config
-        of LAYER_CONFIG
+        const [name, layer]
+        of Object.entries(loadedLayers)
     ) {
 
-        const layer =
-            loadedLayers[
-                config.name
-            ];
-
-        if (!layer) {
-            continue;
-        }
-
-
-        snapshot[
-            config.name
-        ] =
+        data[name] =
             layer.toGeoJSON();
 
     }
 
 
-    return snapshot;
+    return data;
 
 }
 
 
 function saveHistory() {
 
-    if (isRestoring) {
-        return;
-    }
+    const snapshot =
+        JSON.stringify(
+            getCurrentData()
+        );
 
 
-    undoStack.push(
-        snapshotCurrentState()
-    );
+    undoStack.push(snapshot);
 
 
-    if (
-        undoStack.length >
-        50
-    ) {
+    if (undoStack.length > 50) {
 
         undoStack.shift();
 
@@ -1182,117 +909,75 @@ function saveHistory() {
 }
 
 
-/* =========================================================
-   RESTORE SNAPSHOT
-========================================================= */
+function restoreSnapshot(snapshot) {
 
-function restoreSnapshot(
-    snapshot
-) {
-
-    isRestoring = true;
+    const data =
+        JSON.parse(snapshot);
 
 
-    try {
+    for (
+        const [name, layer]
+        of Object.entries(loadedLayers)
+    ) {
 
-        for (
-            const config
-            of LAYER_CONFIG
-        ) {
+        map.removeLayer(layer);
 
-            const oldLayer =
-                loadedLayers[
-                    config.name
-                ];
+    }
 
 
-            if (oldLayer) {
-
-                map.removeLayer(
-                    oldLayer
-                );
-
-            }
+    loadedLayers = {};
 
 
-            const data =
-                snapshot[
-                    config.name
-                ];
+    for (
+        const [name, geojson]
+        of Object.entries(data)
+    ) {
 
+        const layer =
+            L.geoJSON(
+                geojson,
+                {
 
-            if (!data) {
-                continue;
-            }
+                    style: {
 
+                        color:
+                            layerColors[name],
 
-            const newLayer =
-                L.geoJSON(
-                    data,
-                    {
+                        fillColor:
+                            layerColors[name],
 
-                        style: {
+                        weight: 2,
 
-                            color:
-                                config.color,
+                        fillOpacity: 0.45
 
-                            weight: 1,
+                    },
 
-                            fillColor:
-                                config.color,
+                    onEachFeature:
+                        function (
+                            feature,
+                            featureLayer
+                        ) {
 
-                            fillOpacity:
-                                0.45
+                            setupPolygon(
+                                featureLayer,
+                                name
+                            );
 
-                        },
+                        }
 
-                        onEachFeature:
-                            function(
-                                feature,
-                                featureLayer
-                            ) {
-
-                                setupPolygon(
-                                    featureLayer,
-                                    config.name
-                                );
-
-                            }
-
-                    }
-                );
-
-
-            newLayer.addTo(
-                map
+                }
             );
 
 
-            loadedLayers[
-                config.name
-            ] =
-                newLayer;
+        layer.addTo(map);
 
-        }
-
-
-        selectedLayer =
-            null;
-
-        selectedLayerName =
-            null;
-
-
-        setStatus(
-            "State restored"
-        );
-
-
-    } finally {
-
-        isRestoring = false;
+        loadedLayers[name] =
+            layer;
 
     }
+
+
+    selectedLayer = null;
 
 }
 
@@ -1301,572 +986,617 @@ function restoreSnapshot(
    UNDO
 ========================================================= */
 
-document
-    .getElementById("undoButton")
-    .addEventListener(
-        "click",
-        function() {
+document.getElementById(
+    "undoButton"
+).addEventListener(
+    "click",
+    function () {
 
-            if (
-                undoStack.length === 0
-            ) {
-
-                setStatus(
-                    "Nothing to undo"
-                );
-
-                return;
-
-            }
+        if (undoStack.length <= 1)
+            return;
 
 
-            redoStack.push(
-                snapshotCurrentState()
-            );
+        const current =
+            undoStack.pop();
 
 
-            const snapshot =
-                undoStack.pop();
+        redoStack.push(current);
 
 
-            restoreSnapshot(
-                snapshot
-            );
+        const previous =
+            undoStack[
+                undoStack.length - 1
+            ];
 
-        }
-    );
+
+        restoreSnapshot(previous);
+
+    }
+);
 
 
 /* =========================================================
    REDO
 ========================================================= */
 
-document
-    .getElementById("redoButton")
-    .addEventListener(
-        "click",
-        function() {
+document.getElementById(
+    "redoButton"
+).addEventListener(
+    "click",
+    function () {
 
-            if (
-                redoStack.length === 0
-            ) {
-
-                setStatus(
-                    "Nothing to redo"
-                );
-
-                return;
-
-            }
+        if (!redoStack.length)
+            return;
 
 
-            undoStack.push(
-                snapshotCurrentState()
-            );
+        const next =
+            redoStack.pop();
 
 
-            const snapshot =
-                redoStack.pop();
+        undoStack.push(next);
 
 
-            restoreSnapshot(
-                snapshot
-            );
+        restoreSnapshot(next);
 
-        }
-    );
+    }
+);
 
 
 /* =========================================================
-   DELETE SELECTED POLYGON
+   DELETE POLYGON
 ========================================================= */
 
-document
-    .getElementById("deleteButton")
-    .addEventListener(
-        "click",
-        function() {
+document.getElementById(
+    "deleteButton"
+).addEventListener(
+    "click",
+    function () {
 
-            if (!selectedLayer) {
+        if (!selectedLayer) {
 
-                setStatus(
-                    "Select a polygon first"
-                );
+            alert(
+                "Select a polygon first."
+            );
 
-                return;
+            return;
 
-            }
+        }
 
+
+        for (
+            const layer
+            of Object.values(loadedLayers)
+        ) {
 
             if (
-                !confirm(
-                    "Delete this polygon?"
+                layer.hasLayer(
+                    selectedLayer
                 )
             ) {
 
-                return;
-
-            }
-
-
-            saveHistory();
-
-
-            const parent =
-                loadedLayers[
-                    selectedLayerName
-                ];
-
-
-            if (parent) {
-
-                parent.removeLayer(
+                layer.removeLayer(
                     selectedLayer
                 );
 
+                break;
+
             }
 
-
-            selectedLayer =
-                null;
-
-            selectedLayerName =
-                null;
-
-
-            setStatus(
-                "Polygon deleted"
-            );
-
         }
-    );
+
+
+        selectedLayer = null;
+
+        saveHistory();
+
+    }
+);
 
 
 /* =========================================================
-   SAVE LOCAL
+   LAYERS BUTTON
 ========================================================= */
 
-document
-    .getElementById("saveButton")
-    .addEventListener(
-        "click",
-        function() {
+document.getElementById(
+    "layersButton"
+).addEventListener(
+    "click",
+    function () {
 
-            const data =
-                snapshotCurrentState();
-
-
-            localStorage.setItem(
-                "polrad_editor_data",
-                JSON.stringify(data)
+        const panel =
+            document.getElementById(
+                "layerPanel"
             );
 
 
-            setStatus(
-                "Saved in this browser"
-            );
+        if (
+            panel.style.display === "block"
+        ) {
+
+            panel.style.display =
+                "none";
+
+        } else {
+
+            panel.style.display =
+                "block";
+
+        }
+
+    }
+);
+
+
+/* =========================================================
+   LAYER VISIBILITY
+========================================================= */
+
+const layerCheckboxes = {
+
+    layerRussianControlled:
+        "Russian-controlled territory",
+
+    layerUkrainianControlled:
+        "Ukrainian-controlled territory",
+
+    layerUkrainianAdvances:
+        "Ukrainian advances",
+
+    layerRussianAdvances:
+        "Russian advances",
+
+    layerRegained:
+        "Territories regained in the last month"
+
+};
+
+
+for (
+    const [checkboxId, layerName]
+    of Object.entries(layerCheckboxes)
+) {
+
+    document.getElementById(
+        checkboxId
+    ).addEventListener(
+        "change",
+        function () {
+
+            const layer =
+                loadedLayers[layerName];
+
+
+            if (!layer)
+                return;
+
+
+            if (this.checked) {
+
+                layer.addTo(map);
+
+            } else {
+
+                map.removeLayer(layer);
+
+            }
 
         }
     );
+
+}
+
+
+/* =========================================================
+   SAVE
+========================================================= */
+
+document.getElementById(
+    "saveButton"
+).addEventListener(
+    "click",
+    function () {
+
+        const savedData = {};
+
+
+        for (
+            const [name, layer]
+            of Object.entries(
+                loadedLayers
+            )
+        ) {
+
+            savedData[name] =
+                layer.toGeoJSON();
+
+        }
+
+
+        localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(savedData)
+        );
+
+
+        alert(
+            "Editor data saved locally."
+        );
+
+    }
+);
 
 
 /* =========================================================
    DOWNLOAD
 ========================================================= */
 
-document
-    .getElementById("downloadButton")
-    .addEventListener(
-        "click",
-        function() {
+document.getElementById(
+    "downloadButton"
+).addEventListener(
+    "click",
+    function () {
 
-            const data =
-                snapshotCurrentState();
-
-
-            const output = {
-
-                exportedAt:
-                    new Date().toISOString(),
-
-                layers:
-                    data
-
-            };
+        const data =
+            getCurrentData();
 
 
-            const blob =
-                new Blob(
-                    [
-                        JSON.stringify(
-                            output,
-                            null,
-                            2
-                        )
-                    ],
-                    {
-                        type:
-                            "application/json"
-                    }
-                );
-
-
-            const url =
-                URL.createObjectURL(
-                    blob
-                );
-
-
-            const link =
-                document.createElement(
-                    "a"
-                );
-
-
-            link.href =
-                url;
-
-            link.download =
-                "polrad-edited-data.json";
-
-
-            link.click();
-
-
-            URL.revokeObjectURL(
-                url
+        const blob =
+            new Blob(
+                [
+                    JSON.stringify(
+                        data,
+                        null,
+                        2
+                    )
+                ],
+                {
+                    type:
+                        "application/json"
+                }
             );
 
 
-            setStatus(
-                "Downloaded edited data"
+        const url =
+            URL.createObjectURL(
+                blob
             );
 
-        }
-    );
+
+        const link =
+            document.createElement(
+                "a"
+            );
+
+
+        link.href = url;
+
+        link.download =
+            "polrad-edited-data.json";
+
+
+        link.click();
+
+
+        URL.revokeObjectURL(url);
+
+    }
+);
 
 
 /* =========================================================
    RESET
 ========================================================= */
 
-document
-    .getElementById("resetButton")
-    .addEventListener(
-        "click",
-        async function() {
+document.getElementById(
+    "resetButton"
+).addEventListener(
+    "click",
+    async function () {
 
-            if (
-                !confirm(
-                    "Reset all polygons to the original files?"
-                )
-            ) {
+        if (
+            !confirm(
+                "Reset all changes and reload the original map data?"
+            )
+        ) {
 
-                return;
-
-            }
-
-
-            localStorage.removeItem(
-                "polrad_editor_data"
-            );
-
-
-            undoStack = [];
-
-            redoStack = [];
-
-
-            for (
-                const config
-                of LAYER_CONFIG
-            ) {
-
-                const layer =
-                    loadedLayers[
-                        config.name
-                    ];
-
-                if (layer) {
-
-                    map.removeLayer(
-                        layer
-                    );
-
-                }
-
-            }
-
-
-            selectedLayer =
-                null;
-
-            selectedLayerName =
-                null;
-
-
-            await loadAllLayers();
-
-
-            setStatus(
-                "Reset to original data"
-            );
+            return;
 
         }
-    );
+
+
+        location.reload();
+
+    }
+);
 
 
 /* =========================================================
    PUBLISH
 ========================================================= */
 
-document
-    .getElementById("publishButton")
-    .addEventListener(
-        "click",
-        async function() {
+document.getElementById(
+    "publishButton"
+).addEventListener(
+    "click",
+    async function () {
 
-            if (!loggedIn) {
+        if (
+            !confirm(
+                "Publish these changes to the public map?"
+            )
+        ) {
 
-                setStatus(
-                    "You are not logged in"
-                );
+            return;
 
-                return;
-
-            }
-
-
-            if (
-                !confirm(
-                    "Publish these changes to the public POLRAD map?"
-                )
-            ) {
-
-                return;
-
-            }
+        }
 
 
-            const data =
-                snapshotCurrentState();
-
-
-            const files = {};
-
-
-            for (
-                const config
-                of LAYER_CONFIG
-            ) {
-
-                if (
-                    !data[
-                        config.name
-                    ]
-                ) {
-
-                    continue;
-
-                }
-
-
-                files[
-                    config.name
-                ] =
-                    data[
-                        config.name
-                    ];
-
-            }
-
-
-            const publishButton =
-                document.getElementById(
-                    "publishButton"
-                );
-
-
-            publishButton.disabled =
-                true;
-
-            publishButton.textContent =
-                "Publishing...";
-
-
-            setStatus(
-                "Publishing..."
+        const button =
+            document.getElementById(
+                "publishButton"
             );
 
 
-            try {
+        button.disabled = true;
 
-                const response =
-                    await fetch(
-                        WORKER_URL,
-                        {
-
-                            method:
-                                "POST",
-
-                            headers: {
-
-                                "Content-Type":
-                                    "application/json"
-
-                            },
-
-                            body:
-                                JSON.stringify({
-
-                                    action:
-                                        "publish",
-
-                                    files:
-                                        files
-
-                                })
-
-                        }
-                    );
+        button.textContent =
+            "Publishing...";
 
 
-                let result;
+        try {
 
-                try {
-
-                    result =
-                        await response.json();
-
-                } catch {
-
-                    throw new Error(
-                        "Worker returned an invalid response."
-                    );
-
-                }
+            const files =
+                getCurrentData();
 
 
-                if (
-                    !response.ok ||
-                    !result.success
-                ) {
+            const response =
+                await fetch(
+                    WORKER_URL,
+                    {
 
-                    throw new Error(
-                        result.error ||
-                        "Publishing failed."
-                    );
+                        method: "POST",
 
-                }
+                        headers: {
 
+                            "Content-Type":
+                                "application/json"
 
-                setStatus(
-                    "Published successfully ✓"
+                        },
+
+                        body:
+                            JSON.stringify({
+
+                                action:
+                                    "publish",
+
+                                files:
+                                    files
+
+                            })
+
+                    }
                 );
 
 
-            } catch (error) {
+            const result =
+                await response.json();
 
-                console.error(
-                    "Publish error:",
-                    error
+
+            if (!response.ok) {
+
+                throw new Error(
+                    result.error ||
+                    "Publishing failed."
                 );
-
-
-                setStatus(
-                    "Publish failed"
-                );
-
-
-                alert(
-                    "Publish failed:\n\n" +
-                    error.message
-                );
-
-
-            } finally {
-
-                publishButton.disabled =
-                    false;
-
-                publishButton.textContent =
-                    "Publish";
 
             }
 
+
+            alert(
+                "Published successfully!"
+            );
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            alert(
+                "Publish failed: " +
+                error.message
+            );
+
+        } finally {
+
+            button.disabled = false;
+
+            button.textContent =
+                "Publish";
+
         }
-    );
+
+    }
+);
 
 
 /* =========================================================
-   HELPER
+   SEARCH
 ========================================================= */
 
-function deepClone(object) {
-
-    return JSON.parse(
-        JSON.stringify(object)
+const searchInput =
+    document.getElementById(
+        "search-input"
     );
 
-}
+
+const searchButton =
+    document.getElementById(
+        "search-button"
+    );
 
 
-/* =========================================================
-   TRY TO RESTORE LOCAL SAVE
-========================================================= */
+async function searchLocation() {
 
-function restoreLocalSave() {
+    const query =
+        searchInput.value.trim();
 
-    const stored =
-        localStorage.getItem(
-            "polrad_editor_data"
+
+    if (!query)
+        return;
+
+
+    /* =====================================================
+       COORDINATES
+       Example:
+       48.45, 37.12
+    ===================================================== */
+
+    const coordinateMatch =
+        query.match(
+            /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
         );
 
 
-    if (!stored) {
+    if (coordinateMatch) {
 
-        return false;
+        const lat =
+            parseFloat(
+                coordinateMatch[1]
+            );
+
+
+        const lng =
+            parseFloat(
+                coordinateMatch[2]
+            );
+
+
+        if (
+            lat >= -90 &&
+            lat <= 90 &&
+            lng >= -180 &&
+            lng <= 180
+        ) {
+
+            map.setView(
+                [lat, lng],
+                13
+            );
+
+
+            return;
+
+        }
 
     }
 
 
+    /* =====================================================
+       TOWN / CITY SEARCH
+       OpenStreetMap Nominatim
+    ===================================================== */
+
     try {
 
-        const parsed =
-            JSON.parse(stored);
+        searchButton.textContent =
+            "…";
 
 
-        restoreSnapshot(
-            parsed
+        const response =
+            await fetch(
+                "https://nominatim.openstreetmap.org/search?" +
+                new URLSearchParams({
+
+                    q: query,
+
+                    format: "json",
+
+                    limit: "1"
+
+                })
+            );
+
+
+        const results =
+            await response.json();
+
+
+        if (!results.length) {
+
+            alert(
+                "Location not found."
+            );
+
+            return;
+
+        }
+
+
+        const result =
+            results[0];
+
+
+        const lat =
+            parseFloat(
+                result.lat
+            );
+
+
+        const lng =
+            parseFloat(
+                result.lon
+            );
+
+
+        map.setView(
+            [lat, lng],
+            13
         );
-
-
-        setStatus(
-            "Restored local save"
-        );
-
-
-        return true;
 
 
     } catch (error) {
 
         console.error(
-            "Could not restore local save:",
+            "Search error:",
             error
         );
 
 
-        localStorage.removeItem(
-            "polrad_editor_data"
+        alert(
+            "Search failed."
         );
 
 
-        return false;
+    } finally {
+
+        searchButton.textContent =
+            "🔍";
 
     }
 
 }
+
+
+searchButton.addEventListener(
+    "click",
+    searchLocation
+);
+
+
+searchInput.addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key === "Enter"
+        ) {
+
+            searchLocation();
+
+        }
+
+    }
+);
 
 </script>
 
