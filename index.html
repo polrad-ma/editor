@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -154,6 +155,9 @@ html, body {
 
     display: flex;
     gap: 5px;
+
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .tool-button {
@@ -173,6 +177,11 @@ html, body {
 
 .tool-button:hover {
     background: rgba(55,55,55,0.95);
+}
+
+.tool-button:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 
@@ -282,8 +291,8 @@ html, body {
 }
 
 </style>
-</head>
 
+</head>
 
 <body>
 
@@ -415,7 +424,6 @@ html, body {
 /*
    TEMPORARY PASSWORD
 
-   Change this if you want.
    This is NOT secure authentication yet.
 */
 
@@ -423,7 +431,7 @@ const EDITOR_PASSWORD = "l!aatt?a-q,ss";
 
 
 /*
-   Your five editable layers.
+   Five editable layers.
 */
 
 const GEOJSON_FILES = {
@@ -448,8 +456,6 @@ const GEOJSON_FILES = {
 
 /*
    Layer colors.
-
-   We can change these later.
 */
 
 const LAYER_COLORS = {
@@ -483,8 +489,19 @@ let loadedLayers = {};
 let originalData = {};
 
 let selectedLayer = null;
+
+
+/*
+   Undo / redo history.
+
+   Each entry stores the complete map state.
+*/
+
 let undoStack = [];
+
 let redoStack = [];
+
+let restoringState = false;
 
 
 /* =========================================================
@@ -511,13 +528,15 @@ function login() {
         EDITOR_PASSWORD
     ) {
 
-        loginScreen.style.display = "none";
+        loginScreen.style.display =
+            "none";
 
         initializeEditor();
 
     } else {
 
-        loginError.style.display = "block";
+        loginError.style.display =
+            "block";
 
     }
 
@@ -535,7 +554,9 @@ passwordInput.addEventListener(
     function(e) {
 
         if (e.key === "Enter") {
+
             login();
+
         }
 
     }
@@ -566,7 +587,6 @@ function initializeEditor() {
 
     /*
        Esri satellite imagery.
-       No Google API required.
     */
 
     const satellite =
@@ -575,8 +595,10 @@ function initializeEditor() {
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
 
             {
+
                 attribution:
                     "Tiles © Esri"
+
             }
 
         );
@@ -588,9 +610,8 @@ function initializeEditor() {
     /*
        Geoman controls.
 
-       IMPORTANT:
-       Editing is NOT automatically
-       enabled for every polygon.
+       We do NOT enable global editing.
+       Only the selected polygon can be edited.
     */
 
     map.pm.addControls({
@@ -618,6 +639,74 @@ function initializeEditor() {
 
 
 /* =========================================================
+   GET CURRENT MAP STATE
+========================================================= */
+
+function getCurrentState() {
+
+    const state = {};
+
+    for (
+        const [name, layer]
+        of Object.entries(
+            loadedLayers
+        )
+    ) {
+
+        state[name] =
+            layer.toGeoJSON();
+
+    }
+
+    return state;
+
+}
+
+
+/* =========================================================
+   CREATE HISTORY CHECKPOINT
+========================================================= */
+
+function createHistoryCheckpoint() {
+
+    if (restoringState) {
+        return;
+    }
+
+    undoStack.push(
+        JSON.stringify(
+            getCurrentState()
+        )
+    );
+
+
+    /*
+       Limit history to 50 actions.
+    */
+
+    if (
+        undoStack.length > 50
+    ) {
+
+        undoStack.shift();
+
+    }
+
+
+    /*
+       Any new action after undo
+       creates a new branch.
+    */
+
+    redoStack = [];
+
+
+    updateHistoryButtons();
+
+}
+
+
+/* =========================================================
    LOAD GEOJSON
 ========================================================= */
 
@@ -631,7 +720,9 @@ async function loadGeoJSONLayers() {
 
     for (
         const [name, url]
-        of Object.entries(GEOJSON_FILES)
+        of Object.entries(
+            GEOJSON_FILES
+        )
     ) {
 
         try {
@@ -658,132 +749,10 @@ async function loadGeoJSONLayers() {
                 data;
 
 
-            const color =
-                LAYER_COLORS[name] ||
-                "#ffffff";
-
-
-            const layer =
-                L.geoJSON(
-                    data,
-                    {
-
-                        style: {
-
-                            color: color,
-
-                            weight: 2,
-
-                            fillColor: color,
-
-                            fillOpacity: 0.35
-
-                        },
-
-                        /*
-                           DO NOT enable editing here.
-                        */
-
-                        onEachFeature:
-                            function(
-                                feature,
-                                featureLayer
-                            ) {
-
-                                setupPolygon(
-                                    featureLayer,
-                                    name
-                                );
-
-                            }
-
-                    }
-                );
-
-
-            layer.addTo(map);
-
-
-            loadedLayers[name] =
-                layer;
-
-
-            /* =========================
-               Layer panel entry
-            ========================= */
-
-            const item =
-                document.createElement(
-                    "div"
-                );
-
-
-            item.className =
-                "layer-item";
-
-
-            const colorBox =
-                document.createElement(
-                    "div"
-                );
-
-
-            colorBox.className =
-                "layer-color";
-
-
-            colorBox.style.background =
-                color;
-
-
-            item.appendChild(
-                colorBox
-            );
-
-
-            const label =
-                document.createElement(
-                    "span"
-                );
-
-
-            label.textContent =
-                name;
-
-
-            item.appendChild(
-                label
-            );
-
-
-            item.onclick =
-                function() {
-
-                    if (
-                        map.hasLayer(layer)
-                    ) {
-
-                        map.removeLayer(
-                            layer
-                        );
-
-                        item.style.opacity =
-                            "0.5";
-
-                    } else {
-
-                        layer.addTo(map);
-
-                        item.style.opacity =
-                            "1";
-
-                    }
-
-                };
-
-
-            layerList.appendChild(
-                item
+            addGeoJSONLayer(
+                name,
+                data,
+                layerList
             );
 
 
@@ -799,6 +768,146 @@ async function loadGeoJSONLayers() {
 
     }
 
+
+    updateHistoryButtons();
+
+}
+
+
+/* =========================================================
+   ADD GEOJSON LAYER
+========================================================= */
+
+function addGeoJSONLayer(
+    name,
+    data,
+    layerList
+) {
+
+    const color =
+        LAYER_COLORS[name] ||
+        "#ffffff";
+
+
+    const layer =
+        L.geoJSON(
+            data,
+            {
+
+                style: {
+
+                    color: color,
+
+                    weight: 2,
+
+                    fillColor: color,
+
+                    fillOpacity: 0.35
+
+                },
+
+                onEachFeature:
+                    function(
+                        feature,
+                        featureLayer
+                    ) {
+
+                        setupPolygon(
+                            featureLayer,
+                            name
+                        );
+
+                    }
+
+            }
+        );
+
+
+    layer.addTo(map);
+
+
+    loadedLayers[name] =
+        layer;
+
+
+    /*
+       Layer panel entry.
+    */
+
+    const item =
+        document.createElement(
+            "div"
+        );
+
+
+    item.className =
+        "layer-item";
+
+
+    const colorBox =
+        document.createElement(
+            "div"
+        );
+
+
+    colorBox.className =
+        "layer-color";
+
+
+    colorBox.style.background =
+        color;
+
+
+    item.appendChild(
+        colorBox
+    );
+
+
+    const label =
+        document.createElement(
+            "span"
+        );
+
+
+    label.textContent =
+        name;
+
+
+    item.appendChild(
+        label
+    );
+
+
+    item.onclick =
+        function() {
+
+            if (
+                map.hasLayer(layer)
+            ) {
+
+                map.removeLayer(
+                    layer
+                );
+
+                item.style.opacity =
+                    "0.5";
+
+            } else {
+
+                layer.addTo(map);
+
+                item.style.opacity =
+                    "1";
+
+            }
+
+        };
+
+
+    layerList.appendChild(
+        item
+    );
+
 }
 
 
@@ -812,17 +921,12 @@ function setupPolygon(
 ) {
 
     /*
-       Clicking a polygon selects ONLY
-       that polygon.
+       Clicking a polygon selects it.
     */
 
     featureLayer.on(
         "click",
         function(e) {
-
-            /*
-               Prevent map click.
-            */
 
             L.DomEvent.stopPropagation(
                 e
@@ -838,8 +942,7 @@ function setupPolygon(
 
 
     /*
-       Tooltip showing the polygon name
-       when available.
+       Show polygon name.
     */
 
     if (
@@ -855,12 +958,45 @@ function setupPolygon(
                 .Name,
 
             {
+
                 sticky: true
+
             }
 
         );
 
     }
+
+
+    /*
+       When editing starts, create
+       an undo checkpoint.
+    */
+
+    featureLayer.on(
+        "pm:editstart",
+        function() {
+
+            createHistoryCheckpoint();
+
+        }
+    );
+
+
+    /*
+       Make sure the polygon remains
+       selected after editing.
+    */
+
+    featureLayer.on(
+        "pm:edit",
+        function() {
+
+            selectedLayer =
+                featureLayer;
+
+        }
+    );
 
 }
 
@@ -888,15 +1024,15 @@ function selectPolygon(layer) {
 
         });
 
+        selectedLayer.removeClassName(
+            "polrad-selected"
+        );
+
     }
 
 
-    /*
-       If clicking the already-selected
-       polygon, leave it selected.
-    */
-
-    selectedLayer = layer;
+    selectedLayer =
+        layer;
 
 
     /*
@@ -916,7 +1052,8 @@ function selectPolygon(layer) {
 
     selectedLayer.pm.enable({
 
-        allowSelfIntersection: false
+        allowSelfIntersection:
+            false
 
     });
 
@@ -924,29 +1061,294 @@ function selectPolygon(layer) {
 
 
 /* =========================================================
-   CLICK EMPTY MAP
+   DELETE SELECTED POLYGON
 ========================================================= */
 
-mapClickHandler();
+document
+    .getElementById(
+        "delete-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (!selectedLayer) {
+
+                alert(
+                    "Select a polygon first."
+                );
+
+                return;
+
+            }
 
 
-function mapClickHandler() {
+            if (
+                !confirm(
+                    "Delete this polygon?"
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            /*
+               Save state BEFORE deletion.
+            */
+
+            createHistoryCheckpoint();
+
+
+            /*
+               Find the parent GeoJSON
+               layer and remove the polygon.
+            */
+
+            for (
+                const [name, layer]
+                of Object.entries(
+                    loadedLayers
+                )
+            ) {
+
+                if (
+                    layer.hasLayer(
+                        selectedLayer
+                    )
+                ) {
+
+                    layer.removeLayer(
+                        selectedLayer
+                    );
+
+                    break;
+
+                }
+
+            }
+
+
+            selectedLayer =
+                null;
+
+
+            updateHistoryButtons();
+
+        }
+    );
+
+
+/* =========================================================
+   UNDO
+========================================================= */
+
+document
+    .getElementById(
+        "undo-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (
+                undoStack.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            /*
+               Save current state
+               for Redo.
+            */
+
+            redoStack.push(
+                JSON.stringify(
+                    getCurrentState()
+                )
+            );
+
+
+            /*
+               Retrieve previous state.
+            */
+
+            const previousState =
+                JSON.parse(
+                    undoStack.pop()
+                );
+
+
+            restoreEditorState(
+                previousState
+            );
+
+
+            updateHistoryButtons();
+
+        }
+    );
+
+
+/* =========================================================
+   REDO
+========================================================= */
+
+document
+    .getElementById(
+        "redo-button"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (
+                redoStack.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            /*
+               Save current state
+               for Undo.
+            */
+
+            undoStack.push(
+                JSON.stringify(
+                    getCurrentState()
+                )
+            );
+
+
+            /*
+               Retrieve next state.
+            */
+
+            const nextState =
+                JSON.parse(
+                    redoStack.pop()
+                );
+
+
+            restoreEditorState(
+                nextState
+            );
+
+
+            updateHistoryButtons();
+
+        }
+    );
+
+
+/* =========================================================
+   RESTORE EDITOR STATE
+========================================================= */
+
+function restoreEditorState(
+    state
+) {
+
+    restoringState = true;
+
+
+    selectedLayer =
+        null;
+
 
     /*
-       This function is attached after
-       the map is initialized.
+       Remove current layers.
     */
+
+    for (
+        const layer
+        of Object.values(
+            loadedLayers
+        )
+    ) {
+
+        map.removeLayer(
+            layer
+        );
+
+    }
+
+
+    loadedLayers =
+        {};
+
+
+    /*
+       Rebuild layer panel.
+    */
+
+    const layerList =
+        document.getElementById(
+            "layer-list"
+        );
+
+
+    layerList.innerHTML =
+        "";
+
+
+    /*
+       Rebuild every GeoJSON layer.
+    */
+
+    for (
+        const [name, data]
+        of Object.entries(
+            state
+        )
+    ) {
+
+        addGeoJSONLayer(
+            name,
+            data,
+            layerList
+        );
+
+    }
+
+
+    restoringState = false;
 
 }
 
 
-/*
-   We need to attach the event after
-   map creation.
-*/
+/* =========================================================
+   HISTORY BUTTON STATES
+========================================================= */
 
-const originalInitialize =
-    initializeEditor;
+function updateHistoryButtons() {
+
+    const undoButton =
+        document.getElementById(
+            "undo-button"
+        );
+
+    const redoButton =
+        document.getElementById(
+            "redo-button"
+        );
+
+
+    undoButton.disabled =
+        undoStack.length === 0;
+
+
+    redoButton.disabled =
+        redoStack.length === 0;
+
+}
 
 
 /* =========================================================
@@ -985,20 +1387,8 @@ document
         "click",
         function() {
 
-            const savedData = {};
-
-
-            for (
-                const [name, layer]
-                of Object.entries(
-                    loadedLayers
-                )
-            ) {
-
-                savedData[name] =
-                    layer.toGeoJSON();
-
-            }
+            const savedData =
+                getCurrentState();
 
 
             localStorage.setItem(
@@ -1018,12 +1408,20 @@ document
     );
 
 
+/* =========================================================
+   SAVE STATUS
+========================================================= */
+
 function showSaveStatus() {
 
     const status =
         document.getElementById(
             "save-status"
         );
+
+
+    status.textContent =
+        "Changes saved";
 
 
     status.style.display =
@@ -1055,20 +1453,8 @@ document
         "click",
         function() {
 
-            const allData = {};
-
-
-            for (
-                const [name, layer]
-                of Object.entries(
-                    loadedLayers
-                )
-            ) {
-
-                allData[name] =
-                    layer.toGeoJSON();
-
-            }
+            const allData =
+                getCurrentState();
 
 
             const blob =
@@ -1083,8 +1469,10 @@ document
                     ],
 
                     {
+
                         type:
                             "application/json"
+
                     }
 
                 );
@@ -1102,7 +1490,9 @@ document
                 );
 
 
-            link.href = url;
+            link.href =
+                url;
+
 
             link.download =
                 "polrad-edited-data.json";
@@ -1112,7 +1502,9 @@ document
                 link
             );
 
+
             link.click();
+
 
             link.remove();
 
@@ -1142,411 +1534,38 @@ document
                     "Reset all polygon changes?"
                 )
             ) {
-                return;
-            }
-
-
-            for (
-                const layer
-                of Object.values(
-                    loadedLayers
-                )
-            ) {
-
-                map.removeLayer(
-                    layer
-                );
-
-            }
-
-
-            loadedLayers = {};
-
-            selectedLayer = null;
-
-
-            document
-                .getElementById(
-                    "layer-list"
-                )
-                .innerHTML = "";
-
-
-            loadGeoJSONLayers();
-
-        }
-    );
-/* =========================================================
-   UNDO / REDO / DELETE
-========================================================= */
-
-function saveUndoState() {
-
-    const state = {};
-
-    for (
-        const [name, layer]
-        of Object.entries(loadedLayers)
-    ) {
-
-        state[name] = layer.toGeoJSON();
-
-    }
-
-    undoStack.push(
-        JSON.stringify(state)
-    );
-
-    if (undoStack.length > 50) {
-        undoStack.shift();
-    }
-
-    redoStack = [];
-
-}
-
-
-/* =========================
-   DELETE SELECTED POLYGON
-========================= */
-
-document
-    .getElementById("delete-button")
-    .addEventListener(
-        "click",
-        function() {
-
-            if (!selectedLayer) {
-
-                alert(
-                    "Select a polygon first."
-                );
 
                 return;
 
             }
-
-            if (
-                !confirm(
-                    "Delete this polygon?"
-                )
-            ) {
-                return;
-            }
-
-
-            saveUndoState();
 
 
             /*
-               Find which GeoJSON layer
-               contains the selected polygon.
+               Save current state so
+               Reset can be undone.
             */
 
-            for (
-                const [name, layer]
-                of Object.entries(
-                    loadedLayers
-                )
-            ) {
+            createHistoryCheckpoint();
 
-                if (
-                    layer.hasLayer(
-                        selectedLayer
+
+            /*
+               Restore original files.
+            */
+
+            restoreEditorState(
+                JSON.parse(
+                    JSON.stringify(
+                        originalData
                     )
-                ) {
-
-                    layer.removeLayer(
-                        selectedLayer
-                    );
-
-                    break;
-
-                }
-
-            }
+                )
+            );
 
 
-            selectedLayer = null;
+            updateHistoryButtons();
 
         }
     );
 
-
-/* =========================
-   UNDO
-========================= */
-
-document
-    .getElementById("undo-button")
-    .addEventListener(
-        "click",
-        function() {
-
-            if (
-                undoStack.length === 0
-            ) {
-
-                return;
-
-            }
-
-
-            const currentState = {};
-
-            for (
-                const [name, layer]
-                of Object.entries(
-                    loadedLayers
-                )
-            ) {
-
-                currentState[name] =
-                    layer.toGeoJSON();
-
-            }
-
-
-            redoStack.push(
-                JSON.stringify(
-                    currentState
-                )
-            );
-
-
-            const previousState =
-                JSON.parse(
-                    undoStack.pop()
-                );
-
-
-            restoreEditorState(
-                previousState
-            );
-
-        }
-    );
-
-
-/* =========================
-   REDO
-========================= */
-
-document
-    .getElementById("redo-button")
-    .addEventListener(
-        "click",
-        function() {
-
-            if (
-                redoStack.length === 0
-            ) {
-
-                return;
-
-            }
-
-
-            const currentState = {};
-
-            for (
-                const [name, layer]
-                of Object.entries(
-                    loadedLayers
-                )
-            ) {
-
-                currentState[name] =
-                    layer.toGeoJSON();
-
-            }
-
-
-            undoStack.push(
-                JSON.stringify(
-                    currentState
-                )
-            );
-
-
-            const nextState =
-                JSON.parse(
-                    redoStack.pop()
-                );
-
-
-            restoreEditorState(
-                nextState
-            );
-
-        }
-    );
-
-
-/* =========================
-   RESTORE STATE
-========================= */
-
-function restoreEditorState(
-    state
-) {
-
-    selectedLayer = null;
-
-
-    for (
-        const [name, layer]
-        of Object.entries(
-            loadedLayers
-        )
-    ) {
-
-        map.removeLayer(
-            layer
-        );
-
-    }
-
-
-    loadedLayers = {};
-
-
-    const layerList =
-        document.getElementById(
-            "layer-list"
-        );
-
-    layerList.innerHTML = "";
-
-
-    for (
-        const [name, data]
-        of Object.entries(state)
-    ) {
-
-        const color =
-            LAYER_COLORS[name] ||
-            "#ffffff";
-
-
-        const layer =
-            L.geoJSON(
-                data,
-                {
-
-                    style: {
-
-                        color: color,
-
-                        weight: 2,
-
-                        fillColor: color,
-
-                        fillOpacity: 0.35
-
-                    },
-
-                    onEachFeature:
-                        function(
-                            feature,
-                            featureLayer
-                        ) {
-
-                            setupPolygon(
-                                featureLayer,
-                                name
-                            );
-
-                        }
-
-                }
-            );
-
-
-        layer.addTo(map);
-
-
-        loadedLayers[name] =
-            layer;
-
-
-        const item =
-            document.createElement(
-                "div"
-            );
-
-
-        item.className =
-            "layer-item";
-
-
-        const colorBox =
-            document.createElement(
-                "div"
-            );
-
-
-        colorBox.className =
-            "layer-color";
-
-
-        colorBox.style.background =
-            color;
-
-
-        item.appendChild(
-            colorBox
-        );
-
-
-        const label =
-            document.createElement(
-                "span"
-            );
-
-
-        label.textContent =
-            name;
-
-
-        item.appendChild(
-            label
-        );
-
-
-        item.onclick =
-            function() {
-
-                if (
-                    map.hasLayer(layer)
-                ) {
-
-                    map.removeLayer(
-                        layer
-                    );
-
-                    item.style.opacity =
-                        "0.5";
-
-                } else {
-
-                    layer.addTo(map);
-
-                    item.style.opacity =
-                        "1";
-
-                }
-
-            };
-
-
-        layerList.appendChild(
-            item
-        );
-
-    }
-
-}
 
 </script>
 
