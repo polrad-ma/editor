@@ -312,38 +312,69 @@
    LOGIN
 ========================================================= */
 
-const EDITOR_PASSWORD = "l!aatt?a-q,ss";
-
 const loginScreen = document.getElementById("loginScreen");
 const passwordInput = document.getElementById("passwordInput");
 const loginButton = document.getElementById("loginButton");
 const loginError = document.getElementById("loginError");
 
-function attemptLogin() {
+async function attemptLogin() {
 
-    if (passwordInput.value === EDITOR_PASSWORD) {
+    const password = passwordInput.value;
+
+    if (!password) {
+        return;
+    }
+
+    loginButton.disabled = true;
+    loginButton.textContent = "Checking...";
+
+    loginError.style.display = "none";
+
+    const WORKER_URL =
+        "https://polrad-editor-api.streetviewfun066.workers.dev/";
+
+    try {
+
+        const response = await fetch(
+            WORKER_URL,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    action: "login",
+                    password: password
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.error || "Login failed."
+            );
+        }
 
         loginScreen.style.display = "none";
 
         initializeMap();
 
-    } else {
+    } catch (error) {
 
         loginError.style.display = "block";
+        passwordInput.value = "";
+
+    } finally {
+
+        loginButton.disabled = false;
+        loginButton.textContent = "Log in";
 
     }
-
 }
-
-loginButton.addEventListener("click", attemptLogin);
-
-passwordInput.addEventListener("keydown", e => {
-
-    if (e.key === "Enter") {
-        attemptLogin();
-    }
-
-});
 
 
 /* =========================================================
