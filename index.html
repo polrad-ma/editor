@@ -6,186 +6,314 @@
 
 <title>POLRAD MAPPING — Editor</title>
 
+<!-- Leaflet -->
 <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 />
 
+<!-- Leaflet Geoman -->
 <link
     rel="stylesheet"
     href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
 />
 
 <style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        font-family: Arial, sans-serif;
-        overflow: hidden;
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#map {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+}
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+#loginScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(0, 0, 0, 0.88);
+}
+
+#loginBox {
+    width: 360px;
+    max-width: calc(100vw - 30px);
+
+    background: #171717;
+    color: white;
+
+    border: 1px solid #444;
+    border-radius: 10px;
+
+    padding: 25px;
+
+    box-shadow: 0 10px 40px rgba(0,0,0,.6);
+}
+
+#loginBox h2 {
+    margin: 0 0 8px;
+}
+
+#loginBox p {
+    color: #aaa;
+    font-size: 13px;
+    margin: 0 0 18px;
+}
+
+#passwordInput {
+    width: 100%;
+    height: 40px;
+
+    padding: 0 12px;
+
+    border: 1px solid #555;
+    border-radius: 6px;
+
+    background: #252525;
+    color: white;
+
+    outline: none;
+}
+
+#loginButton {
+    width: 100%;
+    height: 40px;
+
+    margin-top: 10px;
+
+    border: 1px solid #555;
+    border-radius: 6px;
+
+    background: #292929;
+    color: white;
+
+    cursor: pointer;
+}
+
+#loginButton:hover {
+    background: #3a3a3a;
+}
+
+#loginButton:disabled {
+    opacity: .6;
+    cursor: wait;
+}
+
+#loginError {
+    display: none;
+
+    margin-top: 10px;
+
+    color: #ff6666;
+    font-size: 13px;
+}
+
+/* =========================================================
+   TOOLBAR
+========================================================= */
+
+#toolbar {
+    position: fixed;
+
+    top: 10px;
+    left: 60px;
+
+    z-index: 5000;
+
+    display: none;
+
+    align-items: center;
+    gap: 6px;
+
+    padding: 7px;
+
+    background: rgba(20,20,20,.94);
+
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+
+    color: white;
+
+    box-shadow: 0 3px 15px rgba(0,0,0,.4);
+}
+
+#toolbarTitle {
+    font-weight: bold;
+    margin: 0 8px 0 3px;
+    white-space: nowrap;
+}
+
+.toolButton {
+    border: 1px solid #555;
+
+    background: #292929;
+    color: white;
+
+    border-radius: 6px;
+
+    padding: 8px 10px;
+
+    cursor: pointer;
+}
+
+.toolButton:hover {
+    background: #3b3b3b;
+}
+
+#status {
+    margin-left: 5px;
+
+    color: #aaa;
+
+    font-size: 12px;
+
+    white-space: nowrap;
+}
+
+/* =========================================================
+   LAYER PANEL
+========================================================= */
+
+#layerPanel {
+    position: fixed;
+
+    top: 62px;
+    left: 60px;
+
+    z-index: 5000;
+
+    display: none;
+
+    width: 300px;
+    max-height: calc(100vh - 80px);
+
+    overflow-y: auto;
+
+    padding: 12px;
+
+    background: rgba(20,20,20,.95);
+
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+
+    color: white;
+
+    box-shadow: 0 3px 15px rgba(0,0,0,.4);
+}
+
+#layerPanel h3 {
+    margin: 0 0 10px;
+
+    font-size: 15px;
+}
+
+.layerRow {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    margin: 7px 0;
+
+    font-size: 13px;
+}
+
+.layerColor {
+    width: 13px;
+    height: 13px;
+
+    border-radius: 3px;
+
+    flex-shrink: 0;
+}
+
+.layerRow input {
+    cursor: pointer;
+}
+
+/* =========================================================
+   MAP
+========================================================= */
+
+#map {
+    background: #ddd;
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 800px) {
+
+    #toolbar {
+        left: 10px;
+        right: 10px;
+
+        flex-wrap: wrap;
     }
 
-    #map {
+    #toolbarTitle {
         width: 100%;
-        height: 100%;
     }
-
-    /* LOGIN */
-
-    #loginScreen {
-        position: fixed;
-        inset: 0;
-        background: #111;
-        z-index: 99999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    #loginBox {
-        width: 320px;
-        background: #222;
-        padding: 30px;
-        border-radius: 10px;
-        color: white;
-        box-shadow: 0 0 30px rgba(0,0,0,0.6);
-    }
-
-    #loginBox h2 {
-        margin-top: 0;
-    }
-
-    #passwordInput {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 12px;
-        margin: 10px 0;
-        border: none;
-        border-radius: 5px;
-    }
-
-    #loginButton {
-        width: 100%;
-        padding: 12px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        background: #3578e5;
-        color: white;
-        font-weight: bold;
-    }
-
-    #loginError {
-        color: #ff6666;
-        display: none;
-        margin-top: 10px;
-    }
-
-    /* TOP BAR */
-
-    #topBar {
-        position: fixed;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 5000;
-
-        background: rgba(20,20,20,0.92);
-        color: white;
-
-        padding: 8px 12px;
-        border-radius: 8px;
-
-        display: flex;
-        align-items: center;
-        gap: 7px;
-
-        box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-    }
-
-    #topBar button {
-        border: none;
-        background: #333;
-        color: white;
-        padding: 8px 11px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-    }
-
-    #topBar button:hover {
-        background: #555;
-    }
-
-    #topBar button:disabled {
-        opacity: 0.35;
-        cursor: default;
-    }
-
-    #title {
-        font-weight: bold;
-        margin-right: 8px;
-        white-space: nowrap;
-    }
-
-    /* LAYER PANEL */
 
     #layerPanel {
-        position: fixed;
-        top: 65px;
-        right: 15px;
+        left: 10px;
+        top: 125px;
 
-        z-index: 5000;
-
-        width: 260px;
-
-        background: rgba(25,25,25,0.95);
-        color: white;
-
-        padding: 15px;
-
-        border-radius: 8px;
-
-        box-shadow: 0 2px 15px rgba(0,0,0,0.5);
-
-        display: none;
+        width: calc(100vw - 20px);
     }
 
-    #layerPanel h3 {
-        margin-top: 0;
-    }
+}
 
-    .layerRow {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 8px 0;
-    }
-
-    .layerColor {
-        width: 18px;
-        height: 18px;
-        border-radius: 3px;
-        border: 1px solid white;
-    }
 </style>
 </head>
 
 <body>
 
-<!-- LOGIN -->
+<!-- =========================================================
+     MAP
+========================================================= -->
+
+<div id="map"></div>
+
+
+<!-- =========================================================
+     LOGIN SCREEN
+========================================================= -->
 
 <div id="loginScreen">
 
     <div id="loginBox">
 
         <h2>POLRAD MAPPING</h2>
-        <p>Editor Login</p>
+
+        <p>
+            Private editor access
+        </p>
 
         <input
             id="passwordInput"
             type="password"
             placeholder="Password"
+            autocomplete="current-password"
         >
 
         <button id="loginButton">
@@ -201,227 +329,121 @@
 </div>
 
 
-<!-- TOP BAR -->
+<!-- =========================================================
+     TOOLBAR
+========================================================= -->
 
-<div id="topBar">
+<div id="toolbar">
 
-    <span id="title">
-        POLRAD MAPPING — Editor
+    <span id="toolbarTitle">
+        POLRAD MAPPING — EDITOR
     </span>
 
-    <button id="undoButton" disabled>
+    <button class="toolButton" id="undoButton">
         ↶ Undo
     </button>
 
-    <button id="redoButton" disabled>
+    <button class="toolButton" id="redoButton">
         ↷ Redo
     </button>
 
-    <button id="deleteButton">
+    <button class="toolButton" id="deleteButton">
         🗑 Delete
     </button>
 
-    <button id="layersButton">
+    <button class="toolButton" id="layersButton">
         Layers
     </button>
 
-    <button id="saveButton">
+    <button class="toolButton" id="saveButton">
         Save
     </button>
-    
-    <button id="publishButton">
-    Publish
-    </button>
 
-    <button id="downloadButton">
+    <button class="toolButton" id="downloadButton">
         Download
     </button>
 
-    <button id="resetButton">
+    <button class="toolButton" id="resetButton">
         Reset
     </button>
 
+    <button class="toolButton" id="publishButton">
+        Publish
+    </button>
+
+    <span id="status">
+        Ready
+    </span>
+
 </div>
 
 
-<!-- LAYER PANEL -->
+<!-- =========================================================
+     LAYER PANEL
+========================================================= -->
 
 <div id="layerPanel">
 
-    <h3>Layers</h3>
+    <h3>Editable layers</h3>
 
-    <div class="layerRow">
-        <div
-            class="layerColor"
-            style="background:#d94b4b">
-        </div>
-
-        Russian-controlled territory
-    </div>
-
-    <div class="layerRow">
-        <div
-            class="layerColor"
-            style="background:#4b83d9">
-        </div>
-
-        Ukrainian-controlled territory
-    </div>
-
-    <div class="layerRow">
-        <div
-            class="layerColor"
-            style="background:#6fb7ff">
-        </div>
-
-        Ukrainian advances
-    </div>
-
-    <div class="layerRow">
-        <div
-            class="layerColor"
-            style="background:#f1c40f">
-        </div>
-
-        Russian advances
-    </div>
-
-    <div class="layerRow">
-        <div
-            class="layerColor"
-            style="background:#42b883">
-        </div>
-
-        Territories regained in the last month
-    </div>
+    <div id="layerList"></div>
 
 </div>
 
 
-<div id="map"></div>
-
+<!-- =========================================================
+     LEAFLET
+========================================================= -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+<!-- Geoman -->
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
 
 
 <script>
-/* =========================================================
-   LOGIN
-========================================================= */
 
-const loginBox = document.getElementById("login");
-const passwordInput = document.getElementById("password");
-const loginButton = document.getElementById("login-button");
-const loginError = document.getElementById("login-error");
+/* =========================================================
+   CONFIGURATION
+========================================================= */
 
 const WORKER_URL =
     "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
-async function attemptLogin() {
 
-    const password = passwordInput.value;
+const LAYER_CONFIG = [
 
-    if (!password) {
-        return;
+    {
+        name: "Russian-controlled territory",
+        file: "data/Russian-controlled%20territory.geojson",
+        color: "#d94b4b"
+    },
+
+    {
+        name: "Ukrainian-controlled territory",
+        file: "data/Ukrainian-controlled%20territory.geojson",
+        color: "#4b83d9"
+    },
+
+    {
+        name: "Ukrainian advances",
+        file: "data/Ukrainian%20advances.geojson",
+        color: "#6fb7ff"
+    },
+
+    {
+        name: "Russian advances",
+        file: "data/Russian%20advances.geojson",
+        color: "#f1c40f"
+    },
+
+    {
+        name: "Territories regained in the last month",
+        file: "data/Territories%20regained%20in%20the%20last%20month.geojson",
+        color: "#42b883"
     }
 
-    loginButton.disabled = true;
-    loginButton.textContent = "Checking...";
-    loginError.style.display = "none";
-
-    try {
-
-        const response = await fetch(WORKER_URL, {
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-                action: "login",
-                password: password
-            })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || "Login failed.");
-        }
-
-        // Successful login
-        loginBox.style.display = "none";
-
-        if (typeof initMap === "function") {
-            initMap();
-        }
-
-    } catch (error) {
-
-        console.error("Login error:", error);
-
-        loginError.textContent =
-            "Login failed. Check the password or Worker.";
-
-        loginError.style.display = "block";
-
-    } finally {
-
-        loginButton.disabled = false;
-        loginButton.textContent = "Enter";
-
-    }
-}
-
-loginButton.addEventListener("click", attemptLogin);
-
-passwordInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-        attemptLogin();
-    }
-});
-</script>
-
-/* =========================================================
-   DATA
-========================================================= */
-
-const GEOJSON_FILES = {
-
-    "Russian-controlled territory":
-        "data/Russian-controlled%20territory.geojson",
-
-    "Ukrainian-controlled territory":
-        "data/Ukrainian-controlled%20territory.geojson",
-
-    "Ukrainian advances":
-        "data/Ukrainian%20advances.geojson",
-
-    "Russian advances":
-        "data/Russian%20advances.geojson",
-
-    "Territories regained in the last month":
-        "data/Territories%20regained%20in%20the%20last%20month.geojson"
-
-};
-
-
-const LAYER_COLORS = {
-
-    "Russian-controlled territory": "#d94b4b",
-
-    "Ukrainian-controlled territory": "#4b83d9",
-
-    "Ukrainian advances": "#6fb7ff",
-
-    "Russian advances": "#f1c40f",
-
-    "Territories regained in the last month": "#42b883"
-
-};
+];
 
 
 /* =========================================================
@@ -430,206 +452,407 @@ const LAYER_COLORS = {
 
 let map = null;
 
-let loadedLayers = {};
-
-let originalData = {};
+let loggedIn = false;
 
 let selectedLayer = null;
 
+let selectedLayerName = null;
 
-/* UNDO / REDO */
+let loadedLayers = {};
+
+let originalData = {};
 
 let undoStack = [];
 
 let redoStack = [];
 
-let restoringState = false;
-
-
-/*
-    Snapshot taken before a polygon starts being edited.
-*/
-let editingSnapshot = null;
+let isRestoring = false;
 
 
 /* =========================================================
-   MAP
+   DOM
 ========================================================= */
 
-async function initializeMap() {
+const loginScreen =
+    document.getElementById("loginScreen");
 
-    map = L.map("map", {
+const passwordInput =
+    document.getElementById("passwordInput");
 
-        zoomControl: false
+const loginButton =
+    document.getElementById("loginButton");
 
-    });
+const loginError =
+    document.getElementById("loginError");
 
+const toolbar =
+    document.getElementById("toolbar");
 
-    /* ESRI SATELLITE */
+const layerPanel =
+    document.getElementById("layerPanel");
 
-    const satellite = L.tileLayer(
+const layerList =
+    document.getElementById("layerList");
 
-        "https://server.arcgisonline.com/ArcGIS/rest/services/" +
-        "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-
-        {
-            attribution:
-                "Tiles © Esri"
-        }
-
-    ).addTo(map);
-
-
-    L.control.zoom({
-
-        position: "bottomright"
-
-    }).addTo(map);
+const status =
+    document.getElementById("status");
 
 
-    map.setView(
-        [48.5, 37.5],
-        7
-    );
+/* =========================================================
+   STATUS
+========================================================= */
 
+function setStatus(text) {
 
-    /* =====================================================
-       GEOMAN CONTROLS
-    ===================================================== */
-
-    map.pm.addControls({
-
-        position: "topleft",
-
-        drawMarker: false,
-        drawCircleMarker: false,
-        drawPolyline: false,
-        drawRectangle: false,
-        drawCircle: false,
-        drawText: false,
-
-        editMode: false,
-        dragMode: false,
-        cutPolygon: false,
-        removalMode: false
-
-    });
-
-
-    /* =====================================================
-       LOAD DATA
-    ===================================================== */
-
-    await loadAllLayers();
-
-
-    /* =====================================================
-       EMPTY MAP CLICK
-    ===================================================== */
-
-    map.on("click", function() {
-
-        deselectPolygon();
-
-    });
+    status.textContent = text;
 
 }
 
 
 /* =========================================================
-   LOAD ALL GEOJSON
+   LOGIN
 ========================================================= */
 
-async function loadAllLayers() {
+async function attemptLogin() {
 
-    for (const [name, url] of Object.entries(GEOJSON_FILES)) {
+    const password =
+        passwordInput.value;
+
+    if (!password) {
+
+        loginError.textContent =
+            "Please enter the password.";
+
+        loginError.style.display =
+            "block";
+
+        return;
+
+    }
+
+    loginButton.disabled = true;
+
+    loginButton.textContent =
+        "Checking...";
+
+    loginError.style.display =
+        "none";
+
+
+    try {
+
+        const response =
+            await fetch(
+                WORKER_URL,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        action: "login",
+                        password: password
+                    })
+                }
+            );
+
+
+        let result;
 
         try {
 
-            const response = await fetch(url);
+            result =
+                await response.json();
 
-            if (!response.ok) {
+        } catch {
 
-                throw new Error(
-                    "HTTP " + response.status
-                );
-
-            }
-
-            const data = await response.json();
-
-            originalData[name] =
-                JSON.parse(JSON.stringify(data));
-
-
-            const layer =
-                createGeoJSONLayer(name, data);
-
-
-            loadedLayers[name] = layer;
-
-
-            layer.addTo(map);
-
-        } catch (error) {
-
-            console.error(
-                "Could not load:",
-                name,
-                error
+            throw new Error(
+                "Worker returned an invalid response."
             );
 
         }
+
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+
+            throw new Error(
+                result.error ||
+                "Login failed."
+            );
+
+        }
+
+
+        /* SUCCESS */
+
+        loggedIn = true;
+
+        loginScreen.style.display =
+            "none";
+
+        toolbar.style.display =
+            "flex";
+
+        layerPanel.style.display =
+            "block";
+
+
+        initializeMap();
+
+
+    } catch (error) {
+
+        console.error(
+            "Login error:",
+            error
+        );
+
+        loginError.textContent =
+            error.message ||
+            "Could not connect to the login server.";
+
+        loginError.style.display =
+            "block";
+
+    } finally {
+
+        loginButton.disabled = false;
+
+        loginButton.textContent =
+            "Log in";
 
     }
 
 }
 
 
-/* =========================================================
-   CREATE GEOJSON LAYER
-========================================================= */
-
-function createGeoJSONLayer(name, data) {
-
-    const color =
-        LAYER_COLORS[name];
+loginButton.addEventListener(
+    "click",
+    attemptLogin
+);
 
 
-    return L.geoJSON(
+passwordInput.addEventListener(
+    "keydown",
+    event => {
 
-        data,
+        if (event.key === "Enter") {
 
-        {
-
-            style: {
-
-                color: color,
-
-                weight: 2,
-
-                fillColor: color,
-
-                fillOpacity: 0.45
-
-            },
-
-
-            onEachFeature: function(
-                feature,
-                featureLayer
-            ) {
-
-                setupPolygon(
-                    featureLayer,
-                    name
-                );
-
-            }
+            attemptLogin();
 
         }
 
+    }
+);
+
+
+/* =========================================================
+   INITIALIZE MAP
+========================================================= */
+
+function initializeMap() {
+
+    if (map) {
+        return;
+    }
+
+
+    map = L.map("map", {
+
+        center: [
+            48.0,
+            37.75
+        ],
+
+        zoom: 7,
+
+        zoomControl: true
+
+    });
+
+
+    /* ESRI SATELLITE */
+
+    const satellite =
+        L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            {
+                maxZoom: 19,
+
+                attribution:
+                    "Tiles © Esri"
+            }
+        );
+
+
+    satellite.addTo(map);
+
+
+    /* GEOMAN CONTROLS */
+
+    map.pm.addControls({
+
+        position: "topleft",
+
+        drawMarker: false,
+
+        drawCircleMarker: false,
+
+        drawPolyline: false,
+
+        drawRectangle: false,
+
+        drawCircle: false,
+
+        drawText: false,
+
+        editMode: false,
+
+        dragMode: false,
+
+        cutPolygon: false,
+
+        removalMode: false
+
+    });
+
+
+    setStatus(
+        "Loading polygons..."
     );
+
+
+    loadAllLayers();
+
+}
+
+
+/* =========================================================
+   LOAD ALL LAYERS
+========================================================= */
+
+async function loadAllLayers() {
+
+    loadedLayers = {};
+
+    originalData = {};
+
+
+    for (
+        const config
+        of LAYER_CONFIG
+    ) {
+
+        await loadLayer(config);
+
+    }
+
+
+    buildLayerPanel();
+
+    setStatus(
+        "Ready — click a polygon to edit it"
+    );
+
+}
+
+
+/* =========================================================
+   LOAD ONE LAYER
+========================================================= */
+
+async function loadLayer(config) {
+
+    try {
+
+        const response =
+            await fetch(
+                config.file +
+                "?v=" +
+                Date.now()
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "HTTP " +
+                response.status
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        originalData[config.name] =
+            deepClone(data);
+
+
+        const geoJsonLayer =
+            L.geoJSON(
+                data,
+                {
+
+                    style: {
+
+                        color: config.color,
+
+                        weight: 1,
+
+                        fillColor:
+                            config.color,
+
+                        fillOpacity: 0.45
+
+                    },
+
+                    onEachFeature:
+                        function(
+                            feature,
+                            featureLayer
+                        ) {
+
+                            setupPolygon(
+                                featureLayer,
+                                config.name
+                            );
+
+                        }
+
+                }
+            );
+
+
+        geoJsonLayer.addTo(map);
+
+
+        loadedLayers[config.name] =
+            geoJsonLayer;
+
+
+    } catch (error) {
+
+        console.error(
+            "Could not load:",
+            config.name,
+            error
+        );
+
+        setStatus(
+            "Error loading " +
+            config.name
+        );
+
+    }
 
 }
 
@@ -639,123 +862,40 @@ function createGeoJSONLayer(name, data) {
 ========================================================= */
 
 function setupPolygon(
-    featureLayer,
+    layer,
     layerName
 ) {
 
-
-    /*
-        Clicking a polygon selects it.
-    */
-
-    featureLayer.on(
+    layer.on(
         "click",
-        function(e) {
+        function(event) {
 
-            L.DomEvent.stopPropagation(e);
+            L.DomEvent.stopPropagation(
+                event
+            );
 
             selectPolygon(
-                featureLayer
+                layer,
+                layerName
             );
 
         }
     );
 
 
-    /*
-        BEFORE editing begins:
-        save the entire map state.
-
-        We do this when Geoman reports editstart.
-        The important part is that we DON'T immediately
-        create an undo entry.
-
-        Instead we wait until editend and check whether
-        anything actually changed.
-    */
-
-    featureLayer.on(
-        "pm:editstart",
+    layer.on(
+        "pm:edit",
         function() {
 
-            if (restoringState) {
-                return;
-            }
+            if (!isRestoring) {
 
-            /*
-                Save current complete state.
-            */
-
-            editingSnapshot =
-                captureState();
-
-        }
-    );
-
-
-    /*
-        AFTER editing finishes:
-        compare the old state with the new state.
-
-        If something actually changed,
-        put the old state into Undo.
-    */
-
-    featureLayer.on(
-        "pm:editend",
-        function() {
-
-            if (restoringState) {
-                return;
-            }
-
-
-            if (!editingSnapshot) {
-                return;
-            }
-
-
-            const currentState =
-                captureState();
-
-
-            const before =
-                JSON.stringify(
-                    editingSnapshot
-                );
-
-            const after =
-                JSON.stringify(
-                    currentState
-                );
-
-
-            /*
-                Only create an undo entry
-                if the geometry really changed.
-            */
-
-            if (before !== after) {
-
-                undoStack.push(
-                    editingSnapshot
-                );
-
-
-                /*
-                    A new edit invalidates
-                    the redo history.
-                */
-
-                redoStack = [];
-
-
-                updateUndoRedoButtons();
+                saveHistory();
 
             }
 
-
-            editingSnapshot = null;
+            setStatus(
+                "Polygon changed"
+            );
 
         }
     );
@@ -767,34 +907,38 @@ function setupPolygon(
    SELECT POLYGON
 ========================================================= */
 
-function selectPolygon(layer) {
+function selectPolygon(
+    layer,
+    layerName
+) {
 
-    /*
-        Disable the previous polygon.
-    */
+    /* Disable previous polygon */
 
-    if (
-        selectedLayer &&
-        selectedLayer !== layer
-    ) {
+    if (selectedLayer) {
 
-        selectedLayer.pm.disable();
+        try {
+
+            selectedLayer.pm.disable();
+
+        } catch {}
 
         selectedLayer.setStyle({
 
-            weight: 2
+            weight: 1
 
         });
 
     }
 
 
-    selectedLayer = layer;
+    selectedLayer =
+        layer;
+
+    selectedLayerName =
+        layerName;
 
 
-    /*
-        Highlight selected polygon.
-    */
+    /* Highlight */
 
     selectedLayer.setStyle({
 
@@ -803,136 +947,352 @@ function selectPolygon(layer) {
     });
 
 
-    /*
-        Enable Geoman editing ONLY
-        for this polygon.
-    */
+    /* Enable editing */
 
-    selectedLayer.pm.enable({
+    try {
 
-        allowSelfIntersection: false
+        selectedLayer.pm.enable({
+            allowSelfIntersection: false
+        });
 
-    });
+    } catch (error) {
 
-}
+        console.error(
+            "Could not enable editing:",
+            error
+        );
 
-
-/* =========================================================
-   DESELECT POLYGON
-========================================================= */
-
-function deselectPolygon() {
-
-    if (!selectedLayer) {
-        return;
     }
 
 
-    selectedLayer.pm.disable();
-
-
-    selectedLayer.setStyle({
-
-        weight: 2
-
-    });
-
-
-    selectedLayer = null;
-
-
-    editingSnapshot = null;
+    setStatus(
+        "Editing: " +
+        layerName
+    );
 
 }
 
 
 /* =========================================================
-   CAPTURE COMPLETE MAP STATE
+   MAP CLICK
 ========================================================= */
 
-function captureState() {
+mapClickHandler = null;
 
-    const state = {};
+
+/* =========================================================
+   LAYER PANEL
+========================================================= */
+
+function buildLayerPanel() {
+
+    layerList.innerHTML = "";
 
 
     for (
-        const [name, layer]
-        of Object.entries(loadedLayers)
+        const config
+        of LAYER_CONFIG
     ) {
 
-        state[name] =
+        const row =
+            document.createElement(
+                "div"
+            );
+
+        row.className =
+            "layerRow";
+
+
+        const checkbox =
+            document.createElement(
+                "input"
+            );
+
+        checkbox.type =
+            "checkbox";
+
+        checkbox.checked =
+            true;
+
+
+        checkbox.addEventListener(
+            "change",
+            function() {
+
+                const layer =
+                    loadedLayers[
+                        config.name
+                    ];
+
+                if (!layer) {
+                    return;
+                }
+
+
+                if (checkbox.checked) {
+
+                    map.addLayer(
+                        layer
+                    );
+
+                } else {
+
+                    map.removeLayer(
+                        layer
+                    );
+
+                }
+
+            }
+        );
+
+
+        const color =
+            document.createElement(
+                "span"
+            );
+
+        color.className =
+            "layerColor";
+
+        color.style.background =
+            config.color;
+
+
+        const label =
+            document.createElement(
+                "span"
+            );
+
+        label.textContent =
+            config.name;
+
+
+        row.appendChild(
+            checkbox
+        );
+
+        row.appendChild(
+            color
+        );
+
+        row.appendChild(
+            label
+        );
+
+
+        layerList.appendChild(
+            row
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   TOGGLE LAYERS
+========================================================= */
+
+document
+    .getElementById("layersButton")
+    .addEventListener(
+        "click",
+        function() {
+
+            if (
+                layerPanel.style.display ===
+                "block"
+            ) {
+
+                layerPanel.style.display =
+                    "none";
+
+            } else {
+
+                layerPanel.style.display =
+                    "block";
+
+            }
+
+        }
+    );
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function snapshotCurrentState() {
+
+    const snapshot = {};
+
+    for (
+        const config
+        of LAYER_CONFIG
+    ) {
+
+        const layer =
+            loadedLayers[
+                config.name
+            ];
+
+        if (!layer) {
+            continue;
+        }
+
+
+        snapshot[
+            config.name
+        ] =
             layer.toGeoJSON();
 
     }
 
 
-    return state;
+    return snapshot;
+
+}
+
+
+function saveHistory() {
+
+    if (isRestoring) {
+        return;
+    }
+
+
+    undoStack.push(
+        snapshotCurrentState()
+    );
+
+
+    if (
+        undoStack.length >
+        50
+    ) {
+
+        undoStack.shift();
+
+    }
+
+
+    redoStack = [];
 
 }
 
 
 /* =========================================================
-   RESTORE COMPLETE MAP STATE
+   RESTORE SNAPSHOT
 ========================================================= */
 
-function restoreState(state) {
+function restoreSnapshot(
+    snapshot
+) {
 
-    restoringState = true;
-
-
-    /*
-        Deselect current polygon.
-    */
-
-    deselectPolygon();
+    isRestoring = true;
 
 
-    /*
-        Remove all existing layers.
-    */
+    try {
 
-    for (
-        const layer
-        of Object.values(loadedLayers)
-    ) {
+        for (
+            const config
+            of LAYER_CONFIG
+        ) {
 
-        map.removeLayer(layer);
-
-    }
-
-
-    loadedLayers = {};
+            const oldLayer =
+                loadedLayers[
+                    config.name
+                ];
 
 
-    /*
-        Recreate every GeoJSON layer.
-    */
+            if (oldLayer) {
 
-    for (
-        const [name, data]
-        of Object.entries(state)
-    ) {
+                map.removeLayer(
+                    oldLayer
+                );
 
-        const layer =
-            createGeoJSONLayer(
-                name,
-                data
+            }
+
+
+            const data =
+                snapshot[
+                    config.name
+                ];
+
+
+            if (!data) {
+                continue;
+            }
+
+
+            const newLayer =
+                L.geoJSON(
+                    data,
+                    {
+
+                        style: {
+
+                            color:
+                                config.color,
+
+                            weight: 1,
+
+                            fillColor:
+                                config.color,
+
+                            fillOpacity:
+                                0.45
+
+                        },
+
+                        onEachFeature:
+                            function(
+                                feature,
+                                featureLayer
+                            ) {
+
+                                setupPolygon(
+                                    featureLayer,
+                                    config.name
+                                );
+
+                            }
+
+                    }
+                );
+
+
+            newLayer.addTo(
+                map
             );
 
 
-        loadedLayers[name] =
-            layer;
+            loadedLayers[
+                config.name
+            ] =
+                newLayer;
+
+        }
 
 
-        layer.addTo(map);
+        selectedLayer =
+            null;
+
+        selectedLayerName =
+            null;
+
+
+        setStatus(
+            "State restored"
+        );
+
+
+    } finally {
+
+        isRestoring = false;
 
     }
-
-
-    restoringState = false;
-
-
-    updateUndoRedoButtons();
 
 }
 
@@ -941,614 +1301,572 @@ function restoreState(state) {
    UNDO
 ========================================================= */
 
-function undo() {
+document
+    .getElementById("undoButton")
+    .addEventListener(
+        "click",
+        function() {
 
-    if (
-        undoStack.length === 0
-    ) {
+            if (
+                undoStack.length === 0
+            ) {
 
-        return;
+                setStatus(
+                    "Nothing to undo"
+                );
 
-    }
+                return;
 
-
-    /*
-        Current state becomes
-        available for Redo.
-    */
-
-    const currentState =
-        captureState();
+            }
 
 
-    redoStack.push(
-        currentState
+            redoStack.push(
+                snapshotCurrentState()
+            );
+
+
+            const snapshot =
+                undoStack.pop();
+
+
+            restoreSnapshot(
+                snapshot
+            );
+
+        }
     );
-
-
-    /*
-        Restore previous state.
-    */
-
-    const previousState =
-        undoStack.pop();
-
-
-    restoreState(
-        previousState
-    );
-
-
-    updateUndoRedoButtons();
-
-}
 
 
 /* =========================================================
    REDO
 ========================================================= */
 
-function redo() {
+document
+    .getElementById("redoButton")
+    .addEventListener(
+        "click",
+        function() {
 
-    if (
-        redoStack.length === 0
-    ) {
+            if (
+                redoStack.length === 0
+            ) {
 
-        return;
+                setStatus(
+                    "Nothing to redo"
+                );
 
-    }
+                return;
 
-
-    /*
-        Current state becomes
-        available for Undo.
-    */
-
-    const currentState =
-        captureState();
+            }
 
 
-    undoStack.push(
-        currentState
+            undoStack.push(
+                snapshotCurrentState()
+            );
+
+
+            const snapshot =
+                redoStack.pop();
+
+
+            restoreSnapshot(
+                snapshot
+            );
+
+        }
     );
-
-
-    /*
-        Restore redo state.
-    */
-
-    const nextState =
-        redoStack.pop();
-
-
-    restoreState(
-        nextState
-    );
-
-
-    updateUndoRedoButtons();
-
-}
-
-
-/* =========================================================
-   UPDATE UNDO / REDO BUTTONS
-========================================================= */
-
-function updateUndoRedoButtons() {
-
-    document.getElementById(
-        "undoButton"
-    ).disabled =
-        undoStack.length === 0;
-
-
-    document.getElementById(
-        "redoButton"
-    ).disabled =
-        redoStack.length === 0;
-
-}
 
 
 /* =========================================================
    DELETE SELECTED POLYGON
 ========================================================= */
 
-function deleteSelectedPolygon() {
+document
+    .getElementById("deleteButton")
+    .addEventListener(
+        "click",
+        function() {
 
-    if (!selectedLayer) {
+            if (!selectedLayer) {
 
-        alert(
-            "Select a polygon first."
-        );
+                setStatus(
+                    "Select a polygon first"
+                );
 
-        return;
+                return;
 
-    }
+            }
 
 
-    /*
-        Save state BEFORE deletion.
-    */
+            if (
+                !confirm(
+                    "Delete this polygon?"
+                )
+            ) {
 
-    const previousState =
-        captureState();
+                return;
 
+            }
 
-    /*
-        Find which parent GeoJSON layer
-        contains the selected polygon.
-    */
 
-    for (
-        const layer
-        of Object.values(loadedLayers)
-    ) {
+            saveHistory();
 
-        if (
-            layer.hasLayer(selectedLayer)
-        ) {
 
-            layer.removeLayer(
-                selectedLayer
-            );
+            const parent =
+                loadedLayers[
+                    selectedLayerName
+                ];
 
-            break;
 
-        }
+            if (parent) {
 
-    }
+                parent.removeLayer(
+                    selectedLayer
+                );
 
+            }
 
-    selectedLayer = null;
 
+            selectedLayer =
+                null;
 
-    /*
-        Add the old state to Undo.
-    */
+            selectedLayerName =
+                null;
 
-    undoStack.push(
-        previousState
-    );
 
-
-    redoStack = [];
-
-
-    updateUndoRedoButtons();
-
-}
-
-
-/* =========================================================
-   SAVE
-========================================================= */
-
-function saveData() {
-
-    const savedData = {};
-
-
-    for (
-        const [name, layer]
-        of Object.entries(loadedLayers)
-    ) {
-
-        savedData[name] =
-            layer.toGeoJSON();
-
-    }
-
-
-    localStorage.setItem(
-
-        "polrad_editor_data",
-
-        JSON.stringify(
-            savedData
-        )
-
-    );
-
-
-    alert(
-        "Saved locally in this browser."
-    );
-
-}
-
-/* =========================================================
-   PUBLISH
-========================================================= */
-
-async function publishData() {
-
-    if (
-        !confirm(
-            "Publish all current changes to the public map?"
-        )
-    ) {
-        return;
-    }
-
-    const WORKER_URL =
-        "https://polrad-editor-api.streetviewfun066.workers.dev/";
-
-
-    const files = {};
-
-
-    for (
-        const [name, layer]
-        of Object.entries(loadedLayers)
-    ) {
-
-        files[name] =
-            layer.toGeoJSON();
-
-    }
-
-
-    const publishButton =
-        document.getElementById(
-            "publishButton"
-        );
-
-
-    publishButton.disabled = true;
-
-    publishButton.textContent =
-        "Publishing...";
-
-
-    try {
-
-        const response =
-            await fetch(
-                WORKER_URL,
-                {
-
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        files: files
-                    })
-
-                }
-            );
-
-
-        const result =
-            await response.json();
-
-
-        if (!response.ok || !result.success) {
-
-            throw new Error(
-                result.error ||
-                "Publishing failed."
+            setStatus(
+                "Polygon deleted"
             );
 
         }
+    );
 
 
-        alert(
-            "Published successfully! 🎉\n\n" +
-            "The public map data has been updated."
-        );
+/* =========================================================
+   SAVE LOCAL
+========================================================= */
+
+document
+    .getElementById("saveButton")
+    .addEventListener(
+        "click",
+        function() {
+
+            const data =
+                snapshotCurrentState();
 
 
-    } catch (error) {
-
-        console.error(error);
-
-        alert(
-            "Publishing failed:\n\n" +
-            error.message
-        );
+            localStorage.setItem(
+                "polrad_editor_data",
+                JSON.stringify(data)
+            );
 
 
-    } finally {
+            setStatus(
+                "Saved in this browser"
+            );
 
-        publishButton.disabled = false;
+        }
+    );
 
-        publishButton.textContent =
-            "Publish";
 
-    }
-
-}
 /* =========================================================
    DOWNLOAD
 ========================================================= */
 
-function downloadData() {
+document
+    .getElementById("downloadButton")
+    .addEventListener(
+        "click",
+        function() {
 
-    const data = {};
-
-
-    for (
-        const [name, layer]
-        of Object.entries(loadedLayers)
-    ) {
-
-        data[name] =
-            layer.toGeoJSON();
-
-    }
+            const data =
+                snapshotCurrentState();
 
 
-    const blob =
-        new Blob(
+            const output = {
 
-            [
-                JSON.stringify(
-                    data,
-                    null,
-                    2
-                )
-            ],
+                exportedAt:
+                    new Date().toISOString(),
 
-            {
-                type:
-                    "application/json"
-            }
+                layers:
+                    data
 
-        );
+            };
 
 
-    const url =
-        URL.createObjectURL(
-            blob
-        );
+            const blob =
+                new Blob(
+                    [
+                        JSON.stringify(
+                            output,
+                            null,
+                            2
+                        )
+                    ],
+                    {
+                        type:
+                            "application/json"
+                    }
+                );
 
 
-    const a =
-        document.createElement(
-            "a"
-        );
+            const url =
+                URL.createObjectURL(
+                    blob
+                );
 
 
-    a.href = url;
-
-    a.download =
-        "polrad-edited-data.json";
-
-
-    document.body.appendChild(a);
-
-    a.click();
-
-    document.body.removeChild(a);
+            const link =
+                document.createElement(
+                    "a"
+                );
 
 
-    URL.revokeObjectURL(url);
+            link.href =
+                url;
 
-}
+            link.download =
+                "polrad-edited-data.json";
+
+
+            link.click();
+
+
+            URL.revokeObjectURL(
+                url
+            );
+
+
+            setStatus(
+                "Downloaded edited data"
+            );
+
+        }
+    );
 
 
 /* =========================================================
    RESET
 ========================================================= */
 
-function resetMap() {
+document
+    .getElementById("resetButton")
+    .addEventListener(
+        "click",
+        async function() {
 
-    if (
-        !confirm(
-            "Reset all changes?"
-        )
-    ) {
+            if (
+                !confirm(
+                    "Reset all polygons to the original files?"
+                )
+            ) {
 
-        return;
+                return;
 
-    }
-
-
-    /*
-        Save current state
-        so Reset itself can be undone.
-    */
-
-    const previousState =
-        captureState();
+            }
 
 
-    /*
-        Add it to Undo.
-    */
+            localStorage.removeItem(
+                "polrad_editor_data"
+            );
 
-    undoStack.push(
-        previousState
+
+            undoStack = [];
+
+            redoStack = [];
+
+
+            for (
+                const config
+                of LAYER_CONFIG
+            ) {
+
+                const layer =
+                    loadedLayers[
+                        config.name
+                    ];
+
+                if (layer) {
+
+                    map.removeLayer(
+                        layer
+                    );
+
+                }
+
+            }
+
+
+            selectedLayer =
+                null;
+
+            selectedLayerName =
+                null;
+
+
+            await loadAllLayers();
+
+
+            setStatus(
+                "Reset to original data"
+            );
+
+        }
     );
 
 
-    redoStack = [];
+/* =========================================================
+   PUBLISH
+========================================================= */
+
+document
+    .getElementById("publishButton")
+    .addEventListener(
+        "click",
+        async function() {
+
+            if (!loggedIn) {
+
+                setStatus(
+                    "You are not logged in"
+                );
+
+                return;
+
+            }
 
 
-    /*
-        Restore original files.
-    */
+            if (
+                !confirm(
+                    "Publish these changes to the public POLRAD map?"
+                )
+            ) {
 
-    restoreState(
-        originalData
+                return;
+
+            }
+
+
+            const data =
+                snapshotCurrentState();
+
+
+            const files = {};
+
+
+            for (
+                const config
+                of LAYER_CONFIG
+            ) {
+
+                if (
+                    !data[
+                        config.name
+                    ]
+                ) {
+
+                    continue;
+
+                }
+
+
+                files[
+                    config.name
+                ] =
+                    data[
+                        config.name
+                    ];
+
+            }
+
+
+            const publishButton =
+                document.getElementById(
+                    "publishButton"
+                );
+
+
+            publishButton.disabled =
+                true;
+
+            publishButton.textContent =
+                "Publishing...";
+
+
+            setStatus(
+                "Publishing..."
+            );
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        WORKER_URL,
+                        {
+
+                            method:
+                                "POST",
+
+                            headers: {
+
+                                "Content-Type":
+                                    "application/json"
+
+                            },
+
+                            body:
+                                JSON.stringify({
+
+                                    action:
+                                        "publish",
+
+                                    files:
+                                        files
+
+                                })
+
+                        }
+                    );
+
+
+                let result;
+
+                try {
+
+                    result =
+                        await response.json();
+
+                } catch {
+
+                    throw new Error(
+                        "Worker returned an invalid response."
+                    );
+
+                }
+
+
+                if (
+                    !response.ok ||
+                    !result.success
+                ) {
+
+                    throw new Error(
+                        result.error ||
+                        "Publishing failed."
+                    );
+
+                }
+
+
+                setStatus(
+                    "Published successfully ✓"
+                );
+
+
+            } catch (error) {
+
+                console.error(
+                    "Publish error:",
+                    error
+                );
+
+
+                setStatus(
+                    "Publish failed"
+                );
+
+
+                alert(
+                    "Publish failed:\n\n" +
+                    error.message
+                );
+
+
+            } finally {
+
+                publishButton.disabled =
+                    false;
+
+                publishButton.textContent =
+                    "Publish";
+
+            }
+
+        }
     );
 
 
-    updateUndoRedoButtons();
+/* =========================================================
+   HELPER
+========================================================= */
+
+function deepClone(object) {
+
+    return JSON.parse(
+        JSON.stringify(object)
+    );
 
 }
 
 
 /* =========================================================
-   BUTTONS
+   TRY TO RESTORE LOCAL SAVE
 ========================================================= */
 
-document.getElementById(
-    "undoButton"
-).addEventListener(
-    "click",
-    undo
-);
+function restoreLocalSave() {
+
+    const stored =
+        localStorage.getItem(
+            "polrad_editor_data"
+        );
 
 
-document.getElementById(
-    "redoButton"
-).addEventListener(
-    "click",
-    redo
-);
+    if (!stored) {
 
-
-document.getElementById(
-    "deleteButton"
-).addEventListener(
-    "click",
-    deleteSelectedPolygon
-);
-
-
-document.getElementById(
-    "saveButton"
-).addEventListener(
-    "click",
-    saveData
-);
-    document.getElementById(
-    "publishButton"
-).addEventListener(
-    "click",
-    publishData
-);
-
-
-document.getElementById(
-    "downloadButton"
-).addEventListener(
-    "click",
-    downloadData
-);
-
-
-document.getElementById(
-    "resetButton"
-).addEventListener(
-    "click",
-    resetMap
-);
-
-
-/* =========================================================
-   LAYERS BUTTON
-========================================================= */
-
-document.getElementById(
-    "layersButton"
-).addEventListener(
-    "click",
-    function() {
-
-        const panel =
-            document.getElementById(
-                "layerPanel"
-            );
-
-
-        if (
-            panel.style.display === "block"
-        ) {
-
-            panel.style.display =
-                "none";
-
-        } else {
-
-            panel.style.display =
-                "block";
-
-        }
+        return false;
 
     }
-);
 
 
-/* =========================================================
-   KEYBOARD SHORTCUTS
-========================================================= */
+    try {
 
-document.addEventListener(
-    "keydown",
-    function(e) {
-
-        /*
-            CTRL + Z
-        */
-
-        if (
-            e.ctrlKey &&
-            !e.shiftKey &&
-            e.key.toLowerCase() === "z"
-        ) {
-
-            e.preventDefault();
-
-            undo();
-
-        }
+        const parsed =
+            JSON.parse(stored);
 
 
-        /*
-            CTRL + Y
-        */
-
-        if (
-            e.ctrlKey &&
-            e.key.toLowerCase() === "y"
-        ) {
-
-            e.preventDefault();
-
-            redo();
-
-        }
+        restoreSnapshot(
+            parsed
+        );
 
 
-        /*
-            CTRL + SHIFT + Z
-        */
-
-        if (
-            e.ctrlKey &&
-            e.shiftKey &&
-            e.key.toLowerCase() === "z"
-        ) {
-
-            e.preventDefault();
-
-            redo();
-
-        }
+        setStatus(
+            "Restored local save"
+        );
 
 
-        /*
-            DELETE key
-        */
+        return true;
 
-        if (
-            e.key === "Delete"
-        ) {
 
-            deleteSelectedPolygon();
+    } catch (error) {
 
-        }
+        console.error(
+            "Could not restore local save:",
+            error
+        );
+
+
+        localStorage.removeItem(
+            "polrad_editor_data"
+        );
+
+
+        return false;
 
     }
-);
+
+}
 
 </script>
 
