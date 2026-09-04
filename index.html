@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -294,6 +295,7 @@ html, body {
     #layerPanel {
         top: 120px;
     }
+
 }
 
 </style>
@@ -519,16 +521,24 @@ const loginError =
     document.getElementById("loginError");
 
 
-loginButton.addEventListener("click", login);
+loginButton.addEventListener(
+    "click",
+    login
+);
 
 
-passwordInput.addEventListener("keydown", event => {
+passwordInput.addEventListener(
+    "keydown",
+    event => {
 
-    if (event.key === "Enter") {
-        login();
+        if (event.key === "Enter") {
+
+            login();
+
+        }
+
     }
-
-});
+);
 
 
 async function login() {
@@ -539,45 +549,63 @@ async function login() {
     loginError.textContent = "";
 
     loginButton.disabled = true;
-    loginButton.textContent = "Logging in...";
+
+    loginButton.textContent =
+        "Logging in...";
 
 
     try {
 
-        const response = await fetch(
-            WORKER_URL,
-            {
-                method: "POST",
+        const response =
+            await fetch(
+                WORKER_URL,
+                {
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                    method: "POST",
 
-                body: JSON.stringify({
-                    action: "login",
-                    password: password
-                })
-            }
-        );
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            action: "login",
+
+                            password: password
+
+                        })
+
+                }
+            );
 
 
         const result =
             await response.json();
 
 
-        if (!response.ok || !result.success) {
+        if (
+            !response.ok ||
+            !result.success
+        ) {
 
             loginError.textContent =
                 "Incorrect password.";
 
             return;
+
         }
 
 
-        loginScreen.style.display = "none";
+        loginScreen.style.display =
+            "none";
 
-        document.getElementById("toolbar")
-            .style.display = "flex";
+
+        document.getElementById(
+            "toolbar"
+        ).style.display =
+            "flex";
 
 
         initializeMap();
@@ -593,7 +621,9 @@ async function login() {
     } finally {
 
         loginButton.disabled = false;
-        loginButton.textContent = "Log in";
+
+        loginButton.textContent =
+            "Log in";
 
     }
 
@@ -606,32 +636,143 @@ async function login() {
 
 async function initializeMap() {
 
-    map = L.map("map", {
+    map = L.map(
+        "map",
+        {
 
-        zoomControl: true,
+            zoomControl: true,
 
-        center: [48.5, 37.0],
+            center: [
+                48.5,
+                37.0
+            ],
 
-        zoom: 7
+            zoom: 7
 
-    });
+        }
+    );
 
 
     /* =====================================================
-       BASE MAP
+       BASEMAPS
     ===================================================== */
 
-    const satellite =
+
+    /*
+       HYBRID
+
+       Esri satellite imagery
+       + Esri reference labels
+    */
+
+    const hybridImagery =
         L.tileLayer(
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
             {
+
+                maxZoom: 19,
+
                 attribution:
-                    "© Esri"
+                    "Tiles © Esri"
+
             }
         );
 
 
-    satellite.addTo(map);
+    const hybridLabels =
+        L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+            {
+
+                maxZoom: 19,
+
+                attribution:
+                    "Labels © Esri"
+
+            }
+        );
+
+
+    /*
+       Put satellite imagery underneath
+       the labels.
+    */
+
+    const hybrid =
+        L.layerGroup([
+            hybridImagery,
+            hybridLabels
+        ]);
+
+
+    /*
+       OPENSTREETMAP
+    */
+
+    const openStreetMap =
+        L.tileLayer(
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {
+
+                maxZoom: 19,
+
+                attribution:
+                    '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+
+            }
+        );
+
+
+    /*
+       OPENTOPOMAP
+    */
+
+    const openTopoMap =
+        L.tileLayer(
+            "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+            {
+
+                maxZoom: 17,
+
+                attribution:
+                    'Kartendaten: © OpenStreetMap-Mitwirkende, SRTM | Kartendarstellung: © <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a>'
+
+            }
+        );
+
+
+    /*
+       HYBRID IS DEFAULT
+    */
+
+    hybrid.addTo(map);
+
+
+    /*
+       BASEMAP SELECTOR
+    */
+
+    const baseMaps = {
+
+        "🛰️ Hybrid": hybrid,
+
+        "🗺️ OpenStreetMap": openStreetMap,
+
+        "🏔️ OpenTopoMap": openTopoMap
+
+    };
+
+
+    L.control
+        .layers(
+            baseMaps,
+            null,
+            {
+                position: "topright",
+                collapsed: true
+            }
+        )
+        .addTo(map);
 
 
     /* =====================================================
@@ -680,34 +821,33 @@ async function initializeMap() {
 
 
     /* =====================================================
-       GEOJSON EDIT EVENTS
+       EDIT EVENTS
     ===================================================== */
 
-    map.on("pm:edit", () => {
+    map.on(
+        "pm:create",
+        function () {
 
-        saveHistory();
+            saveHistory();
 
-    });
-
-
-    map.on("pm:create", event => {
-
-        saveHistory();
-
-    });
+        }
+    );
 
 
-    map.on("pm:remove", event => {
+    map.on(
+        "pm:remove",
+        function () {
 
-        saveHistory();
+            saveHistory();
 
-    });
+        }
+    );
 
 }
 
 
 /* =========================================================
-   LOAD ALL LAYERS
+   LOAD ALL GEOJSON LAYERS
 ========================================================= */
 
 async function loadAllLayers() {
@@ -722,6 +862,7 @@ async function loadAllLayers() {
             const response =
                 await fetch(path);
 
+
             const data =
                 await response.json();
 
@@ -732,6 +873,7 @@ async function loadAllLayers() {
                     {
 
                         style: {
+
                             color:
                                 layerColors[name],
 
@@ -741,7 +883,9 @@ async function loadAllLayers() {
                             weight: 2,
 
                             fillOpacity: 0.45
+
                         },
+
 
                         onEachFeature:
                             function (
@@ -763,7 +907,8 @@ async function loadAllLayers() {
             layer.addTo(map);
 
 
-            loadedLayers[name] = layer;
+            loadedLayers[name] =
+                layer;
 
 
         } catch (error) {
@@ -816,8 +961,6 @@ function setupPolygon(
 
 function selectPolygon(layer) {
 
-    /* Disable previously selected polygon */
-
     if (
         selectedLayer &&
         selectedLayer !== layer
@@ -828,7 +971,9 @@ function selectPolygon(layer) {
             selectedLayer.pm.disable();
 
             selectedLayer.setStyle({
+
                 weight: 2
+
             });
 
         } catch (error) {}
@@ -836,17 +981,16 @@ function selectPolygon(layer) {
     }
 
 
-    selectedLayer = layer;
+    selectedLayer =
+        layer;
 
-
-    /* Highlight */
 
     selectedLayer.setStyle({
+
         weight: 4
+
     });
 
-
-    /* Enable editing */
 
     try {
 
@@ -862,7 +1006,7 @@ function selectPolygon(layer) {
 
 
 /* =========================================================
-   HISTORY
+   GET CURRENT DATA
 ========================================================= */
 
 function getCurrentData() {
@@ -872,7 +1016,9 @@ function getCurrentData() {
 
     for (
         const [name, layer]
-        of Object.entries(loadedLayers)
+        of Object.entries(
+            loadedLayers
+        )
     ) {
 
         data[name] =
@@ -886,6 +1032,10 @@ function getCurrentData() {
 }
 
 
+/* =========================================================
+   HISTORY
+========================================================= */
+
 function saveHistory() {
 
     const snapshot =
@@ -894,10 +1044,14 @@ function saveHistory() {
         );
 
 
-    undoStack.push(snapshot);
+    undoStack.push(
+        snapshot
+    );
 
 
-    if (undoStack.length > 50) {
+    if (
+        undoStack.length > 50
+    ) {
 
         undoStack.shift();
 
@@ -912,20 +1066,28 @@ function saveHistory() {
 function restoreSnapshot(snapshot) {
 
     const data =
-        JSON.parse(snapshot);
+        JSON.parse(
+            snapshot
+        );
 
 
     for (
         const [name, layer]
-        of Object.entries(loadedLayers)
+        of Object.entries(
+            loadedLayers
+        )
     ) {
 
-        map.removeLayer(layer);
+        map.removeLayer(
+            layer
+        );
 
     }
 
 
     loadedLayers = {};
+
+    selectedLayer = null;
 
 
     for (
@@ -971,13 +1133,11 @@ function restoreSnapshot(snapshot) {
 
         layer.addTo(map);
 
+
         loadedLayers[name] =
             layer;
 
     }
-
-
-    selectedLayer = null;
 
 }
 
@@ -992,15 +1152,22 @@ document.getElementById(
     "click",
     function () {
 
-        if (undoStack.length <= 1)
+        if (
+            undoStack.length <= 1
+        ) {
+
             return;
+
+        }
 
 
         const current =
             undoStack.pop();
 
 
-        redoStack.push(current);
+        redoStack.push(
+            current
+        );
 
 
         const previous =
@@ -1009,7 +1176,9 @@ document.getElementById(
             ];
 
 
-        restoreSnapshot(previous);
+        restoreSnapshot(
+            previous
+        );
 
     }
 );
@@ -1025,18 +1194,27 @@ document.getElementById(
     "click",
     function () {
 
-        if (!redoStack.length)
+        if (
+            !redoStack.length
+        ) {
+
             return;
+
+        }
 
 
         const next =
             redoStack.pop();
 
 
-        undoStack.push(next);
+        undoStack.push(
+            next
+        );
 
 
-        restoreSnapshot(next);
+        restoreSnapshot(
+            next
+        );
 
     }
 );
@@ -1065,7 +1243,9 @@ document.getElementById(
 
         for (
             const layer
-            of Object.values(loadedLayers)
+            of Object.values(
+                loadedLayers
+            )
         ) {
 
             if (
@@ -1086,6 +1266,7 @@ document.getElementById(
 
 
         selectedLayer = null;
+
 
         saveHistory();
 
@@ -1110,7 +1291,8 @@ document.getElementById(
 
 
         if (
-            panel.style.display === "block"
+            panel.style.display ===
+            "block"
         ) {
 
             panel.style.display =
@@ -1153,7 +1335,9 @@ const layerCheckboxes = {
 
 for (
     const [checkboxId, layerName]
-    of Object.entries(layerCheckboxes)
+    of Object.entries(
+        layerCheckboxes
+    )
 ) {
 
     document.getElementById(
@@ -1163,7 +1347,9 @@ for (
         function () {
 
             const layer =
-                loadedLayers[layerName];
+                loadedLayers[
+                    layerName
+                ];
 
 
             if (!layer)
@@ -1172,11 +1358,15 @@ for (
 
             if (this.checked) {
 
-                layer.addTo(map);
+                layer.addTo(
+                    map
+                );
 
             } else {
 
-                map.removeLayer(layer);
+                map.removeLayer(
+                    layer
+                );
 
             }
 
@@ -1214,7 +1404,9 @@ document.getElementById(
 
         localStorage.setItem(
             "polrad_editor_data",
-            JSON.stringify(savedData)
+            JSON.stringify(
+                savedData
+            )
         );
 
 
@@ -1268,7 +1460,9 @@ document.getElementById(
             );
 
 
-        link.href = url;
+        link.href =
+            url;
+
 
         link.download =
             "polrad-edited-data.json";
@@ -1277,7 +1471,9 @@ document.getElementById(
         link.click();
 
 
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(
+            url
+        );
 
     }
 );
@@ -1337,7 +1533,9 @@ document.getElementById(
             );
 
 
-        button.disabled = true;
+        button.disabled =
+            true;
+
 
         button.textContent =
             "Publishing...";
@@ -1399,16 +1597,22 @@ document.getElementById(
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                error
+            );
+
 
             alert(
                 "Publish failed: " +
                 error.message
             );
 
+
         } finally {
 
-            button.disabled = false;
+            button.disabled =
+                false;
+
 
             button.textContent =
                 "Publish";
@@ -1447,6 +1651,7 @@ async function searchLocation() {
 
     /* =====================================================
        COORDINATES
+
        Example:
        48.45, 37.12
     ===================================================== */
@@ -1493,7 +1698,6 @@ async function searchLocation() {
 
     /* =====================================================
        TOWN / CITY SEARCH
-       OpenStreetMap Nominatim
     ===================================================== */
 
     try {
@@ -1602,3 +1806,4 @@ searchInput.addEventListener(
 
 </body>
 </html>
+```
