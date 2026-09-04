@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD Map Editor 2.0</title>
+  <title>POLRAD map editor 2.0</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -259,7 +259,7 @@
   </div>
 
   <div id="side">
-    <div class="head">POLRAD MAPPING — Editor</div>
+    <div class="head">POLRAD map editor 2.0</div>
 
     <div class="body">
       <div class="actions">
@@ -531,7 +531,7 @@
 
         const arrow = document.createElement("button");
         arrow.className = "arrow";
-        arrow.textContent = "▾";
+        arrow.textContent = "▸";
 
         const swatch = document.createElement("span");
         swatch.className = "sw";
@@ -550,6 +550,7 @@
 
         const list = document.createElement("div");
         list.className = "plist";
+        list.hidden = true;
 
         arrow.onclick = function() {
           list.hidden = !list.hidden;
@@ -851,6 +852,7 @@
         );
 
         hybrid.addTo(map);
+        // Hybrid is the default basemap.
 
         L.control.layers({
           "Hybrid": hybrid,
@@ -934,6 +936,7 @@
       );
 
       setStatus("Saved in this browser.");
+      alert("Changes saved successfully.");
     };
 
     $("download").onclick = function() {
@@ -985,6 +988,7 @@
         }
 
         setStatus("Published successfully.");
+        alert("Published successfully!");
       } catch (error) {
         setStatus(error.message);
       }
