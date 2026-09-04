@@ -301,6 +301,7 @@
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
+    const MAPTILER_KEY = "OSIVos0hGQi6oPh0K1CD";
 
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#d94b4b"],
@@ -869,6 +870,8 @@
           "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
           { attribution: "Labels © Esri" }
         );
+
+        const hybrid = L.layerGroup([satellite, labels]);
 
         /* MapTiler Hybrid - DEFAULT */
         const leafletHybrid = L.tileLayer(
