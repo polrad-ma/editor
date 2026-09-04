@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,16 +7,20 @@
 <title>POLRAD MAPPING — Editor</title>
 
 <link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 />
 
 <link
-  rel="stylesheet"
-  href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
+    rel="stylesheet"
+    href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
 />
 
 <style>
+
+/* =========================================================
+   GENERAL
+========================================================= */
 
 html, body {
     margin: 0;
@@ -33,6 +36,7 @@ html, body {
     width: 100%;
     height: 100%;
 }
+
 
 /* =========================================================
    LOGIN
@@ -112,8 +116,9 @@ html, body {
     font-size: 14px;
 }
 
+
 /* =========================================================
-   TOP TOOLBAR
+   TOOLBAR
 ========================================================= */
 
 #toolbar {
@@ -156,6 +161,12 @@ html, body {
 .toolButton:hover {
     background: #3a3a3a;
 }
+
+.toolButton:disabled {
+    opacity: .6;
+    cursor: default;
+}
+
 
 /* =========================================================
    SEARCH
@@ -226,6 +237,64 @@ html, body {
     background: #383838;
 }
 
+
+/* =========================================================
+   NEW POLYGON LAYER SELECTOR
+========================================================= */
+
+#polygonLayerSelector {
+    position: fixed;
+
+    top: 55px;
+    left: 10px;
+
+    z-index: 3000;
+
+    display: none;
+
+    align-items: center;
+    gap: 8px;
+
+    padding: 7px 9px;
+
+    background: rgba(23,23,23,.96);
+
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px;
+
+    color: white;
+
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+
+    font-size: 13px;
+}
+
+#polygonLayerSelector label {
+    white-space: nowrap;
+}
+
+#newPolygonLayer {
+    height: 32px;
+
+    padding: 0 8px;
+
+    background: #292929;
+    color: white;
+
+    border: 1px solid #555;
+    border-radius: 6px;
+
+    outline: none;
+
+    cursor: pointer;
+}
+
+#newPolygonLayer option {
+    background: #222;
+    color: white;
+}
+
+
 /* =========================================================
    LAYER PANEL
 ========================================================= */
@@ -233,7 +302,7 @@ html, body {
 #layerPanel {
     position: fixed;
 
-    top: 60px;
+    top: 105px;
     left: 10px;
 
     z-index: 3000;
@@ -272,6 +341,7 @@ html, body {
     margin-right: 8px;
 }
 
+
 /* =========================================================
    MOBILE
 ========================================================= */
@@ -292,8 +362,16 @@ html, body {
         top: 65px;
     }
 
-    #layerPanel {
+    #polygonLayerSelector {
         top: 120px;
+
+        max-width: calc(100vw - 40px);
+
+        flex-wrap: wrap;
+    }
+
+    #layerPanel {
+        top: 185px;
     }
 
 }
@@ -302,6 +380,7 @@ html, body {
 </head>
 
 <body>
+
 
 <!-- =======================================================
      LOGIN
@@ -399,6 +478,43 @@ html, body {
 
 
 <!-- =======================================================
+     NEW POLYGON LAYER SELECTOR
+======================================================= -->
+
+<div id="polygonLayerSelector">
+
+    <label for="newPolygonLayer">
+        New polygon layer:
+    </label>
+
+    <select id="newPolygonLayer">
+
+        <option value="Ukrainian-controlled territory">
+            🔵 Ukrainian-controlled territory
+        </option>
+
+        <option value="Russian-controlled territory">
+            🔴 Russian-controlled territory
+        </option>
+
+        <option value="Ukrainian advances">
+            🩵 Ukrainian advances
+        </option>
+
+        <option value="Russian advances">
+            🟡 Russian advances
+        </option>
+
+        <option value="Territories regained in the last month">
+            🟢 Territories regained in the last month
+        </option>
+
+    </select>
+
+</div>
+
+
+<!-- =======================================================
      LAYER PANEL
 ======================================================= -->
 
@@ -407,28 +523,67 @@ html, body {
     <h3>Layers</h3>
 
     <label class="layerRow">
-        <input type="checkbox" id="layerRussianControlled" checked>
+
+        <input
+            type="checkbox"
+            id="layerRussianControlled"
+            checked
+        >
+
         Russian-controlled territory
+
     </label>
 
+
     <label class="layerRow">
-        <input type="checkbox" id="layerUkrainianControlled" checked>
+
+        <input
+            type="checkbox"
+            id="layerUkrainianControlled"
+            checked
+        >
+
         Ukrainian-controlled territory
+
     </label>
 
+
     <label class="layerRow">
-        <input type="checkbox" id="layerUkrainianAdvances" checked>
+
+        <input
+            type="checkbox"
+            id="layerUkrainianAdvances"
+            checked
+        >
+
         Ukrainian advances
+
     </label>
 
+
     <label class="layerRow">
-        <input type="checkbox" id="layerRussianAdvances" checked>
+
+        <input
+            type="checkbox"
+            id="layerRussianAdvances"
+            checked
+        >
+
         Russian advances
+
     </label>
 
+
     <label class="layerRow">
-        <input type="checkbox" id="layerRegained" checked>
+
+        <input
+            type="checkbox"
+            id="layerRegained"
+            checked
+        >
+
         Territories regained in the last month
+
     </label>
 
 </div>
@@ -564,8 +719,10 @@ async function login() {
                     method: "POST",
 
                     headers: {
+
                         "Content-Type":
                             "application/json"
+
                     },
 
                     body:
@@ -604,6 +761,12 @@ async function login() {
 
         document.getElementById(
             "toolbar"
+        ).style.display =
+            "flex";
+
+
+        document.getElementById(
+            "polygonLayerSelector"
         ).style.display =
             "flex";
 
@@ -654,16 +817,8 @@ async function initializeMap() {
 
 
     /* =====================================================
-       BASEMAPS
+       HYBRID BASEMAP
     ===================================================== */
-
-
-    /*
-       HYBRID
-
-       Esri satellite imagery
-       + Esri reference labels
-    */
 
     const hybridImagery =
         L.tileLayer(
@@ -693,11 +848,6 @@ async function initializeMap() {
         );
 
 
-    /*
-       Put satellite imagery underneath
-       the labels.
-    */
-
     const hybrid =
         L.layerGroup([
             hybridImagery,
@@ -705,9 +855,9 @@ async function initializeMap() {
         ]);
 
 
-    /*
+    /* =====================================================
        OPENSTREETMAP
-    */
+    ===================================================== */
 
     const openStreetMap =
         L.tileLayer(
@@ -723,9 +873,9 @@ async function initializeMap() {
         );
 
 
-    /*
+    /* =====================================================
        OPENTOPOMAP
-    */
+    ===================================================== */
 
     const openTopoMap =
         L.tileLayer(
@@ -741,38 +891,39 @@ async function initializeMap() {
         );
 
 
-    /*
-       HYBRID IS DEFAULT
-    */
+    /* =====================================================
+       HYBRID DEFAULT
+    ===================================================== */
 
     hybrid.addTo(map);
 
 
-    /*
+    /* =====================================================
        BASEMAP SELECTOR
-    */
+    ===================================================== */
 
     const baseMaps = {
 
-        "🛰️ Hybrid": hybrid,
+        "🛰️ Hybrid":
+            hybrid,
 
-        "🗺️ OpenStreetMap": openStreetMap,
+        "🗺️ OpenStreetMap":
+            openStreetMap,
 
-        "🏔️ OpenTopoMap": openTopoMap
+        "🏔️ OpenTopoMap":
+            openTopoMap
 
     };
 
 
-    L.control
-        .layers(
-            baseMaps,
-            null,
-            {
-                position: "topright",
-                collapsed: true
-            }
-        )
-        .addTo(map);
+    L.control.layers(
+        baseMaps,
+        null,
+        {
+            position: "topright",
+            collapsed: true
+        }
+    ).addTo(map);
 
 
     /* =====================================================
@@ -814,29 +965,35 @@ async function initializeMap() {
 
 
     /* =====================================================
-       HISTORY
+       INITIAL HISTORY
     ===================================================== */
 
     saveHistory();
 
 
     /* =====================================================
-       EDIT EVENTS
+       POLYGON CREATED
     ===================================================== */
 
     map.on(
         "pm:create",
-        function () {
+        function(event) {
 
-            saveHistory();
+            handleNewPolygon(
+                event.layer
+            );
 
         }
     );
 
 
+    /* =====================================================
+       POLYGON REMOVED
+    ===================================================== */
+
     map.on(
         "pm:remove",
-        function () {
+        function() {
 
             saveHistory();
 
@@ -847,7 +1004,7 @@ async function initializeMap() {
 
 
 /* =========================================================
-   LOAD ALL GEOJSON LAYERS
+   LOAD ALL GEOJSON
 ========================================================= */
 
 async function loadAllLayers() {
@@ -888,7 +1045,7 @@ async function loadAllLayers() {
 
 
                         onEachFeature:
-                            function (
+                            function(
                                 feature,
                                 featureLayer
                             ) {
@@ -927,7 +1084,7 @@ async function loadAllLayers() {
 
 
 /* =========================================================
-   POLYGON SELECTION
+   SETUP EXISTING POLYGON
 ========================================================= */
 
 function setupPolygon(
@@ -937,7 +1094,7 @@ function setupPolygon(
 
     featureLayer.on(
         "click",
-        function () {
+        function() {
 
             selectPolygon(
                 featureLayer
@@ -949,7 +1106,7 @@ function setupPolygon(
 
     featureLayer.on(
         "pm:edit",
-        function () {
+        function() {
 
             saveHistory();
 
@@ -958,6 +1115,10 @@ function setupPolygon(
 
 }
 
+
+/* =========================================================
+   SELECT POLYGON
+========================================================= */
 
 function selectPolygon(layer) {
 
@@ -1001,6 +1162,124 @@ function selectPolygon(layer) {
         console.error(error);
 
     }
+
+}
+
+
+/* =========================================================
+   NEW POLYGON
+========================================================= */
+
+function handleNewPolygon(
+    polygon
+) {
+
+    const selectedLayerName =
+        document.getElementById(
+            "newPolygonLayer"
+        ).value;
+
+
+    const targetLayer =
+        loadedLayers[
+            selectedLayerName
+        ];
+
+
+    if (!targetLayer) {
+
+        console.error(
+            "Target layer not found:",
+            selectedLayerName
+        );
+
+        map.removeLayer(
+            polygon
+        );
+
+        return;
+
+    }
+
+
+    /*
+       Geoman initially places the polygon
+       directly on the map.
+
+       Remove it from the map first.
+    */
+
+    map.removeLayer(
+        polygon
+    );
+
+
+    /*
+       Give the polygon basic GeoJSON
+       properties.
+    */
+
+    polygon.feature = {
+
+        type: "Feature",
+
+        properties: {
+
+            Name: "New polygon"
+
+        },
+
+        geometry: polygon.toGeoJSON().geometry
+
+    };
+
+
+    /*
+       Apply the target layer's style.
+    */
+
+    polygon.setStyle({
+
+        color:
+            layerColors[
+                selectedLayerName
+            ],
+
+        fillColor:
+            layerColors[
+                selectedLayerName
+            ],
+
+        weight: 2,
+
+        fillOpacity: 0.45
+
+    });
+
+
+    /*
+       Add it to the selected GeoJSON layer.
+    */
+
+    targetLayer.addLayer(
+        polygon
+    );
+
+
+    /*
+       Make it the selected polygon.
+    */
+
+    selectPolygon(
+        polygon
+    );
+
+
+    /*
+       Save the change to history.
+    */
+
+    saveHistory();
 
 }
 
@@ -1063,7 +1342,13 @@ function saveHistory() {
 }
 
 
-function restoreSnapshot(snapshot) {
+/* =========================================================
+   RESTORE HISTORY SNAPSHOT
+========================================================= */
+
+function restoreSnapshot(
+    snapshot
+) {
 
     const data =
         JSON.parse(
@@ -1115,7 +1400,7 @@ function restoreSnapshot(snapshot) {
                     },
 
                     onEachFeature:
-                        function (
+                        function(
                             feature,
                             featureLayer
                         ) {
@@ -1150,7 +1435,7 @@ document.getElementById(
     "undoButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         if (
             undoStack.length <= 1
@@ -1192,7 +1477,7 @@ document.getElementById(
     "redoButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         if (
             !redoStack.length
@@ -1228,7 +1513,7 @@ document.getElementById(
     "deleteButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         if (!selectedLayer) {
 
@@ -1282,7 +1567,7 @@ document.getElementById(
     "layersButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         const panel =
             document.getElementById(
@@ -1344,7 +1629,7 @@ for (
         checkboxId
     ).addEventListener(
         "change",
-        function () {
+        function() {
 
             const layer =
                 loadedLayers[
@@ -1384,7 +1669,7 @@ document.getElementById(
     "saveButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         const savedData = {};
 
@@ -1426,7 +1711,7 @@ document.getElementById(
     "downloadButton"
 ).addEventListener(
     "click",
-    function () {
+    function() {
 
         const data =
             getCurrentData();
@@ -1487,7 +1772,7 @@ document.getElementById(
     "resetButton"
 ).addEventListener(
     "click",
-    async function () {
+    function() {
 
         if (
             !confirm(
@@ -1514,7 +1799,7 @@ document.getElementById(
     "publishButton"
 ).addEventListener(
     "click",
-    async function () {
+    async function() {
 
         if (
             !confirm(
@@ -1533,9 +1818,7 @@ document.getElementById(
             );
 
 
-        button.disabled =
-            true;
-
+        button.disabled = true;
 
         button.textContent =
             "Publishing...";
@@ -1610,9 +1893,7 @@ document.getElementById(
 
         } finally {
 
-            button.disabled =
-                false;
-
+            button.disabled = false;
 
             button.textContent =
                 "Publish";
@@ -1651,9 +1932,6 @@ async function searchLocation() {
 
     /* =====================================================
        COORDINATES
-
-       Example:
-       48.45, 37.12
     ===================================================== */
 
     const coordinateMatch =
@@ -1806,4 +2084,3 @@ searchInput.addEventListener(
 
 </body>
 </html>
-```
