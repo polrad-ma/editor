@@ -1,23 +1,3907 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>POLRAD MAPPING — Editor</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css"><link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"><style>*{box-sizing:border-box}html,body,#map{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}#map{position:absolute;left:340px;width:calc(100% - 340px)}#side{display:none;position:absolute;z-index:2000;left:0;top:0;bottom:0;width:340px;background:#fff;border-right:1px solid #ddd;overflow:auto}.head{height:62px;padding:12px 15px;border-bottom:1px solid #ddd;font-weight:600;font-size:16px}.body{padding:12px}.actions{display:flex;gap:5px;margin-bottom:9px}.btn{border:1px solid #ccc;background:#fff;border-radius:6px;padding:7px 9px;cursor:pointer}.primary{background:#1a73e8;color:#fff;border-color:#1a73e8}#search{width:100%;height:36px;border:1px solid #ccc;border-radius:6px;padding:0 9px;margin-bottom:9px}.box{background:#f7f8f9;border:1px solid #ddd;border-radius:7px;padding:9px;margin-bottom:10px}.box label{font-size:11px;color:#777}.box select{width:100%;height:34px;margin-top:4px;border:1px solid #ccc;border-radius:5px;background:#fff}.box button{width:100%;margin-top:7px}.layer{border:1px solid transparent;border-radius:7px;padding:5px;margin:2px 0}.layer.drop{background:#e8f0fe;border-color:#1a73e8}.lh{display:flex;align-items:center;gap:6px;min-height:28px}.arrow{border:0;background:none;cursor:pointer;width:20px}.sw{width:14px;height:14px;border-radius:3px;border:1px solid #aaa}.lname{flex:1;font-size:13px;cursor:pointer}.count{font-size:11px;color:#888}.plist{margin-left:27px}.item{display:flex;gap:6px;padding:6px;border-radius:5px;font-size:12px;cursor:grab;border:1px solid transparent;user-select:none}.item:hover{background:#f1f3f4}.item.selected{background:#e8f0fe;border-color:#c5d7f7;color:#174ea6}.item.dragging{opacity:.4}.grip{color:#999}.section{border-top:1px solid #e5e5e5;padding-top:9px;margin-top:9px}.small{font-size:11px;color:#777}#login{position:fixed;inset:0;z-index:9999;background:#202124;display:flex;align-items:center;justify-content:center}#loginbox{width:350px;max-width:90vw;background:#303134;color:white;padding:22px;border-radius:10px}#password{width:100%;height:40px;background:#202124;color:white;border:1px solid #666;border-radius:5px;padding:0 9px}#loginbtn{width:100%;height:40px;margin-top:8px;background:#1a73e8;color:white;border:0;border-radius:5px;cursor:pointer}#err{display:none;color:#ff8a80;font-size:12px;margin-top:8px}</style></head><body>
-<div id="login"><div id="loginbox"><h2>POLRAD MAPPING</h2><div style="color:#bbb;font-size:13px;margin-bottom:14px">Editor access</div><input id="password" type="password" placeholder="Password"><button id="loginbtn">Enter</button><div id="err">Incorrect password.</div></div></div>
-<div id="side"><div class="head">POLRAD MAPPING — Editor</div><div class="body"><div class="actions"><button class="btn" id="save">Save</button><button class="btn" id="download">Download</button><button class="btn" id="reset">Reset</button><button class="btn primary" id="publish">Publish</button></div><input id="search" placeholder="Search polygons..."><div class="box"><b style="font-size:13px">Draw polygon</b><label style="display:block;margin-top:7px">New polygon layer</label><select id="drawLayer"></select><button class="btn primary" id="draw">Draw a polygon</button></div><div class="box" id="selectedBox" style="display:none"><b id="selectedName" style="font-size:13px"></b><label style="display:block;margin-top:7px">Layer</label><select id="selectedLayer"></select><button class="btn" id="delete" style="color:#b3261e">Delete polygon</button></div><div class="section"><b style="font-size:12px;color:#777">LAYERS</b></div><div id="layers"></div><div class="small" id="status">Ready.</div></div></div><div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script><script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script><script>
-const WORKER='https://polrad-editor-api.streetviewfun066.workers.dev/';const C=[['ru_territory','Russian-controlled territory','Russian-controlled%20territory.geojson','#d94b4b'],['ua_territory','Ukrainian-controlled territory','Ukrainian-controlled%20territory.geojson','#4b83d9'],['ua_advances','Ukrainian advances','Ukrainian%20advances.geojson','#6fb7ff'],['ru_advances','Russian advances','Russian%20advances.geojson','#f1c40f'],['regained','Territories regained in the last month','Territories%20regained%20in%20the%20last%20month.geojson','#42b883']];let map,groups={},selected=null,drawing=false,n=1,history=[],hi=-1;
-const $=x=>document.getElementById(x),cfg=id=>C.find(c=>c[0]===id),name=l=>(l.feature&&l.feature.properties&&(l.feature.properties.Name||l.feature.properties.name))||'New polygon';
-function status(s){$('status').textContent=s}function style(l,sel=false){let c=cfg(l._layer);l.setStyle({color:c[3],fillColor:c[3],fillOpacity:.4,weight:sel?4:2})}function deselect(){if(selected){selected.pm.disable();style(selected)}selected=null;$('selectedBox').style.display='none';render()}
-function select(l){if(selected&&selected!==l){selected.pm.disable();style(selected)}selected=l;drawing=false;l.pm.enable();style(l,true);$('selectedBox').style.display='block';$('selectedName').textContent=name(l);$('selectedLayer').value=l._layer;render()}
-function setup(l,id){l._layer=id;l._fid=l._fid||('p-'+Date.now()+'-'+Math.random());l.feature=l.feature||{type:'Feature',properties:{}};l.feature.properties=l.feature.properties||{};if(!l.feature.properties.Name)l.feature.properties.Name='New polygon '+n++;style(l);l.on('click',e=>{L.DomEvent.stopPropagation(e);if(!drawing)select(l)});l.on('pm:edit',()=>status('Unsaved changes.'))}
-function find(fid){for(let c of C){let x=null;groups[c[0]].eachLayer(l=>{if(l._fid===fid)x=l});if(x)return x}}
-function move(l,to){let from=l._layer;if(from===to)return select(l);let g=groups[from],ng=groups[to];let f=l.toGeoJSON();f.properties=Object.assign({},l.feature.properties);g.removeLayer(l);l.feature=f;l._layer=to;style(l,selected===l);ng.addLayer(l);select(l);status('Polygon moved to '+cfg(to)[1]+'.');render()}
-function render(){let q=$('search').value.toLowerCase(),out=$('layers');out.innerHTML='';C.forEach(c=>{let id=c[0],g=groups[id],arr=g.getLayers();let row=document.createElement('div');row.className='layer';row.dataset.id=id;let h=document.createElement('div');h.className='lh';let a=document.createElement('button');a.className='arrow';a.textContent='▾';let sw=document.createElement('span');sw.className='sw';sw.style.background=c[3];let nm=document.createElement('span');nm.className='lname';nm.textContent=c[1];let ct=document.createElement('span');ct.className='count';ct.textContent=arr.length;h.append(a,sw,nm,ct);row.appendChild(h);let list=document.createElement('div');list.className='plist';a.onclick=()=>{list.hidden=!list.hidden;a.textContent=list.hidden?'▸':'▾'};arr.filter(l=>!q||name(l).toLowerCase().includes(q)).forEach(l=>{let it=document.createElement('div');it.className='item'+(l===selected?' selected':'');it.draggable=true;it.innerHTML='<span class="grip">⋮⋮</span><span>'+name(l)+'</span>';it.onclick=()=>select(l);it.ondragstart=e=>{e.dataTransfer.setData('text/polygon',l._fid);it.classList.add('dragging')};it.ondragend=()=>it.classList.remove('dragging');list.appendChild(it)});row.appendChild(list);h.ondragover=e=>{e.preventDefault();row.classList.add('drop')};h.ondragleave=()=>row.classList.remove('drop');h.ondrop=e=>{e.preventDefault();row.classList.remove('drop');let l=find(e.dataTransfer.getData('text/polygon'));if(l)move(l,id)};out.appendChild(row)})}
-function selects(){C.forEach(c=>{for(let id of ['drawLayer','selectedLayer']){let o=document.createElement('option');o.value=c[0];o.textContent=c[1];$(id).appendChild(o)}})}
-function add(feature,id){let l=L.geoJSON(feature).getLayers()[0];if(!l)return;setup(l,id);groups[id].addLayer(l)}
-function snapshot(){let s={};C.forEach(c=>s[c[0]]={type:'FeatureCollection',features:groups[c[0]].getLayers().map(l=>{let f=l.toGeoJSON();f.properties=Object.assign({},l.feature.properties);return f})});return JSON.parse(JSON.stringify(s))}function hist(){history=history.slice(0,hi+1);history.push(snapshot());if(history.length>40)history.shift();hi=history.length-1}
-function restore(s){deselect();C.forEach(c=>groups[c[0]].clearLayers());C.forEach(c=>(s[c[0]]?.features||[]).forEach(f=>add(f,c[0])));render()}
-function start(){deselect();drawing=true;Object.values(groups).forEach(g=>g.eachLayer(l=>l.pm.disable()));map.pm.enableDraw('Polygon',{snappable:true,allowSelfIntersection:false})}
-function created(e){let l=e.layer,id=$('drawLayer').value;map.pm.disableDraw();drawing=false;map.removeLayer(l);l.feature={type:'Feature',properties:{Name:'New polygon '+n++},geometry:l.toGeoJSON().geometry};l._layer=id;l._fid='new-'+Date.now()+'-'+Math.random();setup(l,id);groups[id].addLayer(l);hist();select(l);status('New polygon added to '+cfg(id)[1]+'.')}
-async function load(){for(let c of C){groups[c[0]]=L.featureGroup().addTo(map);try{let r=await fetch('data/'+c[2]);let d=await r.json();(d.features||[]).forEach(f=>add(f,c[0]))}catch(e){status('Could not load '+c[1])}}hist();render()}
-function data(){let x={};C.forEach(c=>x[c[1]]=groups[c[0]].getLayers().map(l=>{let f=l.toGeoJSON();f.properties=Object.assign({},l.feature.properties);return f}));return x}
-async function login(){try{let r=await fetch(WORKER,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',password:$('password').value})});let x=await r.json();if(!r.ok||!x.success)throw 0;$('login').style.display='none';$('side').style.display='block';map=L.map('map',{center:[48,37.75],zoom:7});let im=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles © Esri'}),lab=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{attribution:'Labels © Esri'}),hy=L.layerGroup([im,lab]),osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}),top=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'© OpenTopoMap'});hy.addTo(map);L.control.layers({'Hybrid':hy,'Satellite':im,'OpenStreetMap':osm,'OpenTopoMap':top}).addTo(map);map.on('click',deselect);map.on('pm:create',created);map.pm.addControls({position:'bottomleft',drawMarker:false,drawCircleMarker:false,drawPolyline:false,drawRectangle:false,drawCircle:false,drawText:false,editMode:false,dragMode:false,cutPolygon:false,removalMode:false,drawPolygon:false});selects();await load()}catch(e){$('err').style.display='block'}}
-$('loginbtn').onclick=login;$('password').onkeydown=e=>e.key==='Enter'&&login();$('draw').onclick=start;$('delete').onclick=()=>{if(selected){groups[selected._layer].removeLayer(selected);selected=null;$('selectedBox').style.display='none';hist();render();status('Polygon deleted.')}};$('selectedLayer').onchange=e=>selected&&move(selected,e.target.value);$('search').oninput=render;$('save').onclick=()=>{localStorage.setItem('polrad_editor_data',JSON.stringify(data()));status('Saved in this browser.')};$('download').onclick=()=>{let b=new Blob([JSON.stringify(data(),null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='polrad-edited-data.json';a.click();URL.revokeObjectURL(u)};$('reset').onclick=()=>confirm('Reset all edits?')&&(localStorage.removeItem('polrad_editor_data'),location.reload());$('publish').onclick=async()=>{status('Publishing...');try{let r=await fetch(WORKER,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'publish',files:data()})});let x=await r.json();if(!r.ok||!x.success)throw new Error(x.error||'Publish failed');status('Published successfully.')}catch(e){status(e.message)}};
-</script></body></html>
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>POLRAD MAPPING — Editor</title>
+
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css"
+/>
+
+<style>
+
+/* =========================================================
+   GENERAL
+========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 340px;
+}
+
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+#loginScreen {
+    position: fixed;
+    inset: 0;
+
+    background: #202124;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    z-index: 10000;
+}
+
+#loginBox {
+    width: 340px;
+
+    background: white;
+
+    padding: 30px;
+
+    border-radius: 12px;
+
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+
+    text-align: center;
+}
+
+#loginBox h2 {
+    margin: 0 0 24px 0;
+
+    color: #202124;
+}
+
+#passwordInput {
+    display: block;
+
+    width: 100%;
+
+    padding: 12px;
+
+    border: 1px solid #dadce0;
+
+    border-radius: 6px;
+
+    background: white;
+
+    color: #202124;
+
+    font-size: 15px;
+
+    outline: none;
+
+    pointer-events: auto;
+
+    user-select: text;
+}
+
+#passwordInput:focus {
+    border-color: #1a73e8;
+
+    box-shadow: 0 0 0 1px #1a73e8;
+}
+
+#loginButton {
+    width: 100%;
+
+    margin-top: 12px;
+
+    padding: 12px;
+
+    border: none;
+
+    border-radius: 6px;
+
+    background: #1a73e8;
+
+    color: white;
+
+    font-size: 15px;
+
+    cursor: pointer;
+}
+
+#loginButton:hover {
+    background: #1769d1;
+}
+
+#loginButton:disabled {
+    opacity: 0.7;
+
+    cursor: wait;
+}
+
+#loginError {
+    display: none;
+
+    margin-top: 12px;
+
+    color: #d93025;
+
+    font-size: 14px;
+}
+
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+#sidebar {
+    position: fixed;
+
+    top: 0;
+    left: 0;
+    bottom: 0;
+
+    width: 340px;
+
+    background: white;
+
+    z-index: 5000;
+
+    border-right: 1px solid #dadce0;
+
+    display: none;
+
+    flex-direction: column;
+}
+
+
+/* =========================================================
+   SIDEBAR HEADER
+========================================================= */
+
+#sidebarHeader {
+    height: 64px;
+
+    display: flex;
+
+    align-items: center;
+
+    padding: 0 18px;
+
+    border-bottom: 1px solid #e0e0e0;
+}
+
+#sidebarTitle {
+    font-size: 18px;
+
+    font-weight: 500;
+
+    color: #202124;
+}
+
+#sidebarSubtitle {
+    font-size: 12px;
+
+    color: #70757a;
+
+    margin-left: auto;
+}
+
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+#searchArea {
+    padding: 10px 12px;
+
+    border-bottom: 1px solid #e0e0e0;
+}
+
+#searchBox {
+    display: flex;
+
+    align-items: center;
+
+    background: #f1f3f4;
+
+    border-radius: 24px;
+
+    padding: 0 10px;
+}
+
+#searchInput {
+    flex: 1;
+
+    border: none;
+
+    outline: none;
+
+    background: transparent;
+
+    padding: 11px 8px;
+
+    font-size: 14px;
+}
+
+#searchButton {
+    border: none;
+
+    background: transparent;
+
+    cursor: pointer;
+
+    font-size: 18px;
+
+    padding: 5px;
+}
+
+
+/* =========================================================
+   DRAWING
+========================================================= */
+
+#drawingSection {
+    padding: 12px;
+
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.sectionTitle {
+    font-size: 12px;
+
+    text-transform: uppercase;
+
+    letter-spacing: 0.5px;
+
+    color: #70757a;
+
+    margin-bottom: 8px;
+}
+
+#drawPolygonButton {
+    width: 100%;
+
+    padding: 11px;
+
+    border: 1px solid #dadce0;
+
+    border-radius: 6px;
+
+    background: white;
+
+    color: #202124;
+
+    cursor: pointer;
+
+    font-size: 14px;
+
+    text-align: left;
+}
+
+#drawPolygonButton:hover {
+    background: #f8f9fa;
+}
+
+#drawPolygonButton.active {
+    background: #e8f0fe;
+
+    border-color: #1a73e8;
+
+    color: #1a73e8;
+}
+
+
+/* =========================================================
+   TARGET LAYER
+========================================================= */
+
+#targetLayerArea {
+    margin-top: 10px;
+
+    display: block;
+}
+
+#targetLayerSelect {
+    width: 100%;
+
+    padding: 9px;
+
+    border: 1px solid #dadce0;
+
+    border-radius: 6px;
+
+    background: white;
+
+    font-size: 13px;
+}
+
+
+/* =========================================================
+   SELECTED POLYGON
+========================================================= */
+
+#selectedSection {
+    display: none;
+
+    padding: 12px;
+
+    border-bottom: 1px solid #e0e0e0;
+
+    background: #f8f9fa;
+}
+
+#selectedName {
+    font-size: 14px;
+
+    font-weight: 500;
+
+    margin-bottom: 8px;
+
+    color: #202124;
+}
+
+#selectedLayerSelect {
+    width: 100%;
+
+    padding: 8px;
+
+    border: 1px solid #dadce0;
+
+    border-radius: 6px;
+
+    background: white;
+
+    font-size: 13px;
+}
+
+#deleteSelectedButton {
+    width: 100%;
+
+    margin-top: 8px;
+
+    padding: 8px;
+
+    border: 1px solid #dadce0;
+
+    border-radius: 6px;
+
+    background: white;
+
+    color: #d93025;
+
+    cursor: pointer;
+}
+
+#deleteSelectedButton:hover {
+    background: #fce8e6;
+}
+
+
+/* =========================================================
+   LAYERS
+========================================================= */
+
+#layersArea {
+    flex: 1;
+
+    overflow-y: auto;
+
+    padding-bottom: 10px;
+}
+
+#layersHeader {
+    padding: 14px 14px 8px 14px;
+
+    font-size: 12px;
+
+    text-transform: uppercase;
+
+    color: #70757a;
+
+    letter-spacing: 0.5px;
+}
+
+
+/* =========================================================
+   LAYER ITEM
+========================================================= */
+
+.layerItem {
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.layerHeader {
+    display: flex;
+
+    align-items: center;
+
+    min-height: 48px;
+
+    padding: 7px 10px;
+
+    cursor: pointer;
+
+    transition: background 0.1s;
+}
+
+.layerHeader:hover {
+    background: #f8f9fa;
+}
+
+.layerHeader.dropTarget {
+    background: #e8f0fe;
+
+    outline: 2px dashed #1a73e8;
+
+    outline-offset: -2px;
+}
+
+.layerExpand {
+    width: 22px;
+
+    border: none;
+
+    background: transparent;
+
+    cursor: pointer;
+
+    color: #5f6368;
+
+    font-size: 13px;
+}
+
+.layerVisibility {
+    width: 28px;
+
+    border: none;
+
+    background: transparent;
+
+    cursor: pointer;
+
+    font-size: 16px;
+}
+
+.layerColor {
+    width: 14px;
+    height: 14px;
+
+    border-radius: 3px;
+
+    margin: 0 9px;
+
+    flex-shrink: 0;
+}
+
+.layerName {
+    flex: 1;
+
+    font-size: 13px;
+
+    color: #202124;
+}
+
+.layerCount {
+    color: #80868b;
+
+    font-size: 12px;
+
+    margin-right: 5px;
+}
+
+
+/* =========================================================
+   POLYGON LIST
+========================================================= */
+
+.polygonList {
+    display: none;
+
+    background: #fafafa;
+
+    padding-bottom: 4px;
+}
+
+.polygonList.open {
+    display: block;
+}
+
+.polygonItem {
+    display: flex;
+
+    align-items: center;
+
+    min-height: 38px;
+
+    padding: 6px 10px 6px 42px;
+
+    cursor: grab;
+
+    font-size: 13px;
+
+    color: #3c4043;
+
+    user-select: none;
+}
+
+.polygonItem:hover {
+    background: #e8eaed;
+}
+
+.polygonItem:active {
+    cursor: grabbing;
+}
+
+.polygonItem.dragging {
+    opacity: 0.45;
+}
+
+.polygonItem.selected {
+    background: #d2e3fc;
+
+    color: #174ea6;
+
+    font-weight: 500;
+}
+
+.polygonIcon {
+    width: 20px;
+
+    margin-right: 6px;
+
+    font-size: 13px;
+}
+
+.polygonName {
+    flex: 1;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+}
+
+.emptyLayer {
+    padding: 10px 10px 10px 42px;
+
+    color: #9aa0a6;
+
+    font-size: 12px;
+
+    font-style: italic;
+}
+
+
+/* =========================================================
+   ACTION BAR
+========================================================= */
+
+#actionBar {
+    border-top: 1px solid #dadce0;
+
+    padding: 8px;
+
+    display: grid;
+
+    grid-template-columns: repeat(4, 1fr);
+
+    gap: 5px;
+}
+
+.actionButton {
+    border: none;
+
+    background: white;
+
+    padding: 9px 5px;
+
+    border-radius: 5px;
+
+    cursor: pointer;
+
+    font-size: 12px;
+
+    color: #3c4043;
+}
+
+.actionButton:hover {
+    background: #f1f3f4;
+}
+
+#publishButton {
+    background: #1a73e8;
+
+    color: white;
+}
+
+#publishButton:hover {
+    background: #1769d1;
+}
+
+
+/* =========================================================
+   LEAFLET CONTROLS
+========================================================= */
+
+.leaflet-control-zoom {
+    margin-right: 12px !important;
+
+    margin-bottom: 12px !important;
+}
+
+.leaflet-control-layers {
+    margin-top: 12px !important;
+
+    margin-right: 12px !important;
+}
+
+.leaflet-bottom.leaflet-left {
+    margin-left: 12px;
+
+    margin-bottom: 12px;
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 750px) {
+
+    #sidebar {
+        width: 290px;
+    }
+
+    #map {
+        left: 290px;
+    }
+
+}
+
+@media (max-width: 550px) {
+
+    #sidebar {
+        width: 100%;
+
+        height: 400px;
+
+        bottom: auto;
+
+        border-right: none;
+
+        border-bottom: 1px solid #dadce0;
+    }
+
+    #map {
+        left: 0;
+
+        top: 400px;
+    }
+
+    #sidebarSubtitle {
+        display: none;
+    }
+
+}
+
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+#layersArea::-webkit-scrollbar {
+    width: 7px;
+}
+
+#layersArea::-webkit-scrollbar-thumb {
+    background: #c5c7c9;
+
+    border-radius: 5px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<!-- =====================================================
+     LOGIN
+===================================================== -->
+
+<div id="loginScreen">
+
+```
+<div id="loginBox">
+
+    <h2>POLRAD MAPPING</h2>
+
+    <input
+        id="passwordInput"
+        type="password"
+        placeholder="Password"
+        autocomplete="current-password"
+        spellcheck="false"
+    >
+
+    <button id="loginButton">
+        Log in
+    </button>
+
+    <div id="loginError">
+        Incorrect password.
+    </div>
+
+</div>
+```
+
+</div>
+
+<!-- =====================================================
+     SIDEBAR
+===================================================== -->
+
+<div id="sidebar">
+
+```
+<div id="sidebarHeader">
+
+    <div id="sidebarTitle">
+        POLRAD MAPPING
+    </div>
+
+    <div id="sidebarSubtitle">
+        EDITOR
+    </div>
+
+</div>
+
+
+<!-- SEARCH -->
+
+<div id="searchArea">
+
+    <div id="searchBox">
+
+        <input
+            id="searchInput"
+            placeholder="Search places or coordinates..."
+        >
+
+        <button id="searchButton">
+            🔍
+        </button>
+
+    </div>
+
+</div>
+
+
+<!-- DRAW -->
+
+<div id="drawingSection">
+
+    <div class="sectionTitle">
+        Create
+    </div>
+
+    <button id="drawPolygonButton">
+        ＋ Draw a polygon
+    </button>
+
+
+    <div id="targetLayerArea">
+
+        <div
+            class="sectionTitle"
+            style="margin-top:10px;"
+        >
+            New polygon layer
+        </div>
+
+        <select id="targetLayerSelect">
+
+            <option value="Ukrainian-controlled territory">
+                🔵 Ukrainian-controlled territory
+            </option>
+
+            <option value="Russian-controlled territory">
+                🔴 Russian-controlled territory
+            </option>
+
+            <option value="Ukrainian advances">
+                🩵 Ukrainian advances
+            </option>
+
+            <option value="Russian advances">
+                🟡 Russian advances
+            </option>
+
+            <option value="Territories regained in the last month">
+                🟢 Territories regained in the last month
+            </option>
+
+        </select>
+
+    </div>
+
+</div>
+
+
+<!-- SELECTED POLYGON -->
+
+<div id="selectedSection">
+
+    <div id="selectedName">
+        Selected polygon
+    </div>
+
+    <div class="sectionTitle">
+        Polygon layer
+    </div>
+
+    <select id="selectedLayerSelect">
+
+        <option value="Ukrainian-controlled territory">
+            🔵 Ukrainian-controlled territory
+        </option>
+
+        <option value="Russian-controlled territory">
+            🔴 Russian-controlled territory
+        </option>
+
+        <option value="Ukrainian advances">
+            🩵 Ukrainian advances
+        </option>
+
+        <option value="Russian advances">
+            🟡 Russian advances
+        </option>
+
+        <option value="Territories regained in the last month">
+            🟢 Territories regained in the last month
+        </option>
+
+    </select>
+
+    <button id="deleteSelectedButton">
+        🗑 Delete polygon
+    </button>
+
+</div>
+
+
+<!-- LAYERS -->
+
+<div id="layersArea">
+
+    <div id="layersHeader">
+        Layers
+    </div>
+
+    <div id="layerList"></div>
+
+</div>
+
+
+<!-- ACTIONS -->
+
+<div id="actionBar">
+
+    <button
+        class="actionButton"
+        id="undoButton"
+    >
+        ↶ Undo
+    </button>
+
+    <button
+        class="actionButton"
+        id="redoButton"
+    >
+        ↷ Redo
+    </button>
+
+    <button
+        class="actionButton"
+        id="saveButton"
+    >
+        💾 Save
+    </button>
+
+    <button
+        class="actionButton"
+        id="downloadButton"
+    >
+        ↓ Download
+    </button>
+
+    <button
+        class="actionButton"
+        id="resetButton"
+    >
+        ↻ Reset
+    </button>
+
+    <button
+        class="actionButton"
+        id="publishButton"
+    >
+        🚀 Publish
+    </button>
+
+</div>
+```
+
+</div>
+
+<!-- =====================================================
+     MAP
+===================================================== -->
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+
+<script>
+
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+
+const WORKER_URL =
+    "https://polrad-editor-api.streetviewfun066.workers.dev/";
+
+
+const DATA_FILES = {
+
+    "Russian-controlled territory":
+        "data/Russian-controlled%20territory.geojson",
+
+    "Ukrainian-controlled territory":
+        "data/Ukrainian-controlled%20territory.geojson",
+
+    "Ukrainian advances":
+        "data/Ukrainian%20advances.geojson",
+
+    "Russian advances":
+        "data/Russian%20advances.geojson",
+
+    "Territories regained in the last month":
+        "data/Territories%20regained%20in%20the%20last%20month.geojson"
+
+};
+
+
+const COLORS = {
+
+    "Russian-controlled territory":
+        "#d94b4b",
+
+    "Ukrainian-controlled territory":
+        "#4b83d9",
+
+    "Ukrainian advances":
+        "#6fb7ff",
+
+    "Russian advances":
+        "#f1c40f",
+
+    "Territories regained in the last month":
+        "#42b883"
+
+};
+
+
+const LAYER_EMOJIS = {
+
+    "Russian-controlled territory":
+        "🔴",
+
+    "Ukrainian-controlled territory":
+        "🔵",
+
+    "Ukrainian advances":
+        "🩵",
+
+    "Russian advances":
+        "🟡",
+
+    "Territories regained in the last month":
+        "🟢"
+
+};
+
+
+/* =========================================================
+   VARIABLES
+========================================================= */
+
+let map = null;
+
+let loadedLayers = {};
+
+let selectedLayer = null;
+
+let selectedLayerName = null;
+
+let drawingPolygon = false;
+
+let polygonCounter = 0;
+
+let history = [];
+
+let historyIndex = -1;
+
+let openLayerMenus = {};
+
+let polygonIdCounter = 0;
+
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+document
+    .getElementById("loginButton")
+    .addEventListener(
+        "click",
+        login
+    );
+
+
+document
+    .getElementById("passwordInput")
+    .addEventListener(
+        "keydown",
+        function(event) {
+
+            if (event.key === "Enter") {
+
+                login();
+
+            }
+
+        }
+    );
+
+
+window.addEventListener(
+    "load",
+    function() {
+
+        document
+            .getElementById(
+                "passwordInput"
+            )
+            .focus();
+
+    }
+);
+
+
+async function login() {
+
+    const password =
+        document
+            .getElementById(
+                "passwordInput"
+            )
+            .value;
+
+
+    const loginButton =
+        document
+            .getElementById(
+                "loginButton"
+            );
+
+
+    const loginError =
+        document
+            .getElementById(
+                "loginError"
+            );
+
+
+    loginError.style.display =
+        "none";
+
+
+    if (!password) {
+
+        loginError.textContent =
+            "Please enter the password.";
+
+        loginError.style.display =
+            "block";
+
+        document
+            .getElementById(
+                "passwordInput"
+            )
+            .focus();
+
+        return;
+
+    }
+
+
+    loginButton.disabled =
+        true;
+
+
+    try {
+
+        const response =
+            await fetch(
+                WORKER_URL,
+                {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            action:
+                                "login",
+
+                            password:
+                                password
+
+                        })
+
+                }
+            );
+
+
+        const result =
+            await response.json();
+
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+
+            loginError.textContent =
+                "Incorrect password.";
+
+            loginError.style.display =
+                "block";
+
+            document
+                .getElementById(
+                    "passwordInput"
+                )
+                .select();
+
+            return;
+
+        }
+
+
+        document
+            .getElementById(
+                "loginScreen"
+            )
+            .style.display =
+                "none";
+
+
+        document
+            .getElementById(
+                "sidebar"
+            )
+            .style.display =
+                "flex";
+
+
+        initializeMap();
+
+    }
+
+    catch (err) {
+
+        console.error(err);
+
+        loginError.textContent =
+            "Connection error.";
+
+        loginError.style.display =
+            "block";
+
+    }
+
+    finally {
+
+        loginButton.disabled =
+            false;
+
+    }
+
+}
+
+
+/* =========================================================
+   INITIALIZE MAP
+========================================================= */
+
+async function initializeMap() {
+
+    map =
+        L.map(
+            "map",
+            {
+                zoomControl: false
+            }
+        )
+        .setView(
+            [48.5, 32],
+            6
+        );
+
+
+    /* =====================================================
+       BASEMAPS
+    ===================================================== */
+
+    const hybridImagery =
+        L.tileLayer(
+
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+
+            {
+                attribution:
+                    "Tiles © Esri",
+
+                maxZoom: 19
+
+            }
+
+        );
+
+
+    const hybridLabels =
+        L.tileLayer(
+
+            "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+
+            {
+                attribution:
+                    "Labels © Esri",
+
+                maxZoom: 19
+
+            }
+
+        );
+
+
+    const hybrid =
+        L.layerGroup([
+            hybridImagery,
+            hybridLabels
+        ]);
+
+
+    const osm =
+        L.tileLayer(
+
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+
+            {
+                attribution:
+                    "© OpenStreetMap contributors",
+
+                maxZoom: 19
+
+            }
+
+        );
+
+
+    const topo =
+        L.tileLayer(
+
+            "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+
+            {
+                attribution:
+                    "© OpenStreetMap contributors, SRTM | OpenTopoMap",
+
+                maxZoom: 17
+
+            }
+
+        );
+
+
+    hybrid.addTo(map);
+
+
+    L.control.layers(
+
+        {
+
+            "🛰 Hybrid":
+                hybrid,
+
+            "🗺 OpenStreetMap":
+                osm,
+
+            "⛰ OpenTopoMap":
+                topo
+
+        },
+
+        null,
+
+        {
+            position:
+                "topright"
+        }
+
+    ).addTo(map);
+
+
+    L.control.zoom({
+
+        position:
+            "bottomright"
+
+    }).addTo(map);
+
+
+    /* =====================================================
+       GEOMAN
+    ===================================================== */
+
+    map.pm.addControls({
+
+        position:
+            "bottomleft",
+
+        drawMarker:
+            false,
+
+        drawCircleMarker:
+            false,
+
+        drawPolyline:
+            false,
+
+        drawRectangle:
+            false,
+
+        drawCircle:
+            false,
+
+        drawText:
+            false,
+
+        drawPolygon:
+            false,
+
+        editMode:
+            false,
+
+        dragMode:
+            false,
+
+        cutPolygon:
+            false,
+
+        removalMode:
+            false
+
+    });
+
+
+    /* =====================================================
+       DRAW START
+    ===================================================== */
+
+    map.on(
+        "pm:drawstart",
+        function() {
+
+            drawingPolygon =
+                true;
+
+
+            deselectPolygon();
+
+
+            disableAllPolygonEditing();
+
+
+            document
+                .getElementById(
+                    "drawPolygonButton"
+                )
+                .classList.add(
+                    "active"
+                );
+
+        }
+    );
+
+
+    /* =====================================================
+       NEW POLYGON CREATED
+    ===================================================== */
+
+    map.on(
+        "pm:create",
+        function(event) {
+
+            createPolygonInSelectedLayer(
+                event.layer
+            );
+
+
+            drawingPolygon =
+                false;
+
+
+            document
+                .getElementById(
+                    "drawPolygonButton"
+                )
+                .classList.remove(
+                    "active"
+                );
+
+        }
+    );
+
+
+    /* =====================================================
+       DRAW END
+    ===================================================== */
+
+    map.on(
+        "pm:drawend",
+        function() {
+
+            drawingPolygon =
+                false;
+
+
+            document
+                .getElementById(
+                    "drawPolygonButton"
+                )
+                .classList.remove(
+                    "active"
+                );
+
+        }
+    );
+
+
+    /* =====================================================
+       CLICKING EMPTY MAP DESELECTS
+    ===================================================== */
+
+    map.on(
+        "click",
+        function() {
+
+            if (drawingPolygon) {
+
+                return;
+
+            }
+
+
+            deselectPolygon();
+
+        }
+    );
+
+
+    /* =====================================================
+       LOAD DATA
+    ===================================================== */
+
+    for (
+        const [name, url]
+        of Object.entries(
+            DATA_FILES
+        )
+    ) {
+
+        await loadGeoJSON(
+            name,
+            url
+        );
+
+    }
+
+
+    renderLayerSidebar();
+
+    saveHistory();
+
+}
+
+
+/* =========================================================
+   LOAD GEOJSON
+========================================================= */
+
+async function loadGeoJSON(
+    name,
+    url
+) {
+
+    try {
+
+        const response =
+            await fetch(url);
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "HTTP " +
+                response.status
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        const layer =
+            L.geoJSON(
+                data,
+                {
+
+                    style:
+                        getStyle(name),
+
+                    onEachFeature:
+                        function(
+                            feature,
+                            polygon
+                        ) {
+
+                            setupPolygon(
+                                polygon,
+                                name
+                            );
+
+                        }
+
+                }
+            );
+
+
+        layer.addTo(map);
+
+
+        loadedLayers[name] =
+            layer;
+
+
+        openLayerMenus[name] =
+            false;
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Could not load " +
+            name,
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   STYLE
+========================================================= */
+
+function getStyle(name) {
+
+    return {
+
+        color:
+            COLORS[name],
+
+        fillColor:
+            COLORS[name],
+
+        fillOpacity:
+            0.55,
+
+        weight:
+            2
+
+    };
+
+}
+
+
+/* =========================================================
+   POLYGON ID
+========================================================= */
+
+function createPolygonId(
+    polygon
+) {
+
+    if (
+        !polygon._polradId
+    ) {
+
+        polygonIdCounter++;
+
+
+        polygon._polradId =
+            "polygon-" +
+            polygonIdCounter;
+
+    }
+
+
+    return polygon._polradId;
+
+}
+
+
+/* =========================================================
+   FIND POLYGON BY ID
+========================================================= */
+
+function findPolygonById(
+    id
+) {
+
+    for (
+        const layer
+        of Object.values(
+            loadedLayers
+        )
+    ) {
+
+        let found =
+            null;
+
+
+        layer.eachLayer(
+            function(polygon) {
+
+                if (
+                    polygon._polradId ===
+                    id
+                ) {
+
+                    found =
+                        polygon;
+
+                }
+
+            }
+        );
+
+
+        if (found) {
+
+            return found;
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   POLYGON SETUP
+========================================================= */
+
+function setupPolygon(
+    polygon,
+    layerName
+) {
+
+    polygon._polradLayer =
+        layerName;
+
+
+    createPolygonId(
+        polygon
+    );
+
+
+    polygon.on(
+        "click",
+        function(event) {
+
+            L.DomEvent.stopPropagation(
+                event
+            );
+
+
+            if (drawingPolygon) {
+
+                return;
+
+            }
+
+
+            selectPolygon(
+                polygon
+            );
+
+        }
+    );
+
+
+    polygon.on(
+        "pm:edit",
+        function() {
+
+            if (!drawingPolygon) {
+
+                saveHistory();
+
+                renderLayerSidebar();
+
+            }
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   GET POLYGON NAME
+========================================================= */
+
+function getPolygonName(
+    polygon,
+    index
+) {
+
+    if (
+        polygon.feature &&
+        polygon.feature.properties &&
+        polygon.feature.properties.Name
+    ) {
+
+        return polygon
+            .feature
+            .properties
+            .Name;
+
+    }
+
+
+    return "Polygon " + (index + 1);
+
+}
+
+
+/* =========================================================
+   SELECT POLYGON
+========================================================= */
+
+function selectPolygon(
+    polygon
+) {
+
+    if (drawingPolygon) {
+
+        return;
+
+    }
+
+
+    deselectPolygon(
+        false
+    );
+
+
+    selectedLayer =
+        polygon;
+
+
+    selectedLayerName =
+        polygon._polradLayer;
+
+
+    disableAllPolygonEditing();
+
+
+    try {
+
+        polygon.pm.enable();
+
+    }
+
+    catch (e) {}
+
+
+    polygon.setStyle({
+
+        color:
+            COLORS[selectedLayerName],
+
+        fillColor:
+            COLORS[selectedLayerName],
+
+        fillOpacity:
+            0.55,
+
+        weight:
+            4
+
+    });
+
+
+    const properties =
+        polygon.feature &&
+        polygon.feature.properties;
+
+
+    const name =
+        properties &&
+        properties.Name
+            ? properties.Name
+            : "Selected polygon";
+
+
+    document
+        .getElementById(
+            "selectedName"
+        )
+        .textContent =
+            name;
+
+
+    document
+        .getElementById(
+            "selectedLayerSelect"
+        )
+        .value =
+            selectedLayerName;
+
+
+    document
+        .getElementById(
+            "selectedSection"
+        )
+        .style.display =
+            "block";
+
+
+    renderLayerSidebar();
+
+}
+
+
+/* =========================================================
+   DESELECT
+========================================================= */
+
+function deselectPolygon(
+    render = true
+) {
+
+    if (selectedLayer) {
+
+        try {
+
+            selectedLayer.pm.disable();
+
+        }
+
+        catch (e) {}
+
+
+        if (selectedLayerName) {
+
+            selectedLayer.setStyle(
+                getStyle(
+                    selectedLayerName
+                )
+            );
+
+        }
+
+    }
+
+
+    selectedLayer =
+        null;
+
+
+    selectedLayerName =
+        null;
+
+
+    document
+        .getElementById(
+            "selectedSection"
+        )
+        .style.display =
+            "none";
+
+
+    if (render) {
+
+        renderLayerSidebar();
+
+    }
+
+}
+
+
+/* =========================================================
+   DISABLE ALL EDITING
+========================================================= */
+
+function disableAllPolygonEditing() {
+
+    for (
+        const layer
+        of Object.values(
+            loadedLayers
+        )
+    ) {
+
+        layer.eachLayer(
+            function(polygon) {
+
+                try {
+
+                    polygon.pm.disable();
+
+                }
+
+                catch (e) {}
+
+
+                if (
+                    polygon !==
+                    selectedLayer
+                ) {
+
+                    polygon.setStyle(
+                        getStyle(
+                            polygon._polradLayer
+                        )
+                    );
+
+                }
+
+            }
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   CREATE NEW POLYGON
+========================================================= */
+
+function createPolygonInSelectedLayer(
+    polygon
+) {
+
+    const targetName =
+        document
+            .getElementById(
+                "targetLayerSelect"
+            )
+            .value;
+
+
+    const targetLayer =
+        loadedLayers[
+            targetName
+        ];
+
+
+    if (!targetLayer) {
+
+        map.removeLayer(
+            polygon
+        );
+
+        return;
+
+    }
+
+
+    polygonCounter++;
+
+
+    polygon.feature = {
+
+        type:
+            "Feature",
+
+        properties: {
+
+            Name:
+                "New polygon " +
+                polygonCounter,
+
+            editorCreated:
+                true
+
+        },
+
+        geometry:
+            polygon.toGeoJSON()
+                .geometry
+
+    };
+
+
+    polygon._polradLayer =
+        targetName;
+
+
+    createPolygonId(
+        polygon
+    );
+
+
+    map.removeLayer(
+        polygon
+    );
+
+
+    polygon.setStyle(
+        getStyle(
+            targetName
+        )
+    );
+
+
+    targetLayer.addLayer(
+        polygon
+    );
+
+
+    setupPolygon(
+        polygon,
+        targetName
+    );
+
+
+    drawingPolygon =
+        false;
+
+
+    selectPolygon(
+        polygon
+    );
+
+
+    openLayerMenus[
+        targetName
+    ] = true;
+
+
+    saveHistory();
+
+    renderLayerSidebar();
+
+}
+
+
+/* =========================================================
+   MOVE POLYGON TO ANOTHER LAYER
+========================================================= */
+
+function movePolygonToLayer(
+    polygon,
+    newLayerName
+) {
+
+    if (!polygon) {
+
+        return;
+
+    }
+
+
+    const oldLayerName =
+        polygon._polradLayer;
+
+
+    if (
+        oldLayerName ===
+        newLayerName
+    ) {
+
+        selectPolygon(
+            polygon
+        );
+
+        return;
+
+    }
+
+
+    const oldLayer =
+        loadedLayers[
+            oldLayerName
+        ];
+
+
+    const newLayer =
+        loadedLayers[
+            newLayerName
+        ];
+
+
+    if (
+        !oldLayer ||
+        !newLayer
+    ) {
+
+        return;
+
+    }
+
+
+    /*
+     * Remove from old layer.
+     */
+
+    oldLayer.removeLayer(
+        polygon
+    );
+
+
+    /*
+     * Change layer information.
+     */
+
+    polygon._polradLayer =
+        newLayerName;
+
+
+    /*
+     * Add to new layer.
+     */
+
+    newLayer.addLayer(
+        polygon
+    );
+
+
+    /*
+     * Change colour.
+     */
+
+    polygon.setStyle(
+        getStyle(
+            newLayerName
+        )
+    );
+
+
+    /*
+     * Keep it selected.
+     */
+
+    selectedLayer =
+        polygon;
+
+
+    selectedLayerName =
+        newLayerName;
+
+
+    disableAllPolygonEditing();
+
+
+    try {
+
+        polygon.pm.enable();
+
+    }
+
+    catch (e) {}
+
+
+    polygon.setStyle({
+
+        color:
+            COLORS[newLayerName],
+
+        fillColor:
+            COLORS[newLayerName],
+
+        fillOpacity:
+            0.55,
+
+        weight:
+            4
+
+    });
+
+
+    /*
+     * Open the new layer.
+     */
+
+    openLayerMenus[
+        newLayerName
+    ] = true;
+
+
+    /*
+     * Update selected layer menu.
+     */
+
+    document
+        .getElementById(
+            "selectedLayerSelect"
+        )
+        .value =
+            newLayerName;
+
+
+    /*
+     * Save history.
+     */
+
+    saveHistory();
+
+
+    /*
+     * Update sidebar.
+     */
+
+    renderLayerSidebar();
+
+}
+
+
+/* =========================================================
+   CHANGE POLYGON LAYER
+========================================================= */
+
+document
+    .getElementById(
+        "selectedLayerSelect"
+    )
+    .addEventListener(
+        "change",
+        function() {
+
+            if (!selectedLayer) {
+
+                return;
+
+            }
+
+
+            const oldName =
+                selectedLayerName;
+
+
+            const newName =
+                this.value;
+
+
+            if (
+                oldName ===
+                newName
+            ) {
+
+                return;
+
+            }
+
+
+            movePolygonToLayer(
+                selectedLayer,
+                newName
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   DELETE SELECTED POLYGON
+========================================================= */
+
+document
+    .getElementById(
+        "deleteSelectedButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (!selectedLayer) {
+
+                return;
+
+            }
+
+
+            const polygon =
+                selectedLayer;
+
+
+            const layerName =
+                selectedLayerName;
+
+
+            const layer =
+                loadedLayers[
+                    layerName
+                ];
+
+
+            if (layer) {
+
+                layer.removeLayer(
+                    polygon
+                );
+
+            }
+
+
+            selectedLayer =
+                null;
+
+
+            selectedLayerName =
+                null;
+
+
+            document
+                .getElementById(
+                    "selectedSection"
+                )
+                .style.display =
+                "none";
+
+
+            saveHistory();
+
+            renderLayerSidebar();
+
+        }
+    );
+
+
+/* =========================================================
+   DRAW BUTTON
+========================================================= */
+
+document
+    .getElementById(
+        "drawPolygonButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            const layerName =
+                document
+                    .getElementById(
+                        "targetLayerSelect"
+                    )
+                    .value;
+
+
+            startDrawing(
+                layerName
+            );
+
+        }
+    );
+
+
+function startDrawing(
+    layerName
+) {
+
+    if (drawingPolygon) {
+
+        return;
+
+    }
+
+
+    document
+        .getElementById(
+            "targetLayerSelect"
+        )
+        .value =
+            layerName;
+
+
+    deselectPolygon();
+
+
+    disableAllPolygonEditing();
+
+
+    drawingPolygon =
+        true;
+
+
+    openLayerMenus[
+        layerName
+    ] = true;
+
+
+    document
+        .getElementById(
+            "drawPolygonButton"
+        )
+        .classList.add(
+            "active"
+        );
+
+
+    renderLayerSidebar();
+
+
+    map.pm.enableDraw(
+        "Polygon",
+        {
+
+            snappable:
+                false
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   RENDER SIDEBAR
+========================================================= */
+
+function renderLayerSidebar() {
+
+    const container =
+        document.getElementById(
+            "layerList"
+        );
+
+
+    container.innerHTML = "";
+
+
+    for (
+        const name
+        of Object.keys(
+            DATA_FILES
+        )
+    ) {
+
+        const layer =
+            loadedLayers[
+                name
+            ];
+
+
+        if (!layer) {
+
+            continue;
+
+        }
+
+
+        const polygons = [];
+
+
+        layer.eachLayer(
+            function(polygon) {
+
+                polygons.push(
+                    polygon
+                );
+
+            }
+        );
+
+
+        const layerItem =
+            document.createElement(
+                "div"
+            );
+
+
+        layerItem.className =
+            "layerItem";
+
+
+        /* =================================================
+           HEADER
+        ================================================= */
+
+        const header =
+            document.createElement(
+                "div"
+            );
+
+
+        header.className =
+            "layerHeader";
+
+
+        /*
+         * Expand arrow
+         */
+
+        const expand =
+            document.createElement(
+                "button"
+            );
+
+
+        expand.className =
+            "layerExpand";
+
+
+        expand.textContent =
+            openLayerMenus[name]
+                ? "▼"
+                : "▶";
+
+
+        expand.addEventListener(
+            "click",
+            function(event) {
+
+                event.stopPropagation();
+
+
+                openLayerMenus[name] =
+                    !openLayerMenus[name];
+
+
+                renderLayerSidebar();
+
+            }
+        );
+
+
+        /*
+         * Visibility
+         */
+
+        const visibility =
+            document.createElement(
+                "button"
+            );
+
+
+        visibility.className =
+            "layerVisibility";
+
+
+        visibility.textContent =
+            map.hasLayer(layer)
+                ? "👁"
+                : "○";
+
+
+        visibility.addEventListener(
+            "click",
+            function(event) {
+
+                event.stopPropagation();
+
+
+                if (
+                    map.hasLayer(
+                        layer
+                    )
+                ) {
+
+                    map.removeLayer(
+                        layer
+                    );
+
+                }
+
+                else {
+
+                    layer.addTo(map);
+
+                }
+
+
+                renderLayerSidebar();
+
+            }
+        );
+
+
+        /*
+         * Color
+         */
+
+        const color =
+            document.createElement(
+                "div"
+            );
+
+
+        color.className =
+            "layerColor";
+
+
+        color.style.background =
+            COLORS[name];
+
+
+        /*
+         * Layer name
+         */
+
+        const title =
+            document.createElement(
+                "div"
+            );
+
+
+        title.className =
+            "layerName";
+
+
+        title.textContent =
+            name;
+
+
+        /*
+         * Polygon count
+         */
+
+        const count =
+            document.createElement(
+                "div"
+            );
+
+
+        count.className =
+            "layerCount";
+
+
+        count.textContent =
+            polygons.length;
+
+
+        /* =================================================
+           DRAG TARGET
+        ================================================= */
+
+        header.addEventListener(
+            "dragover",
+            function(event) {
+
+                event.preventDefault();
+
+
+                if (drawingPolygon) {
+
+                    return;
+
+                }
+
+
+                header.classList.add(
+                    "dropTarget"
+                );
+
+            }
+        );
+
+
+        header.addEventListener(
+            "dragleave",
+            function() {
+
+                header.classList.remove(
+                    "dropTarget"
+                );
+
+            }
+        );
+
+
+        header.addEventListener(
+            "drop",
+            function(event) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                header.classList.remove(
+                    "dropTarget"
+                );
+
+
+                if (drawingPolygon) {
+
+                    return;
+
+                }
+
+
+                const polygonId =
+                    event.dataTransfer.getData(
+                        "text/polrad-polygon"
+                    );
+
+
+                if (!polygonId) {
+
+                    return;
+
+                }
+
+
+                const polygon =
+                    findPolygonById(
+                        polygonId
+                    );
+
+
+                if (!polygon) {
+
+                    return;
+
+                }
+
+
+                movePolygonToLayer(
+                    polygon,
+                    name
+                );
+
+            }
+        );
+
+
+        /*
+         * Header click
+         *
+         * Clicking the layer opens
+         * its contents and also makes
+         * it the destination for new
+         * polygons.
+         */
+
+        header.addEventListener(
+            "click",
+            function() {
+
+                openLayerMenus[name] =
+                    !openLayerMenus[name];
+
+
+                document
+                    .getElementById(
+                        "targetLayerSelect"
+                    )
+                    .value =
+                        name;
+
+
+                renderLayerSidebar();
+
+            }
+        );
+
+
+        header.appendChild(
+            expand
+        );
+
+        header.appendChild(
+            visibility
+        );
+
+        header.appendChild(
+            color
+        );
+
+        header.appendChild(
+            title
+        );
+
+        header.appendChild(
+            count
+        );
+
+
+        layerItem.appendChild(
+            header
+        );
+
+
+        /* =================================================
+           POLYGON LIST
+        ================================================= */
+
+        const polygonList =
+            document.createElement(
+                "div"
+            );
+
+
+        polygonList.className =
+            "polygonList";
+
+
+        if (
+            openLayerMenus[name]
+        ) {
+
+            polygonList.classList.add(
+                "open"
+            );
+
+        }
+
+
+        if (
+            polygons.length === 0
+        ) {
+
+            const empty =
+                document.createElement(
+                    "div"
+                );
+
+
+            empty.className =
+                "emptyLayer";
+
+
+            empty.textContent =
+                "No polygons in this layer";
+
+
+            polygonList.appendChild(
+                empty
+            );
+
+        }
+
+
+        polygons.forEach(
+            function(
+                polygon,
+                index
+            ) {
+
+                createPolygonId(
+                    polygon
+                );
+
+
+                const item =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                item.className =
+                    "polygonItem";
+
+
+                if (
+                    polygon ===
+                    selectedLayer
+                ) {
+
+                    item.classList.add(
+                        "selected"
+                    );
+
+                }
+
+
+                /* =================================================
+                   DRAG START
+                ================================================= */
+
+                item.draggable =
+                    true;
+
+
+                item.addEventListener(
+                    "dragstart",
+                    function(event) {
+
+                        if (
+                            drawingPolygon
+                        ) {
+
+                            event.preventDefault();
+
+                            return;
+
+                        }
+
+
+                        event.dataTransfer.effectAllowed =
+                            "move";
+
+
+                        event.dataTransfer.setData(
+                            "text/polrad-polygon",
+                            polygon._polradId
+                        );
+
+
+                        item.classList.add(
+                            "dragging"
+                        );
+
+                    }
+                );
+
+
+                item.addEventListener(
+                    "dragend",
+                    function() {
+
+                        item.classList.remove(
+                            "dragging"
+                        );
+
+
+                        document
+                            .querySelectorAll(
+                                ".layerHeader.dropTarget"
+                            )
+                            .forEach(
+                                function(header) {
+
+                                    header.classList.remove(
+                                        "dropTarget"
+                                    );
+
+                                }
+                            );
+
+                    }
+                );
+
+
+                /* =================================================
+                   POLYGON ICON
+                ================================================= */
+
+                const icon =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                icon.className =
+                    "polygonIcon";
+
+
+                icon.textContent =
+                    "⬡";
+
+
+                icon.style.color =
+                    COLORS[name];
+
+
+                /* =================================================
+                   POLYGON NAME
+                ================================================= */
+
+                const polygonName =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                polygonName.className =
+                    "polygonName";
+
+
+                polygonName.textContent =
+                    getPolygonName(
+                        polygon,
+                        index
+                    );
+
+
+                item.appendChild(
+                    icon
+                );
+
+
+                item.appendChild(
+                    polygonName
+                );
+
+
+                /* =================================================
+                   CLICK POLYGON
+                ================================================= */
+
+                item.addEventListener(
+                    "click",
+                    function(event) {
+
+                        event.stopPropagation();
+
+
+                        if (
+                            drawingPolygon
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        selectPolygon(
+                            polygon
+                        );
+
+
+                        openLayerMenus[
+                            name
+                        ] = true;
+
+
+                        /*
+                         * Bring polygon
+                         * into view.
+                         */
+
+                        try {
+
+                            const bounds =
+                                polygon.getBounds();
+
+
+                            if (
+                                bounds.isValid()
+                            ) {
+
+                                map.fitBounds(
+                                    bounds,
+                                    {
+                                        padding:
+                                            [80, 80],
+
+                                        maxZoom:
+                                            Math.max(
+                                                map.getZoom(),
+                                                12
+                                            )
+                                    }
+                                );
+
+                            }
+
+                        }
+
+                        catch (e) {}
+
+                    }
+                );
+
+
+                polygonList.appendChild(
+                    item
+                );
+
+            }
+        );
+
+
+        layerItem.appendChild(
+            polygonList
+        );
+
+
+        container.appendChild(
+            layerItem
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function getCurrentData() {
+
+    const result = {};
+
+
+    for (
+        const [name, layer]
+        of Object.entries(
+            loadedLayers
+        )
+    ) {
+
+        result[name] =
+            layer.toGeoJSON();
+
+    }
+
+
+    return result;
+
+}
+
+
+function saveHistory() {
+
+    if (
+        !map ||
+        Object.keys(
+            loadedLayers
+        ).length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const snapshot =
+        JSON.stringify(
+            getCurrentData()
+        );
+
+
+    if (
+        historyIndex >= 0 &&
+        history[
+            historyIndex
+        ] === snapshot
+    ) {
+
+        return;
+
+    }
+
+
+    history =
+        history.slice(
+            0,
+            historyIndex + 1
+        );
+
+
+    history.push(
+        snapshot
+    );
+
+
+    historyIndex =
+        history.length - 1;
+
+}
+
+
+/* =========================================================
+   RESTORE HISTORY
+========================================================= */
+
+function restoreHistory(
+    snapshot
+) {
+
+    const data =
+        JSON.parse(
+            snapshot
+        );
+
+
+    deselectPolygon(
+        false
+    );
+
+
+    for (
+        const [name, layer]
+        of Object.entries(
+            loadedLayers
+        )
+    ) {
+
+        layer.clearLayers();
+
+
+        const restored =
+            L.geoJSON(
+                data[name],
+                {
+
+                    style:
+                        getStyle(name),
+
+                    onEachFeature:
+                        function(
+                            feature,
+                            polygon
+                        ) {
+
+                            setupPolygon(
+                                polygon,
+                                name
+                            );
+
+                        }
+
+                }
+            );
+
+
+        restored.eachLayer(
+            function(polygon) {
+
+                layer.addLayer(
+                    polygon
+                );
+
+            }
+        );
+
+    }
+
+
+    renderLayerSidebar();
+
+}
+
+
+/* =========================================================
+   UNDO
+========================================================= */
+
+document
+    .getElementById(
+        "undoButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (
+                historyIndex <= 0
+            ) {
+
+                return;
+
+            }
+
+
+            historyIndex--;
+
+
+            restoreHistory(
+                history[
+                    historyIndex
+                ]
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   REDO
+========================================================= */
+
+document
+    .getElementById(
+        "redoButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            if (
+                historyIndex >=
+                history.length - 1
+            ) {
+
+                return;
+
+            }
+
+
+            historyIndex++;
+
+
+            restoreHistory(
+                history[
+                    historyIndex
+                ]
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   SAVE
+========================================================= */
+
+document
+    .getElementById(
+        "saveButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            localStorage.setItem(
+
+                "polrad_editor_data",
+
+                JSON.stringify(
+                    getCurrentData()
+                )
+
+            );
+
+
+            alert(
+                "Changes saved locally."
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   DOWNLOAD
+========================================================= */
+
+document
+    .getElementById(
+        "downloadButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            const data =
+                getCurrentData();
+
+
+            const blob =
+                new Blob(
+                    [
+                        JSON.stringify(
+                            data,
+                            null,
+                            2
+                        )
+                    ],
+                    {
+                        type:
+                            "application/json"
+                    }
+                );
+
+
+            const url =
+                URL.createObjectURL(
+                    blob
+                );
+
+
+            const link =
+                document.createElement(
+                    "a"
+                );
+
+
+            link.href =
+                url;
+
+
+            link.download =
+                "polrad-edited-data.json";
+
+
+            link.click();
+
+
+            URL.revokeObjectURL(
+                url
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   RESET
+========================================================= */
+
+document
+    .getElementById(
+        "resetButton"
+    )
+    .addEventListener(
+        "click",
+        async function() {
+
+            if (
+                !confirm(
+                    "Reset all changes?"
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            deselectPolygon(
+                false
+            );
+
+
+            for (
+                const [name, url]
+                of Object.entries(
+                    DATA_FILES
+                )
+            ) {
+
+                const response =
+                    await fetch(url);
+
+
+                const data =
+                    await response.json();
+
+
+                const layer =
+                    loadedLayers[
+                        name
+                    ];
+
+
+                layer.clearLayers();
+
+
+                const restored =
+                    L.geoJSON(
+                        data,
+                        {
+
+                            style:
+                                getStyle(name),
+
+                            onEachFeature:
+                                function(
+                                    feature,
+                                    polygon
+                                ) {
+
+                                    setupPolygon(
+                                        polygon,
+                                        name
+                                    );
+
+                                }
+
+                        }
+                    );
+
+
+                restored.eachLayer(
+                    function(polygon) {
+
+                        layer.addLayer(
+                            polygon
+                        );
+
+                    }
+                );
+
+            }
+
+
+            selectedLayer =
+                null;
+
+
+            selectedLayerName =
+                null;
+
+
+            history = [];
+
+            historyIndex = -1;
+
+
+            saveHistory();
+
+            renderLayerSidebar();
+
+        }
+    );
+
+
+/* =========================================================
+   PUBLISH
+========================================================= */
+
+document
+    .getElementById(
+        "publishButton"
+    )
+    .addEventListener(
+        "click",
+        async function() {
+
+            if (
+                !confirm(
+                    "Publish the current map to the public map?"
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const files =
+                getCurrentData();
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        WORKER_URL,
+                        {
+
+                            method:
+                                "POST",
+
+                            headers: {
+
+                                "Content-Type":
+                                    "application/json"
+
+                            },
+
+                            body:
+                                JSON.stringify({
+
+                                    action:
+                                        "publish",
+
+                                    files:
+                                        files
+
+                                })
+
+                        }
+                    );
+
+
+                const result =
+                    await response.json();
+
+
+                if (
+                    !response.ok
+                ) {
+
+                    alert(
+                        "Publish failed: " +
+                        (
+                            result.error ||
+                            "Unknown error"
+                        )
+                    );
+
+                    return;
+
+                }
+
+
+                alert(
+                    "Published successfully!"
+                );
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    error
+                );
+
+
+                alert(
+                    "Publish failed."
+                );
+
+            }
+
+        }
+    );
+
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+document
+    .getElementById(
+        "searchButton"
+    )
+    .addEventListener(
+        "click",
+        searchLocation
+    );
+
+
+document
+    .getElementById(
+        "searchInput"
+    )
+    .addEventListener(
+        "keydown",
+        function(event) {
+
+            if (
+                event.key === "Enter"
+            ) {
+
+                searchLocation();
+
+            }
+
+        }
+    );
+
+
+async function searchLocation() {
+
+    const query =
+        document
+            .getElementById(
+                "searchInput"
+            )
+            .value
+            .trim();
+
+
+    if (!query) {
+
+        return;
+
+    }
+
+
+    /*
+     * Coordinates
+     */
+
+    const coordinateMatch =
+        query.match(
+            /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
+        );
+
+
+    if (coordinateMatch) {
+
+        const lat =
+            parseFloat(
+                coordinateMatch[1]
+            );
+
+        const lng =
+            parseFloat(
+                coordinateMatch[2]
+            );
+
+
+        if (
+            lat >= -90 &&
+            lat <= 90 &&
+            lng >= -180 &&
+            lng <= 180
+        ) {
+
+            map.setView(
+                [lat, lng],
+                12
+            );
+
+
+            L.marker(
+                [lat, lng]
+            )
+            .addTo(map)
+            .bindPopup(
+                lat +
+                ", " +
+                lng
+            )
+            .openPopup();
+
+
+            return;
+
+        }
+
+    }
+
+
+    /*
+     * Nominatim
+     */
+
+    try {
+
+        const response =
+            await fetch(
+
+                "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
+                encodeURIComponent(
+                    query
+                ),
+
+                {
+
+                    headers: {
+
+                        "Accept-Language":
+                            "en"
+
+                    }
+
+                }
+
+            );
+
+
+        const results =
+            await response.json();
+
+
+        if (
+            !results.length
+        ) {
+
+            alert(
+                "Location not found."
+            );
+
+            return;
+
+        }
+
+
+        const result =
+            results[0];
+
+
+        const lat =
+            parseFloat(
+                result.lat
+            );
+
+        const lon =
+            parseFloat(
+                result.lon
+            );
+
+
+        map.setView(
+            [lat, lon],
+            12
+        );
+
+
+        L.marker(
+            [lat, lon]
+        )
+        .addTo(map)
+        .bindPopup(
+            result.display_name
+        )
+        .openPopup();
+
+    }
+
+    catch (error) {
+
+        console.error(
+            error
+        );
+
+
+        alert(
+            "Search failed."
+        );
+
+    }
+
+}
+
+</script>
+
+</body>
+</html>
