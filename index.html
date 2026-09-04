@@ -1,1051 +1,1101 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 2.0</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POLRAD map editor 2.0</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
-  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<style>
+*{box-sizing:border-box}
 
-    html, body, #map {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      font-family: Arial, sans-serif;
-    }
+html,body,#map{
+  margin:0;
+  width:100%;
+  height:100%;
+  font-family:Arial,sans-serif;
+}
 
-    #map {
-      position: absolute;
-      left: 340px;
-      width: calc(100% - 340px);
-    }
+#map{
+  position:absolute;
+  left:340px;
+  width:calc(100% - 340px);
+}
 
-    #side {
-      display: none;
-      position: absolute;
-      z-index: 2000;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 340px;
-      background: #fff;
-      border-right: 1px solid #ddd;
-      overflow: auto;
-    }
+#side{
+  display:none;
+  position:absolute;
+  z-index:2000;
+  left:0;
+  top:0;
+  bottom:0;
+  width:340px;
+  background:#fff;
+  border-right:1px solid #ddd;
+  overflow:auto;
+}
 
-    .head {
-      height: 62px;
-      padding: 12px 15px;
-      border-bottom: 1px solid #ddd;
-      font-weight: 600;
-      font-size: 16px;
-    }
+.head{
+  height:62px;
+  padding:12px 15px;
+  border-bottom:1px solid #ddd;
+  font-weight:600;
+  font-size:16px;
+}
 
-    .body {
-      padding: 12px;
-    }
+.body{
+  padding:12px;
+}
 
-    .actions {
-      display: flex;
-      gap: 5px;
-      margin-bottom: 9px;
-    }
+.actions{
+  display:flex;
+  gap:5px;
+  margin-bottom:9px;
+}
 
-    .btn {
-      border: 1px solid #ccc;
-      background: #fff;
-      border-radius: 6px;
-      padding: 7px 9px;
-      cursor: pointer;
-    }
+.btn{
+  border:1px solid #ccc;
+  background:#fff;
+  border-radius:6px;
+  padding:7px 9px;
+  cursor:pointer;
+}
 
-    .primary {
-      background: #1a73e8;
-      color: #fff;
-      border-color: #1a73e8;
-    }
+.primary{
+  background:#1a73e8;
+  color:#fff;
+  border-color:#1a73e8;
+}
 
-    #search {
-      width: 100%;
-      height: 36px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0 9px;
-      margin-bottom: 9px;
-    }
+#search{
+  width:100%;
+  height:36px;
+  border:1px solid #ccc;
+  border-radius:6px;
+  padding:0 9px;
+  margin-bottom:9px;
+}
 
-    .box {
-      background: #f7f8f9;
-      border: 1px solid #ddd;
-      border-radius: 7px;
-      padding: 9px;
-      margin-bottom: 10px;
-    }
+.box{
+  background:#f7f8f9;
+  border:1px solid #ddd;
+  border-radius:7px;
+  padding:9px;
+  margin-bottom:10px;
+}
 
-    .box label {
-      font-size: 11px;
-      color: #777;
-    }
+.box label{
+  font-size:11px;
+  color:#777;
+}
 
-    .box select {
-      width: 100%;
-      height: 34px;
-      margin-top: 4px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      background: #fff;
-    }
+.box select{
+  width:100%;
+  height:34px;
+  margin-top:4px;
+  border:1px solid #ccc;
+  border-radius:5px;
+  background:#fff;
+}
 
-    .box button {
-      width: 100%;
-      margin-top: 7px;
-    }
+.box button{
+  width:100%;
+  margin-top:7px;
+}
 
-    .layer {
-      border: 1px solid transparent;
-      border-radius: 7px;
-      padding: 5px;
-      margin: 2px 0;
-    }
+.layer{
+  border:1px solid transparent;
+  border-radius:7px;
+  padding:5px;
+  margin:2px 0;
+}
 
-    .layer.drop {
-      background: #e8f0fe;
-      border-color: #1a73e8;
-    }
+.layer.drop{
+  background:#e8f0fe;
+  border-color:#1a73e8;
+}
 
-    .lh {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 28px;
-    }
+.lh{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-height:28px;
+}
 
-    .arrow {
-      border: 0;
-      background: none;
-      cursor: pointer;
-      width: 20px;
-    }
+.arrow{
+  border:0;
+  background:none;
+  cursor:pointer;
+  width:20px;
+}
 
-    .sw {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
-      border: 1px solid #aaa;
-    }
+.sw{
+  width:14px;
+  height:14px;
+  border-radius:3px;
+  border:1px solid #aaa;
+}
 
-    .lname {
-      flex: 1;
-      font-size: 13px;
-      cursor: pointer;
-    }
+.lname{
+  flex:1;
+  font-size:13px;
+  cursor:pointer;
+}
 
-    .count {
-      font-size: 11px;
-      color: #888;
-    }
+.count{
+  font-size:11px;
+  color:#888;
+}
 
-    .plist {
-      margin-left: 27px;
-    }
+.plist{
+  margin-left:27px;
+}
 
-    .item {
-      display: flex;
-      gap: 6px;
-      padding: 6px;
-      border-radius: 5px;
-      font-size: 12px;
-      cursor: grab;
-      border: 1px solid transparent;
-      user-select: none;
-    }
+.item{
+  display:flex;
+  gap:6px;
+  padding:6px;
+  border-radius:5px;
+  font-size:12px;
+  cursor:grab;
+  border:1px solid transparent;
+  user-select:none;
+}
 
-    .item:active {
-      cursor: grabbing;
-    }
+.item:active{
+  cursor:grabbing;
+}
 
-    .item:hover {
-      background: #f1f3f4;
-    }
+.item:hover{
+  background:#f1f3f4;
+}
 
-    .item.selected {
-      background: #e8f0fe;
-      border-color: #c5d7f7;
-      color: #174ea6;
-    }
+.item.selected{
+  background:#e8f0fe;
+  border-color:#c5d7f7;
+  color:#174ea6;
+}
 
-    .item.dragging {
-      opacity: .4;
-    }
+.item.dragging{
+  opacity:.4;
+}
 
-    .grip {
-      color: #999;
-      letter-spacing: -2px;
-    }
+.grip{
+  color:#999;
+  letter-spacing:-2px;
+}
 
-    .section {
-      border-top: 1px solid #e5e5e5;
-      padding-top: 9px;
-      margin-top: 9px;
-    }
+.section{
+  border-top:1px solid #e5e5e5;
+  padding-top:9px;
+  margin-top:9px;
+}
 
-    .small {
-      font-size: 11px;
-      color: #777;
-    }
+.small{
+  font-size:11px;
+  color:#777;
+}
 
-    /* LOGIN */
+/* LOGIN */
 
-    #login {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      background: #202124;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+#login{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#202124;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
 
-    #loginbox {
-      width: 350px;
-      max-width: 90vw;
-      background: #303134;
-      color: white;
-      padding: 22px;
-      border-radius: 10px;
-    }
+#loginbox{
+  width:350px;
+  max-width:90vw;
+  background:#303134;
+  color:white;
+  padding:22px;
+  border-radius:10px;
+}
 
-    #password {
-      position: relative;
-      z-index: 10001;
-      pointer-events: auto;
-      display: block;
-      width: 100%;
-      height: 40px;
-      background: #202124;
-      color: white;
-      border: 1px solid #666;
-      border-radius: 5px;
-      padding: 0 9px;
-    }
+#password{
+  position:relative;
+  z-index:10001;
+  pointer-events:auto;
+  display:block;
+  width:100%;
+  height:40px;
+  background:#202124;
+  color:white;
+  border:1px solid #666;
+  border-radius:5px;
+  padding:0 9px;
+}
 
-    #loginbtn {
-      width: 100%;
-      height: 40px;
-      margin-top: 8px;
-      background: #1a73e8;
-      color: white;
-      border: 0;
-      border-radius: 5px;
-      cursor: pointer;
-    }
+#loginbtn{
+  width:100%;
+  height:40px;
+  margin-top:8px;
+  background:#1a73e8;
+  color:white;
+  border:0;
+  border-radius:5px;
+  cursor:pointer;
+}
 
-    #err {
-      display: none;
-      color: #ff8a80;
-      font-size: 12px;
-      margin-top: 8px;
-    }
+#err{
+  display:none;
+  color:#ff8a80;
+  font-size:12px;
+  margin-top:8px;
+}
 
-    /* MAP SEARCH */
+/* MAP SEARCH */
 
-    #mapSearchBox {
-      position: absolute;
-      z-index: 1500;
-      top: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 360px;
-      max-width: calc(100vw - 380px);
-    }
+#mapSearchBox{
+  position:absolute;
+  z-index:1500;
+  top:15px;
+  left:50%;
+  transform:translateX(-50%);
+  width:360px;
+  max-width:calc(100vw - 380px);
+}
 
-    #mapSearch {
-      width: 100%;
-      height: 40px;
-      border: 1px solid #aaa;
-      border-radius: 7px;
-      background: white;
-      padding: 0 13px;
-      font-size: 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
-      outline: none;
-    }
+#mapSearch{
+  width:100%;
+  height:40px;
+  border:1px solid #aaa;
+  border-radius:7px;
+  background:white;
+  padding:0 13px;
+  font-size:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  outline:none;
+}
 
-    #mapSearch:focus {
-      border-color: #1a73e8;
-    }
+#mapSearch:focus{
+  border-color:#1a73e8;
+}
 
-    #mapSearchResults {
-      margin-top: 5px;
-      background: white;
-      border-radius: 7px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
-      overflow: hidden;
-      display: none;
-      max-height: 300px;
-      overflow-y: auto;
-    }
+#mapSearchResults{
+  margin-top:5px;
+  background:white;
+  border-radius:7px;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  overflow:hidden;
+  display:none;
+  max-height:300px;
+  overflow-y:auto;
+}
 
-    .mapSearchResult {
-      padding: 10px 12px;
-      cursor: pointer;
-      border-bottom: 1px solid #eee;
-      font-size: 13px;
-    }
+.mapSearchResult{
+  padding:10px 12px;
+  cursor:pointer;
+  border-bottom:1px solid #eee;
+  font-size:13px;
+}
 
-    .mapSearchResult:last-child {
-      border-bottom: 0;
-    }
+.mapSearchResult:last-child{
+  border-bottom:0;
+}
 
-    .mapSearchResult:hover {
-      background: #f1f3f4;
-    }
+.mapSearchResult:hover{
+  background:#f1f3f4;
+}
 
-    .mapSearchNoResult {
-      padding: 10px 12px;
-      color: #777;
-      font-size: 13px;
-    }
+.mapSearchNoResult{
+  padding:10px 12px;
+  color:#777;
+  font-size:13px;
+}
 
-    @media (max-width: 700px) {
-      #side {
-        width: 280px;
-      }
+@media(max-width:700px){
 
-      #map {
-        left: 280px;
-        width: calc(100% - 280px);
-      }
+  #side{
+    width:280px;
+  }
 
-      #mapSearchBox {
-        max-width: calc(100vw - 300px);
-        width: 300px;
-      }
-    }
-  </style>
+  #map{
+    left:280px;
+    width:calc(100% - 280px);
+  }
+
+  #mapSearchBox{
+    max-width:calc(100vw - 300px);
+    width:300px;
+  }
+
+}
+</style>
 </head>
 
 <body>
 
-  <!-- LOGIN -->
+<!-- LOGIN -->
 
-  <div id="login">
-    <div id="loginbox">
-      <h2>POLRAD MAPPING</h2>
+<div id="login">
 
-      <div style="color:#bbb;font-size:13px;margin-bottom:14px">
-        Editor access
-      </div>
+  <div id="loginbox">
 
-      <input
-        id="password"
-        type="password"
-        placeholder="Password"
-        autocomplete="current-password"
-        tabindex="1"
-      >
+    <h2>POLRAD MAPPING</h2>
 
-      <button id="loginbtn">
-        Enter
+    <div style="color:#bbb;font-size:13px;margin-bottom:14px">
+      Editor access
+    </div>
+
+    <input
+      id="password"
+      type="password"
+      placeholder="Password"
+      autocomplete="current-password"
+      tabindex="1"
+    >
+
+    <button id="loginbtn">
+      Enter
+    </button>
+
+    <div id="err">
+      Incorrect password.
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- SIDEBAR -->
+
+<div id="side">
+
+  <div class="head">
+    POLRAD map editor 2.0
+  </div>
+
+  <div class="body">
+
+    <div class="actions">
+
+      <button class="btn" id="save">
+        Save
       </button>
 
-      <div id="err">
-        Incorrect password.
-      </div>
-    </div>
-  </div>
+      <button class="btn" id="download">
+        Download
+      </button>
 
+      <button class="btn" id="reset">
+        Reset
+      </button>
 
-  <!-- SIDEBAR -->
-
-  <div id="side">
-
-    <div class="head">
-      POLRAD map editor 2.0
-    </div>
-
-    <div class="body">
-
-      <div class="actions">
-        <button class="btn" id="save">
-          Save
-        </button>
-
-        <button class="btn" id="download">
-          Download
-        </button>
-
-        <button class="btn" id="reset">
-          Reset
-        </button>
-
-        <button class="btn primary" id="publish">
-          Publish
-        </button>
-      </div>
-
-
-      <!-- POLYGON SEARCH -->
-
-      <input
-        id="search"
-        placeholder="Search polygons..."
-      >
-
-
-      <!-- DRAW -->
-
-      <div class="box">
-
-        <b style="font-size:13px">
-          Draw polygon
-        </b>
-
-        <label style="display:block;margin-top:7px">
-          New polygon layer
-        </label>
-
-        <select id="drawLayer"></select>
-
-        <button class="btn primary" id="draw">
-          Draw a polygon
-        </button>
-
-      </div>
-
-
-      <!-- SELECTED POLYGON -->
-
-      <div
-        class="box"
-        id="selectedBox"
-        style="display:none"
-      >
-
-        <b
-          id="selectedName"
-          style="font-size:13px"
-        ></b>
-
-        <label style="display:block;margin-top:7px">
-          Layer
-        </label>
-
-        <select id="selectedLayer"></select>
-
-        <button
-          class="btn"
-          id="delete"
-          style="color:#b3261e"
-        >
-          Delete polygon
-        </button>
-
-      </div>
-
-
-      <div class="section">
-        <b style="font-size:12px;color:#777">
-          LAYERS
-        </b>
-      </div>
-
-      <div id="layers"></div>
-
-      <div
-        class="small"
-        id="status"
-      >
-        Ready.
-      </div>
+      <button class="btn primary" id="publish">
+        Publish
+      </button>
 
     </div>
-  </div>
 
 
-  <!-- MAP -->
+    <input
+      id="search"
+      placeholder="Search polygons..."
+    >
 
-  <div id="map">
 
-    <!-- MAP SEARCH -->
+    <div class="box">
 
-    <div id="mapSearchBox">
+      <b style="font-size:13px">
+        Draw polygon
+      </b>
 
-      <input
-        id="mapSearch"
-        type="text"
-        placeholder="🔍 Search towns, cities or coordinates..."
-        autocomplete="off"
+      <label style="display:block;margin-top:7px">
+        New polygon layer
+      </label>
+
+      <select id="drawLayer"></select>
+
+      <button class="btn primary" id="draw">
+        Draw a polygon
+      </button>
+
+    </div>
+
+
+    <div
+      class="box"
+      id="selectedBox"
+      style="display:none"
+    >
+
+      <b
+        id="selectedName"
+        style="font-size:13px"
+      ></b>
+
+      <label style="display:block;margin-top:7px">
+        Layer
+      </label>
+
+      <select id="selectedLayer"></select>
+
+      <button
+        class="btn"
+        id="delete"
+        style="color:#b3261e"
       >
+        Delete polygon
+      </button>
 
-      <div id="mapSearchResults"></div>
+    </div>
 
+
+    <div class="section">
+
+      <b style="font-size:12px;color:#777">
+        LAYERS
+      </b>
+
+    </div>
+
+
+    <div id="layers"></div>
+
+
+    <div
+      class="small"
+      id="status"
+    >
+      Ready.
     </div>
 
   </div>
 
-
-  <!-- LEAFLET -->
-
-  <script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script>
-
-  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+</div>
 
 
-  <script>
+<!-- MAP -->
 
-    const WORKER =
-      "https://polrad-editor-api.streetviewfun066.workers.dev/";
+<div id="map">
 
+  <div id="mapSearchBox">
 
-    const LAYERS = [
+    <input
+      id="mapSearch"
+      type="text"
+      placeholder="🔍 Search towns, cities or coordinates..."
+      autocomplete="off"
+    >
 
-      [
-        "ru_territory",
-        "Russian-controlled territory",
-        "Russian-controlled%20territory.geojson",
-        "#d94b4b"
-      ],
+    <div id="mapSearchResults"></div>
 
-      [
-        "ua_territory",
-        "Ukrainian-controlled territory",
-        "Ukrainian-controlled%20territory.geojson",
-        "#4b83d9"
-      ],
+  </div>
 
-      [
-        "ua_advances",
-        "Ukrainian advances",
-        "Ukrainian%20advances.geojson",
-        "#6fb7ff"
-      ],
-
-      [
-        "ru_advances",
-        "Russian advances",
-        "Russian%20advances.geojson",
-        "#f1c40f"
-      ],
-
-      [
-        "regained",
-        "Territories regained in the last month",
-        "Territories%20regained%20in%20the%20last%20month.geojson",
-        "#42b883"
-      ]
-
-    ];
+</div>
 
 
-    let map;
+<script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script>
 
-    let groups = {};
-
-    let selected = null;
-
-    let drawing = false;
-
-    let polygonCounter = 1;
-
-    let history = [];
-
-    let historyIndex = -1;
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
 
 
-    let ignoreNextMapClick = false;
+<script>
 
-    let ignoreMapClickTimer = null;
+/* =========================================================
+   SETTINGS
+   ========================================================= */
 
-
-    function $(id) {
-      return document.getElementById(id);
-    }
-
-
-    function config(id) {
-
-      return LAYERS.find(
-        layer => layer[0] === id
-      );
-
-    }
+const WORKER =
+  "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
 
-    function polygonName(layer) {
+/*
+   PUT YOUR MAPTILER API KEY HERE
+*/
 
-      return (
-        layer.feature &&
-        layer.feature.properties &&
-        (
-          layer.feature.properties.Name ||
-          layer.feature.properties.name
-        )
-      ) || "New polygon";
-
-    }
+const MAPTILER_KEY =
+  "OSIVos0hGQi6oPh0K1CD";
 
 
-    function setStatus(text) {
+const LAYERS = [
 
-      $("status").textContent = text;
+  [
+    "ru_territory",
+    "Russian-controlled territory",
+    "Russian-controlled%20territory.geojson",
+    "#d94b4b"
+  ],
 
-    }
+  [
+    "ua_territory",
+    "Ukrainian-controlled territory",
+    "Ukrainian-controlled%20territory.geojson",
+    "#4b83d9"
+  ],
+
+  [
+    "ua_advances",
+    "Ukrainian advances",
+    "Ukrainian%20advances.geojson",
+    "#6fb7ff"
+  ],
+
+  [
+    "ru_advances",
+    "Russian advances",
+    "Russian%20advances.geojson",
+    "#f1c40f"
+  ],
+
+  [
+    "regained",
+    "Territories regained in the last month",
+    "Territories%20regained%20in%20the%20last%20month.geojson",
+    "#42b883"
+  ]
+
+];
 
 
-    function applyStyle(layer, isSelected = false) {
+let map;
 
-      const c = config(layer._layer);
+let groups = {};
 
-      if (!c) return;
+let selected = null;
 
-      layer.setStyle({
+let drawing = false;
 
-        color: c[3],
+let polygonCounter = 1;
 
-        fillColor: c[3],
+let history = [];
 
-        fillOpacity: 0.4,
+let historyIndex = -1;
 
-        weight: isSelected ? 4 : 2
+let ignoreNextMapClick = false;
 
-      });
-
-    }
+let ignoreMapClickTimer = null;
 
 
-    function suppressNextMapClick() {
+/* =========================================================
+   HELPERS
+   ========================================================= */
 
-      ignoreNextMapClick = true;
+function $(id){
+  return document.getElementById(id);
+}
 
-      clearTimeout(ignoreMapClickTimer);
 
-      ignoreMapClickTimer = setTimeout(() => {
+function config(id){
 
+  return LAYERS.find(
+    layer => layer[0] === id
+  );
+
+}
+
+
+function polygonName(layer){
+
+  return (
+    layer.feature &&
+    layer.feature.properties &&
+    (
+      layer.feature.properties.Name ||
+      layer.feature.properties.name
+    )
+  ) || "New polygon";
+
+}
+
+
+function setStatus(text){
+
+  $("status").textContent = text;
+
+}
+
+
+function applyStyle(layer,isSelected=false){
+
+  const c = config(layer._layer);
+
+  if(!c) return;
+
+  layer.setStyle({
+
+    color:c[3],
+
+    fillColor:c[3],
+
+    fillOpacity:.4,
+
+    weight:isSelected ? 4 : 2
+
+  });
+
+}
+
+
+function suppressNextMapClick(){
+
+  ignoreNextMapClick = true;
+
+  clearTimeout(ignoreMapClickTimer);
+
+  ignoreMapClickTimer =
+    setTimeout(
+      ()=>{
         ignoreNextMapClick = false;
+      },
+      300
+    );
 
-      }, 300);
+}
 
-    }
 
+/* =========================================================
+   SELECTION
+   ========================================================= */
 
-    function deselect(renderSidebar = true) {
+function deselect(renderSidebar=true){
 
-      if (selected) {
+  if(selected){
 
-        selected.pm.disable();
+    selected.pm.disable();
 
-        applyStyle(selected);
+    applyStyle(selected);
 
-      }
+  }
 
-      selected = null;
+  selected = null;
 
-      $("selectedBox").style.display = "none";
+  $("selectedBox").style.display = "none";
 
-      if (renderSidebar) {
+  if(renderSidebar){
 
-        renderSidebar();
+    renderSidebar();
 
-      }
+  }
 
-    }
+}
 
 
-    function select(layer) {
+function select(layer){
 
-      if (!layer || drawing) return;
+  if(!layer || drawing) return;
 
+  if(selected && selected !== layer){
 
-      if (selected && selected !== layer) {
+    selected.pm.disable();
 
-        selected.pm.disable();
+    applyStyle(selected);
 
-        applyStyle(selected);
+  }
 
-      }
+  selected = layer;
 
+  layer.pm.enable();
 
-      selected = layer;
+  applyStyle(layer,true);
 
-      layer.pm.enable();
+  $("selectedBox").style.display = "block";
 
-      applyStyle(layer, true);
+  $("selectedName").textContent =
+    polygonName(layer);
 
+  $("selectedLayer").value =
+    layer._layer;
 
-      $("selectedBox").style.display = "block";
+  renderSidebar();
 
-      $("selectedName").textContent =
-        polygonName(layer);
+}
 
-      $("selectedLayer").value =
-        layer._layer;
 
+/* =========================================================
+   POLYGON SETUP
+   ========================================================= */
 
-      renderSidebar();
+function setupPolygon(layer,layerId){
 
-    }
+  layer._layer = layerId;
 
 
-    function setupPolygon(layer, layerId) {
+  layer._fid =
+    layer._fid ||
+    (
+      "p-" +
+      Date.now() +
+      "-" +
+      Math.random()
+        .toString(36)
+        .slice(2)
+    );
 
-      layer._layer = layerId;
 
+  layer.feature =
+    layer.feature ||
+    {
+      type:"Feature",
+      properties:{}
+    };
 
-      layer._fid =
-        layer._fid ||
-        (
-          "p-" +
-          Date.now() +
-          "-" +
-          Math.random()
-            .toString(36)
-            .slice(2)
-        );
 
+  layer.feature.properties =
+    layer.feature.properties || {};
 
-      layer.feature =
-        layer.feature ||
-        {
-          type: "Feature",
-          properties: {}
-        };
 
+  if(!layer.feature.properties.Name){
 
-      layer.feature.properties =
-        layer.feature.properties || {};
+    layer.feature.properties.Name =
+      "New polygon " +
+      polygonCounter++;
 
+  }
 
-      if (!layer.feature.properties.Name) {
 
-        layer.feature.properties.Name =
-          "New polygon " +
-          polygonCounter++;
+  applyStyle(layer);
 
-      }
 
+  layer.on(
+    "click",
+    function(event){
 
-      applyStyle(layer);
+      L.DomEvent.stopPropagation(event);
 
-
-      layer.on("click", function(event) {
-
-        L.DomEvent.stopPropagation(event);
-
-        if (!drawing) {
-
-          select(layer);
-
-        }
-
-      });
-
-
-      layer.on("pm:vertexadded", function() {
-
-        if (layer === selected) {
-
-          suppressNextMapClick();
-
-          saveHistory();
-
-          setStatus("Unsaved changes.");
-
-        }
-
-      });
-
-
-      layer.on("pm:vertexremoved", function() {
-
-        if (layer === selected) {
-
-          suppressNextMapClick();
-
-          saveHistory();
-
-          setStatus("Unsaved changes.");
-
-        }
-
-      });
-
-
-      layer.on("pm:markerdragstart", function() {
-
-        if (layer === selected) {
-
-          suppressNextMapClick();
-
-        }
-
-      });
-
-
-      layer.on("pm:markerdragend", function() {
-
-        if (layer === selected) {
-
-          suppressNextMapClick();
-
-          saveHistory();
-
-          setStatus("Unsaved changes.");
-
-        }
-
-      });
-
-
-      layer.on("pm:edit", function() {
-
-        if (
-          !drawing &&
-          layer === selected
-        ) {
-
-          suppressNextMapClick();
-
-          saveHistory();
-
-          renderSidebar();
-
-          setStatus("Unsaved changes.");
-
-        }
-
-      });
-
-    }
-
-
-    function findPolygon(fid) {
-
-      for (const c of LAYERS) {
-
-        let found = null;
-
-        if (!groups[c[0]]) continue;
-
-        groups[c[0]].eachLayer(function(layer) {
-
-          if (layer._fid === fid) {
-
-            found = layer;
-
-          }
-
-        });
-
-        if (found) return found;
-
-      }
-
-      return null;
-
-    }
-
-
-    function movePolygon(layer, targetId) {
-
-      if (
-        !layer ||
-        !groups[targetId]
-      ) return;
-
-
-      const sourceId = layer._layer;
-
-
-      if (sourceId === targetId) {
+      if(!drawing){
 
         select(layer);
 
-        return;
-
       }
-
-
-      const wasSelected =
-        selected === layer;
-
-
-      const sourceGroup =
-        groups[sourceId];
-
-      const targetGroup =
-        groups[targetId];
-
-
-      sourceGroup.removeLayer(layer);
-
-      layer._layer = targetId;
-
-      targetGroup.addLayer(layer);
-
-      applyStyle(
-        layer,
-        wasSelected
-      );
-
-
-      if (wasSelected) {
-
-        selected = layer;
-
-        $("selectedLayer").value =
-          targetId;
-
-      }
-
-
-      saveHistory();
-
-      renderSidebar();
-
-      setStatus(
-        "Polygon moved to " +
-        config(targetId)[1] +
-        "."
-      );
 
     }
+  );
 
 
-    function renderSidebar() {
+  layer.on(
+    "pm:vertexadded",
+    function(){
 
-      const query =
-        $("search")
-          .value
-          .trim()
-          .toLowerCase();
+      if(layer === selected){
 
+        suppressNextMapClick();
 
-      const output =
-        $("layers");
+        saveHistory();
 
-
-      output.innerHTML = "";
-
-
-      LAYERS.forEach(function(c) {
-
-        const id = c[0];
-
-        const group = groups[id];
-
-        const layers =
-          group
-            ? group.getLayers()
-            : [];
-
-
-        const row =
-          document.createElement("div");
-
-        row.className = "layer";
-
-        row.dataset.id = id;
-
-
-        const header =
-          document.createElement("div");
-
-        header.className = "lh";
-
-
-        const arrow =
-          document.createElement("button");
-
-        arrow.className = "arrow";
-
-        arrow.textContent = "▸";
-
-
-        const swatch =
-          document.createElement("span");
-
-        swatch.className = "sw";
-
-        swatch.style.background =
-          c[3];
-
-
-        const layerName =
-          document.createElement("span");
-
-        layerName.className = "lname";
-
-        layerName.textContent =
-          c[1];
-
-
-        const count =
-          document.createElement("span");
-
-        count.className = "count";
-
-        count.textContent =
-          layers.length;
-
-
-        header.append(
-          arrow,
-          swatch,
-          layerName,
-          count
+        setStatus(
+          "Unsaved changes."
         );
 
+      }
 
-        row.appendChild(header);
-
-
-        const list =
-          document.createElement("div");
-
-        list.className = "plist";
-
-        list.hidden = true;
+    }
+  );
 
 
-        function toggleList() {
+  layer.on(
+    "pm:vertexremoved",
+    function(){
 
-          list.hidden =
-            !list.hidden;
+      if(layer === selected){
 
-          arrow.textContent =
-            list.hidden
-              ? "▸"
-              : "▾";
+        suppressNextMapClick();
+
+        saveHistory();
+
+        setStatus(
+          "Unsaved changes."
+        );
+
+      }
+
+    }
+  );
+
+
+  layer.on(
+    "pm:markerdragstart",
+    function(){
+
+      if(layer === selected){
+
+        suppressNextMapClick();
+
+      }
+
+    }
+  );
+
+
+  layer.on(
+    "pm:markerdragend",
+    function(){
+
+      if(layer === selected){
+
+        suppressNextMapClick();
+
+        saveHistory();
+
+        setStatus(
+          "Unsaved changes."
+        );
+
+      }
+
+    }
+  );
+
+
+  layer.on(
+    "pm:edit",
+    function(){
+
+      if(
+        !drawing &&
+        layer === selected
+      ){
+
+        suppressNextMapClick();
+
+        saveHistory();
+
+        renderSidebar();
+
+        setStatus(
+          "Unsaved changes."
+        );
+
+      }
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   FIND / MOVE POLYGON
+   ========================================================= */
+
+function findPolygon(fid){
+
+  for(const c of LAYERS){
+
+    let found = null;
+
+    if(!groups[c[0]]) continue;
+
+    groups[c[0]].eachLayer(
+      function(layer){
+
+        if(layer._fid === fid){
+
+          found = layer;
 
         }
 
+      }
+    );
 
-        arrow.onclick =
-          toggleList;
+    if(found) return found;
 
-        layerName.onclick =
-          toggleList;
+  }
+
+  return null;
+
+}
 
 
-        layers
-          .filter(layer => {
+function movePolygon(layer,targetId){
 
-            return (
-              !query ||
-              polygonName(layer)
-                .toLowerCase()
-                .includes(query)
-            );
+  if(!layer || !groups[targetId]) return;
 
-          })
-          .forEach(function(layer) {
+  const sourceId = layer._layer;
+
+  if(sourceId === targetId){
+
+    select(layer);
+
+    return;
+
+  }
+
+
+  const wasSelected =
+    selected === layer;
+
+
+  groups[sourceId]
+    .removeLayer(layer);
+
+
+  layer._layer = targetId;
+
+
+  groups[targetId]
+    .addLayer(layer);
+
+
+  applyStyle(
+    layer,
+    wasSelected
+  );
+
+
+  if(wasSelected){
+
+    selected = layer;
+
+    $("selectedLayer").value =
+      targetId;
+
+  }
+
+
+  saveHistory();
+
+  renderSidebar();
+
+  setStatus(
+    "Polygon moved to " +
+    config(targetId)[1] +
+    "."
+  );
+
+}
+
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+
+function renderSidebar(){
+
+  const query =
+    $("search")
+      .value
+      .trim()
+      .toLowerCase();
+
+
+  const output =
+    $("layers");
+
+
+  output.innerHTML = "";
+
+
+  LAYERS.forEach(
+    function(c){
+
+      const id = c[0];
+
+      const group = groups[id];
+
+      const layers =
+        group
+          ? group.getLayers()
+          : [];
+
+
+      const row =
+        document.createElement("div");
+
+      row.className = "layer";
+
+      row.dataset.id = id;
+
+
+      const header =
+        document.createElement("div");
+
+      header.className = "lh";
+
+
+      const arrow =
+        document.createElement("button");
+
+      arrow.className = "arrow";
+
+      arrow.textContent = "▸";
+
+
+      const swatch =
+        document.createElement("span");
+
+      swatch.className = "sw";
+
+      swatch.style.background =
+        c[3];
+
+
+      const layerName =
+        document.createElement("span");
+
+      layerName.className = "lname";
+
+      layerName.textContent =
+        c[1];
+
+
+      const count =
+        document.createElement("span");
+
+      count.className = "count";
+
+      count.textContent =
+        layers.length;
+
+
+      header.append(
+        arrow,
+        swatch,
+        layerName,
+        count
+      );
+
+
+      row.appendChild(header);
+
+
+      const list =
+        document.createElement("div");
+
+      list.className = "plist";
+
+      list.hidden = true;
+
+
+      function toggleList(){
+
+        list.hidden =
+          !list.hidden;
+
+        arrow.textContent =
+          list.hidden
+            ? "▸"
+            : "▾";
+
+      }
+
+
+      arrow.onclick =
+        toggleList;
+
+      layerName.onclick =
+        toggleList;
+
+
+      layers
+        .filter(
+          layer =>
+            !query ||
+            polygonName(layer)
+              .toLowerCase()
+              .includes(query)
+        )
+        .forEach(
+          function(layer){
 
             const item =
               document.createElement("div");
@@ -1085,7 +1135,7 @@
 
 
             item.onclick =
-              function() {
+              function(){
 
                 select(layer);
 
@@ -1093,9 +1143,9 @@
 
 
             item.ondragstart =
-              function(event) {
+              function(event){
 
-                if (drawing) {
+                if(drawing){
 
                   event.preventDefault();
 
@@ -1124,7 +1174,7 @@
 
 
             item.ondragend =
-              function() {
+              function(){
 
                 item.classList.remove(
                   "dragging"
@@ -1147,97 +1197,105 @@
 
             list.appendChild(item);
 
-          });
+          }
+        );
 
 
-        row.appendChild(list);
+      row.appendChild(list);
 
 
-        header.ondragover =
-          function(event) {
+      header.ondragover =
+        function(event){
 
-            if (drawing) return;
+          if(drawing) return;
 
-            event.preventDefault();
+          event.preventDefault();
 
+          event.dataTransfer
+            .dropEffect = "move";
+
+          row.classList.add(
+            "drop"
+          );
+
+        };
+
+
+      header.ondragleave =
+        function(){
+
+          row.classList.remove(
+            "drop"
+          );
+
+        };
+
+
+      header.ondrop =
+        function(event){
+
+          if(drawing) return;
+
+          event.preventDefault();
+
+          row.classList.remove(
+            "drop"
+          );
+
+
+          const fid =
             event.dataTransfer
-              .dropEffect = "move";
-
-            row.classList.add(
-              "drop"
-            );
-
-          };
-
-
-        header.ondragleave =
-          function() {
-
-            row.classList.remove(
-              "drop"
-            );
-
-          };
-
-
-        header.ondrop =
-          function(event) {
-
-            if (drawing) return;
-
-            event.preventDefault();
-
-            row.classList.remove(
-              "drop"
-            );
-
-
-            const fid =
-              event.dataTransfer
-                .getData(
-                  "text/polygon"
-                );
-
-
-            const layer =
-              findPolygon(fid);
-
-
-            if (layer) {
-
-              movePolygon(
-                layer,
-                id
+              .getData(
+                "text/polygon"
               );
 
-            }
 
-          };
+          const layer =
+            findPolygon(fid);
 
 
-        output.appendChild(row);
+          if(layer){
 
-      });
+            movePolygon(
+              layer,
+              id
+            );
+
+          }
+
+        };
+
+
+      output.appendChild(row);
 
     }
+  );
+
+}
 
 
-    function fillLayerSelects() {
+/* =========================================================
+   SELECT BOXES
+   ========================================================= */
 
-      [
-        "drawLayer",
-        "selectedLayer"
-      ]
-      .forEach(function(selectId) {
+function fillLayerSelects(){
 
-        const selectElement =
-          $(selectId);
+  [
+    "drawLayer",
+    "selectedLayer"
+  ]
+  .forEach(
+    function(selectId){
+
+      const selectElement =
+        $(selectId);
 
 
-        selectElement.innerHTML = "";
+      selectElement.innerHTML = "";
 
 
-        LAYERS.forEach(function(c) {
+      LAYERS.forEach(
+        function(c){
 
           const option =
             document.createElement(
@@ -1247,60 +1305,69 @@
 
           option.value = c[0];
 
-          option.textContent = c[1];
+          option.textContent =
+            c[1];
 
 
           selectElement.appendChild(
             option
           );
 
-        });
-
-      });
-
-    }
-
-
-    function addFeature(
-      feature,
-      layerId
-    ) {
-
-      const layer =
-        L.geoJSON(feature)
-          .getLayers()[0];
-
-
-      if (!layer) return;
-
-
-      layer.feature =
-        feature;
-
-
-      setupPolygon(
-        layer,
-        layerId
+        }
       );
 
-
-      groups[layerId]
-        .addLayer(layer);
-
     }
+  );
+
+}
 
 
-    function getCurrentGeoJSON() {
+/* =========================================================
+   GEOJSON
+   ========================================================= */
 
-      const result = {};
+function addFeature(
+  feature,
+  layerId
+){
+
+  const layer =
+    L.geoJSON(feature)
+      .getLayers()[0];
 
 
-      LAYERS.forEach(function(c) {
+  if(!layer) return;
 
-        const features =
-          groups[c[0]]
-            .getLayers()
-            .map(function(layer) {
+
+  layer.feature =
+    feature;
+
+
+  setupPolygon(
+    layer,
+    layerId
+  );
+
+
+  groups[layerId]
+    .addLayer(layer);
+
+}
+
+
+function getCurrentGeoJSON(){
+
+  const result = {};
+
+
+  LAYERS.forEach(
+    function(c){
+
+      const features =
+        groups[c[0]]
+          .getLayers()
+          .map(
+            function(layer){
 
               const feature =
                 layer.toGeoJSON();
@@ -1318,1304 +1385,1352 @@
 
               return feature;
 
-            });
+            }
+          );
 
 
-        result[c[1]] = {
+      result[c[1]] = {
 
-          type: "FeatureCollection",
+        type:
+          "FeatureCollection",
 
-          features: features
+        features:
+          features
 
-        };
-
-      });
-
-
-      return result;
+      };
 
     }
+  );
 
 
-    function snapshot() {
+  return result;
 
-      return JSON.parse(
-        JSON.stringify(
-          getCurrentGeoJSON()
-        )
-      );
+}
+
+
+/* =========================================================
+   HISTORY
+   ========================================================= */
+
+function snapshot(){
+
+  return JSON.parse(
+    JSON.stringify(
+      getCurrentGeoJSON()
+    )
+  );
+
+}
+
+
+function saveHistory(){
+
+  const snap =
+    snapshot();
+
+
+  const previous =
+    history[
+      history.length - 1
+    ];
+
+
+  if(
+    previous &&
+    JSON.stringify(previous) ===
+    JSON.stringify(snap)
+  ){
+
+    return;
+
+  }
+
+
+  history =
+    history.slice(
+      0,
+      historyIndex + 1
+    );
+
+
+  history.push(snap);
+
+
+  if(history.length > 40){
+
+    history.shift();
+
+  }
+
+
+  historyIndex =
+    history.length - 1;
+
+}
+
+
+/* =========================================================
+   RESTORE
+   ========================================================= */
+
+function restore(state){
+
+  deselect(false);
+
+
+  LAYERS.forEach(
+    function(c){
+
+      groups[c[0]]
+        .clearLayers();
 
     }
+  );
 
 
-    function saveHistory() {
+  LAYERS.forEach(
+    function(c){
 
-      const snap =
-        snapshot();
-
-
-      const previous =
-        history[
-          history.length - 1
-        ];
+      const featureCollection =
+        state[c[1]];
 
 
-      if (
-        previous &&
-        JSON.stringify(previous) ===
-        JSON.stringify(snap)
-      ) {
-
-        return;
-
-      }
+      if(
+        !featureCollection ||
+        !featureCollection.features
+      ) return;
 
 
-      history =
-        history.slice(
-          0,
-          historyIndex + 1
-        );
-
-
-      history.push(snap);
-
-
-      if (history.length > 40) {
-
-        history.shift();
-
-      }
-
-
-      historyIndex =
-        history.length - 1;
-
-    }
-
-
-    function restore(state) {
-
-      deselect(false);
-
-
-      LAYERS.forEach(function(c) {
-
-        groups[c[0]]
-          .clearLayers();
-
-      });
-
-
-      LAYERS.forEach(function(c) {
-
-        const featureCollection =
-          state[c[1]];
-
-
-        if (
-          !featureCollection ||
-          !featureCollection.features
-        ) return;
-
-
-        featureCollection.features
-          .forEach(function(feature) {
+      featureCollection.features
+        .forEach(
+          function(feature){
 
             addFeature(
               feature,
               c[0]
             );
 
-          });
-
-      });
-
-
-      renderSidebar();
-
-    }
-
-
-    function startDrawing() {
-
-      deselect(false);
-
-      drawing = true;
-
-
-      Object.values(groups)
-        .forEach(function(group) {
-
-          group.eachLayer(
-            function(layer) {
-
-              layer.pm.disable();
-
-            }
-          );
-
-        });
-
-
-      map.pm.enableDraw(
-        "Polygon",
-        {
-          snappable: true,
-          allowSelfIntersection: false
-        }
-      );
-
-
-      setStatus(
-        "Drawing polygon..."
-      );
-
-    }
-
-
-    function polygonCreated(event) {
-
-      const layer =
-        event.layer;
-
-
-      const targetId =
-        $("drawLayer").value;
-
-
-      map.pm.disableDraw();
-
-      drawing = false;
-
-
-      map.removeLayer(layer);
-
-
-      const feature =
-        layer.toGeoJSON();
-
-
-      feature.properties = {
-
-        Name:
-          "New polygon " +
-          polygonCounter++
-
-      };
-
-
-      layer.feature =
-        feature;
-
-
-      layer._layer =
-        targetId;
-
-
-      layer._fid =
-        "new-" +
-        Date.now() +
-        "-" +
-        Math.random();
-
-
-      setupPolygon(
-        layer,
-        targetId
-      );
-
-
-      groups[targetId]
-        .addLayer(layer);
-
-
-      saveHistory();
-
-      select(layer);
-
-
-      setStatus(
-        "New polygon added to " +
-        config(targetId)[1] +
-        "."
-      );
-
-    }
-
-
-    async function load() {
-
-      /*
-        First check whether this browser
-        already has a saved editor state.
-      */
-
-      let savedData = null;
-
-
-      try {
-
-        const saved =
-          localStorage.getItem(
-            "polrad_editor_data"
-          );
-
-
-        if (saved) {
-
-          savedData =
-            JSON.parse(saved);
-
-        }
-
-      } catch (error) {
-
-        savedData = null;
-
-      }
-
-
-      /*
-        Restore saved editor state.
-      */
-
-      if (savedData) {
-
-        LAYERS.forEach(function(c) {
-
-          groups[c[0]] =
-            L.featureGroup()
-              .addTo(map);
-
-
-          const featureCollection =
-            savedData[c[1]];
-
-
-          if (
-            !featureCollection ||
-            !featureCollection.features
-          ) return;
-
-
-          featureCollection.features
-            .forEach(function(feature) {
-
-              addFeature(
-                feature,
-                c[0]
-              );
-
-            });
-
-        });
-
-
-        saveHistory();
-
-        renderSidebar();
-
-        setStatus(
-          "Loaded your saved changes."
-        );
-
-        return;
-
-      }
-
-
-      /*
-        Otherwise load the actual
-        GeoJSON files.
-      */
-
-      for (const c of LAYERS) {
-
-        groups[c[0]] =
-          L.featureGroup()
-            .addTo(map);
-
-
-        try {
-
-          const response =
-            await fetch(
-              "data/" + c[2]
-            );
-
-
-          const data =
-            await response.json();
-
-
-          (
-            data.features || []
-          ).forEach(
-            function(feature) {
-
-              addFeature(
-                feature,
-                c[0]
-              );
-
-            }
-          );
-
-
-        } catch (error) {
-
-          setStatus(
-            "Could not load " +
-            c[1]
-          );
-
-        }
-
-      }
-
-
-      saveHistory();
-
-      renderSidebar();
-
-    }
-
-
-    /*
-      MAP SEARCH
-    */
-
-    let searchTimer = null;
-
-
-    function hideMapSearchResults() {
-
-      $("mapSearchResults")
-        .style.display = "none";
-
-      $("mapSearchResults")
-        .innerHTML = "";
-
-    }
-
-
-    function showMapSearchResults(
-      results
-    ) {
-
-      const box =
-        $("mapSearchResults");
-
-
-      box.innerHTML = "";
-
-
-      if (!results.length) {
-
-        const noResult =
-          document.createElement(
-            "div"
-          );
-
-
-        noResult.className =
-          "mapSearchNoResult";
-
-
-        noResult.textContent =
-          "No locations found.";
-
-
-        box.appendChild(
-          noResult
-        );
-
-
-        box.style.display =
-          "block";
-
-
-        return;
-
-      }
-
-
-      results.forEach(function(result) {
-
-        const item =
-          document.createElement(
-            "div"
-          );
-
-
-        item.className =
-          "mapSearchResult";
-
-
-        item.textContent =
-          result.display_name;
-
-
-        item.onclick =
-          function(event) {
-
-            event.stopPropagation();
-
-
-            const lat =
-              parseFloat(
-                result.lat
-              );
-
-
-            const lon =
-              parseFloat(
-                result.lon
-              );
-
-
-            map.setView(
-              [lat, lon],
-              13
-            );
-
-
-            L.marker(
-              [lat, lon]
-            )
-              .addTo(map)
-              .bindPopup(
-                result.display_name
-              )
-              .openPopup();
-
-
-            $("mapSearch").value =
-              result.display_name;
-
-
-            hideMapSearchResults();
-
-          };
-
-
-        box.appendChild(item);
-
-      });
-
-
-      box.style.display =
-        "block";
-
-    }
-
-
-    async function searchMap(query) {
-
-      query =
-        query.trim();
-
-
-      if (!query) {
-
-        hideMapSearchResults();
-
-        return;
-
-      }
-
-
-      /*
-        First check whether the input
-        is directly a coordinate pair.
-      */
-
-      const coordinateMatch =
-        query.match(
-          /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
-        );
-
-
-      if (coordinateMatch) {
-
-        const lat =
-          parseFloat(
-            coordinateMatch[1]
-          );
-
-
-        const lon =
-          parseFloat(
-            coordinateMatch[2]
-          );
-
-
-        if (
-          lat >= -90 &&
-          lat <= 90 &&
-          lon >= -180 &&
-          lon <= 180
-        ) {
-
-          map.setView(
-            [lat, lon],
-            13
-          );
-
-
-          L.marker(
-            [lat, lon]
-          )
-            .addTo(map)
-            .bindPopup(
-              lat + ", " + lon
-            )
-            .openPopup();
-
-
-          hideMapSearchResults();
-
-          return;
-
-        }
-
-      }
-
-
-      /*
-        Otherwise search OpenStreetMap
-        through Nominatim.
-      */
-
-      try {
-
-        const response =
-          await fetch(
-            "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&accept-language=en&q=" +
-            encodeURIComponent(query)
-          );
-
-
-        const results =
-          await response.json();
-
-
-        showMapSearchResults(
-          results
-        );
-
-
-      } catch (error) {
-
-        const box =
-          $("mapSearchResults");
-
-
-        box.innerHTML = "";
-
-
-        const errorItem =
-          document.createElement(
-            "div"
-          );
-
-
-        errorItem.className =
-          "mapSearchNoResult";
-
-
-        errorItem.textContent =
-          "Search failed. Try again.";
-
-
-        box.appendChild(
-          errorItem
-        );
-
-
-        box.style.display =
-          "block";
-
-      }
-
-    }
-
-
-    /*
-      LOGIN
-    */
-
-    async function login() {
-
-      try {
-
-        const response =
-          await fetch(
-            WORKER,
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json"
-              },
-
-              body: JSON.stringify({
-                action: "login",
-                password:
-                  $("password").value
-              })
-            }
-          );
-
-
-        const result =
-          await response.json();
-
-
-        if (
-          !response.ok ||
-          !result.success
-        ) {
-
-          throw new Error(
-            "Incorrect password."
-          );
-
-        }
-
-
-        $("login")
-          .style.display =
-          "none";
-
-
-        $("side")
-          .style.display =
-          "block";
-
-
-        map =
-          L.map(
-            "map",
-            {
-              center: [
-                48,
-                37.75
-              ],
-
-              zoom: 7
-            }
-          );
-
-
-        /*
-          HYBRID
-          */
-
-        const satellite =
-          L.tileLayer(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            {
-              attribution:
-                "Tiles © Esri"
-            }
-          );
-
-
-        const labels =
-          L.tileLayer(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-            {
-              attribution:
-                "Labels © Esri"
-            }
-          );
-
-
-        const hybrid =
-          L.layerGroup([
-            satellite,
-            labels
-          ]);
-
-
-        const osm =
-          L.tileLayer(
-            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            {
-              attribution:
-                "© OpenStreetMap contributors"
-            }
-          );
-
-
-        const topo =
-          L.tileLayer(
-            "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-            {
-              attribution:
-                "© OpenTopoMap"
-            }
-          );
-
-
-        /*
-          HYBRID IS DEFAULT
-        */
-
-        hybrid.addTo(map);
-
-
-        L.control.layers(
-          {
-            "Hybrid":
-              hybrid,
-
-            "Satellite":
-              satellite,
-
-            "OpenStreetMap":
-              osm,
-
-            "OpenTopoMap":
-              topo
-          }
-        ).addTo(map);
-
-
-        /*
-          EMPTY MAP CLICK =
-          DESELECT POLYGON
-        */
-
-        map.on(
-          "click",
-          function() {
-
-            if (
-              drawing ||
-              ignoreNextMapClick
-            ) return;
-
-
-            deselect();
-
           }
         );
 
-
-        /*
-          CLOSE SEARCH WHEN
-          CLICKING ELSEWHERE
-        */
-
-        map.on(
-          "click",
-          function() {
-
-            /*
-              Don't immediately close the
-              search when clicking the
-              search control itself.
-            */
-
-          }
-        );
-
-
-        /*
-          GEOMAN
-        */
-
-        map.on(
-          "pm:create",
-          polygonCreated
-        );
-
-
-        map.pm.addControls({
-
-          position:
-            "bottomleft",
-
-          drawMarker:
-            false,
-
-          drawCircleMarker:
-            false,
-
-          drawPolyline:
-            false,
-
-          drawRectangle:
-            false,
-
-          drawCircle:
-            false,
-
-          drawText:
-            false,
-
-          editMode:
-            false,
-
-          dragMode:
-            false,
-
-          cutPolygon:
-            false,
-
-          removalMode:
-            false,
-
-          drawPolygon:
-            false
-
-        });
-
-
-        fillLayerSelects();
-
-
-        await load();
-
-
-        /*
-          SEARCH INPUT
-        */
-
-        $("mapSearch").addEventListener(
-          "input",
-          function() {
-
-            const query =
-              this.value.trim();
-
-
-            clearTimeout(
-              searchTimer
-            );
-
-
-            if (!query) {
-
-              hideMapSearchResults();
-
-              return;
-
-            }
-
-
-            /*
-              Coordinate searches are
-              handled immediately.
-            */
-
-            const coordinateMatch =
-              query.match(
-                /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
-              );
-
-
-            if (coordinateMatch) {
-
-              searchMap(query);
-
-              return;
-
-            }
-
-
-            /*
-              Small delay so we don't
-              spam the geocoder while
-              typing.
-            */
-
-            searchTimer =
-              setTimeout(
-                function() {
-
-                  searchMap(query);
-
-                },
-                450
-              );
-
-          }
-        );
-
-
-        $("mapSearch").addEventListener(
-          "keydown",
-          function(event) {
-
-            if (
-              event.key === "Enter"
-            ) {
-
-              event.preventDefault();
-
-              clearTimeout(
-                searchTimer
-              );
-
-              searchMap(
-                this.value
-              );
-
-            }
-
-
-            if (
-              event.key === "Escape"
-            ) {
-
-              hideMapSearchResults();
-
-            }
-
-          }
-        );
-
-
-        /*
-          Prevent clicks in the search
-          from reaching the Leaflet map.
-        */
-
-        $("mapSearchBox").addEventListener(
-          "click",
-          function(event) {
-
-            event.stopPropagation();
-
-          }
-        );
-
-
-      } catch (error) {
-
-        $("err")
-          .style.display =
-          "block";
-
-      }
-
     }
+  );
 
 
-    /*
-      LOGIN EVENTS
-    */
+  renderSidebar();
 
-    window.addEventListener(
-      "load",
-      function() {
+}
 
-        setTimeout(
-          function() {
 
-            $("password").focus();
+/* =========================================================
+   DRAWING
+   ========================================================= */
 
-          },
-          50
+function startDrawing(){
+
+  deselect(false);
+
+  drawing = true;
+
+
+  Object.values(groups)
+    .forEach(
+      function(group){
+
+        group.eachLayer(
+          function(layer){
+
+            layer.pm.disable();
+
+          }
         );
 
       }
     );
 
 
-    $("loginbtn").onclick =
-      login;
+  map.pm.enableDraw(
+    "Polygon",
+    {
+      snappable:true,
+      allowSelfIntersection:false
+    }
+  );
 
 
-    $("password").onkeydown =
-      function(event) {
+  setStatus(
+    "Drawing polygon..."
+  );
 
-        if (
-          event.key === "Enter"
-        ) {
-
-          login();
-
-        }
-
-      };
+}
 
 
-    /*
-      DRAW
-    */
+function polygonCreated(event){
 
-    $("draw").onclick =
-      startDrawing;
+  const layer =
+    event.layer;
 
 
-    /*
-      DELETE
-    */
-
-    $("delete").onclick =
-      function() {
-
-        if (!selected) return;
+  const targetId =
+    $("drawLayer").value;
 
 
-        groups[
-          selected._layer
-        ]
-          .removeLayer(
-            selected
-          );
+  map.pm.disableDraw();
+
+  drawing = false;
 
 
-        selected = null;
+  map.removeLayer(layer);
 
 
-        $("selectedBox")
-          .style.display =
-          "none";
+  const feature =
+    layer.toGeoJSON();
 
 
-        saveHistory();
+  feature.properties = {
 
-        renderSidebar();
+    Name:
+      "New polygon " +
+      polygonCounter++
 
-
-        setStatus(
-          "Polygon deleted."
-        );
-
-      };
+  };
 
 
-    /*
-      CHANGE POLYGON LAYER
-    */
-
-    $("selectedLayer").onchange =
-      function(event) {
-
-        if (selected) {
-
-          movePolygon(
-            selected,
-            event.target.value
-          );
-
-        }
-
-      };
+  layer.feature =
+    feature;
 
 
-    /*
-      SIDEBAR POLYGON SEARCH
-    */
-
-    $("search").oninput =
-      renderSidebar;
+  layer._layer =
+    targetId;
 
 
-    /*
-      SAVE
-    */
-
-    $("save").onclick =
-      function() {
-
-        localStorage.setItem(
-          "polrad_editor_data",
-          JSON.stringify(
-            getCurrentGeoJSON()
-          )
-        );
+  layer._fid =
+    "new-" +
+    Date.now() +
+    "-" +
+    Math.random();
 
 
-        setStatus(
-          "Saved in this browser."
-        );
+  setupPolygon(
+    layer,
+    targetId
+  );
 
 
-        alert(
-          "Changes saved successfully."
-        );
-
-      };
+  groups[targetId]
+    .addLayer(layer);
 
 
-    /*
-      DOWNLOAD
-    */
+  saveHistory();
 
-    $("download").onclick =
-      function() {
+  select(layer);
 
-        const blob =
-          new Blob(
-            [
-              JSON.stringify(
-                getCurrentGeoJSON(),
-                null,
-                2
-              )
-            ],
-            {
-              type:
-                "application/json"
+
+  setStatus(
+    "New polygon added to " +
+    config(targetId)[1] +
+    "."
+  );
+
+}
+
+
+/* =========================================================
+   LOAD DATA
+   ========================================================= */
+
+async function load(){
+
+  let savedData = null;
+
+
+  try{
+
+    const saved =
+      localStorage.getItem(
+        "polrad_editor_data"
+      );
+
+
+    if(saved){
+
+      savedData =
+        JSON.parse(saved);
+
+    }
+
+  }catch(error){
+
+    savedData = null;
+
+  }
+
+
+  /*
+    RESTORE LOCAL SAVE FIRST
+  */
+
+  if(savedData){
+
+    LAYERS.forEach(
+      function(c){
+
+        groups[c[0]] =
+          L.featureGroup()
+            .addTo(map);
+
+
+        const featureCollection =
+          savedData[c[1]];
+
+
+        if(
+          !featureCollection ||
+          !featureCollection.features
+        ) return;
+
+
+        featureCollection.features
+          .forEach(
+            function(feature){
+
+              addFeature(
+                feature,
+                c[0]
+              );
+
             }
           );
 
-
-        const url =
-          URL.createObjectURL(
-            blob
-          );
+      }
+    );
 
 
-        const link =
-          document.createElement(
-            "a"
-          );
+    saveHistory();
+
+    renderSidebar();
+
+    setStatus(
+      "Loaded your saved changes."
+    );
+
+    return;
+
+  }
 
 
-        link.href = url;
+  /*
+    OTHERWISE LOAD GITHUB DATA
+  */
 
-        link.download =
-          "polrad-edited-data.json";
+  for(const c of LAYERS){
+
+    groups[c[0]] =
+      L.featureGroup()
+        .addTo(map);
 
 
-        link.click();
+    try{
 
-
-        URL.revokeObjectURL(
-          url
+      const response =
+        await fetch(
+          "data/" + c[2]
         );
 
-      };
+
+      const data =
+        await response.json();
 
 
-    /*
-      RESET
-    */
+      (
+        data.features || []
+      ).forEach(
+        function(feature){
 
-    $("reset").onclick =
-      function() {
-
-        if (
-          confirm(
-            "Reset all edits?"
-          )
-        ) {
-
-          localStorage.removeItem(
-            "polrad_editor_data"
+          addFeature(
+            feature,
+            c[0]
           );
-
-
-          location.reload();
 
         }
-
-      };
-
-
-    /*
-      PUBLISH
-    */
-
-    $("publish").onclick =
-      async function() {
-
-        setStatus(
-          "Publishing..."
-        );
+      );
 
 
-        try {
+    }catch(error){
 
-          const currentFiles =
-            getCurrentGeoJSON();
+      setStatus(
+        "Could not load " +
+        c[1]
+      );
+
+    }
+
+  }
 
 
-          const response =
-            await fetch(
-              WORKER,
-              {
-                method: "POST",
+  saveHistory();
 
-                headers: {
-                  "Content-Type":
-                    "application/json"
-                },
+  renderSidebar();
 
-                body: JSON.stringify({
+}
 
-                  action:
-                    "publish",
 
-                  files:
-                    currentFiles
+/* =========================================================
+   MAP SEARCH
+   ========================================================= */
 
-                })
+let searchTimer = null;
 
-              }
+
+function hideMapSearchResults(){
+
+  $("mapSearchResults")
+    .style.display = "none";
+
+  $("mapSearchResults")
+    .innerHTML = "";
+
+}
+
+
+function showMapSearchResults(results){
+
+  const box =
+    $("mapSearchResults");
+
+
+  box.innerHTML = "";
+
+
+  if(!results.length){
+
+    const noResult =
+      document.createElement("div");
+
+
+    noResult.className =
+      "mapSearchNoResult";
+
+
+    noResult.textContent =
+      "No locations found.";
+
+
+    box.appendChild(
+      noResult
+    );
+
+
+    box.style.display =
+      "block";
+
+
+    return;
+
+  }
+
+
+  results.forEach(
+    function(result){
+
+      const item =
+        document.createElement("div");
+
+
+      item.className =
+        "mapSearchResult";
+
+
+      item.textContent =
+        result.display_name;
+
+
+      item.onclick =
+        function(event){
+
+          event.stopPropagation();
+
+
+          const lat =
+            parseFloat(
+              result.lat
             );
 
 
-          const result =
-            await response.json();
+          const lon =
+            parseFloat(
+              result.lon
+            );
 
 
-          if (
-            !response.ok ||
-            !result.success
-          ) {
+          map.setView(
+            [lat,lon],
+            13
+          );
 
-            throw new Error(
-              result.error ||
-              "Publish failed"
+
+          L.marker(
+            [lat,lon]
+          )
+          .addTo(map)
+          .bindPopup(
+            result.display_name
+          )
+          .openPopup();
+
+
+          $("mapSearch").value =
+            result.display_name;
+
+
+          hideMapSearchResults();
+
+        };
+
+
+      box.appendChild(item);
+
+    }
+  );
+
+
+  box.style.display =
+    "block";
+
+}
+
+
+async function searchMap(query){
+
+  query =
+    query.trim();
+
+
+  if(!query){
+
+    hideMapSearchResults();
+
+    return;
+
+  }
+
+
+  /*
+    COORDINATES
+  */
+
+  const coordinateMatch =
+    query.match(
+      /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
+    );
+
+
+  if(coordinateMatch){
+
+    const lat =
+      parseFloat(
+        coordinateMatch[1]
+      );
+
+
+    const lon =
+      parseFloat(
+        coordinateMatch[2]
+      );
+
+
+    if(
+      lat >= -90 &&
+      lat <= 90 &&
+      lon >= -180 &&
+      lon <= 180
+    ){
+
+      map.setView(
+        [lat,lon],
+        13
+      );
+
+
+      L.marker(
+        [lat,lon]
+      )
+      .addTo(map)
+      .bindPopup(
+        lat + ", " + lon
+      )
+      .openPopup();
+
+
+      hideMapSearchResults();
+
+      return;
+
+    }
+
+  }
+
+
+  /*
+    OPENSTREETMAP NOMINATIM
+  */
+
+  try{
+
+    const response =
+      await fetch(
+        "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&accept-language=en&q=" +
+        encodeURIComponent(query)
+      );
+
+
+    const results =
+      await response.json();
+
+
+    showMapSearchResults(
+      results
+    );
+
+
+  }catch(error){
+
+    const box =
+      $("mapSearchResults");
+
+
+    box.innerHTML = "";
+
+
+    const errorItem =
+      document.createElement("div");
+
+
+    errorItem.className =
+      "mapSearchNoResult";
+
+
+    errorItem.textContent =
+      "Search failed. Try again.";
+
+
+    box.appendChild(
+      errorItem
+    );
+
+
+    box.style.display =
+      "block";
+
+  }
+
+}
+
+
+/* =========================================================
+   LOGIN
+   ========================================================= */
+
+async function login(){
+
+  try{
+
+    const response =
+      await fetch(
+        WORKER,
+        {
+          method:"POST",
+
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+
+          body:JSON.stringify({
+
+            action:"login",
+
+            password:
+              $("password").value
+
+          })
+
+        }
+      );
+
+
+    const result =
+      await response.json();
+
+
+    if(
+      !response.ok ||
+      !result.success
+    ){
+
+      throw new Error(
+        "Incorrect password."
+      );
+
+    }
+
+
+    $("login")
+      .style.display =
+      "none";
+
+
+    $("side")
+      .style.display =
+      "block";
+
+
+    /* =====================================================
+       MAP
+       ===================================================== */
+
+    map =
+      L.map(
+        "map",
+        {
+          center:[
+            48,
+            37.75
+          ],
+
+          zoom:7
+        }
+      );
+
+
+    /* =====================================================
+       MAPTILER STREETS
+       DEFAULT MAP
+       ===================================================== */
+
+    const maptiler =
+      L.tileLayer(
+        "https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=" +
+        MAPTILER_KEY,
+        {
+          tileSize:512,
+          zoomOffset:-1,
+          attribution:
+            '&copy; MapTiler &copy; OpenStreetMap contributors',
+          maxZoom:20
+        }
+      );
+
+
+    /* =====================================================
+       ESRI SATELLITE
+       ===================================================== */
+
+    const satellite =
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution:
+            "Tiles &copy; Esri",
+          maxZoom:19
+        }
+      );
+
+
+    /* =====================================================
+       ESRI LABELS
+       ===================================================== */
+
+    const labels =
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution:
+            "Labels &copy; Esri",
+          maxZoom:19
+        }
+      );
+
+
+    /* =====================================================
+       ESRI HYBRID
+       ===================================================== */
+
+    const hybrid =
+      L.layerGroup([
+        satellite,
+        labels
+      ]);
+
+
+    /* =====================================================
+       OPENSTREETMAP
+       ===================================================== */
+
+    const osm =
+      L.tileLayer(
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution:
+            "&copy; OpenStreetMap contributors",
+          maxZoom:19
+        }
+      );
+
+
+    /* =====================================================
+       OPENTOPO
+       ===================================================== */
+
+    const topo =
+      L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        {
+          attribution:
+            "&copy; OpenTopoMap contributors",
+          maxZoom:17
+        }
+      );
+
+
+    /*
+      MAPTILER STREETS = DEFAULT
+    */
+
+    maptiler.addTo(map);
+
+
+    /* =====================================================
+       BASEMAP SWITCHER
+       ===================================================== */
+
+    L.control.layers(
+
+      {
+        "Leaflet / MapTiler Streets":
+          maptiler,
+
+        "Esri Hybrid":
+          hybrid,
+
+        "Esri Satellite":
+          satellite,
+
+        "OpenStreetMap":
+          osm,
+
+        "OpenTopoMap":
+          topo
+
+      },
+
+      null,
+
+      {
+        collapsed:true
+      }
+
+    ).addTo(map);
+
+
+    /* =====================================================
+       EMPTY MAP CLICK
+       ===================================================== */
+
+    map.on(
+      "click",
+      function(){
+
+        if(
+          drawing ||
+          ignoreNextMapClick
+        ) return;
+
+
+        deselect();
+
+      }
+    );
+
+
+    /* =====================================================
+       GEOMAN
+       ===================================================== */
+
+    map.on(
+      "pm:create",
+      polygonCreated
+    );
+
+
+    map.pm.addControls({
+
+      position:
+        "bottomleft",
+
+      drawMarker:
+        false,
+
+      drawCircleMarker:
+        false,
+
+      drawPolyline:
+        false,
+
+      drawRectangle:
+        false,
+
+      drawCircle:
+        false,
+
+      drawText:
+        false,
+
+      editMode:
+        false,
+
+      dragMode:
+        false,
+
+      cutPolygon:
+        false,
+
+      removalMode:
+        false,
+
+      drawPolygon:
+        false
+
+    });
+
+
+    fillLayerSelects();
+
+
+    await load();
+
+
+    /* =====================================================
+       MAP SEARCH INPUT
+       ===================================================== */
+
+    $("mapSearch")
+      .addEventListener(
+        "input",
+        function(){
+
+          const query =
+            this.value.trim();
+
+
+          clearTimeout(
+            searchTimer
+          );
+
+
+          if(!query){
+
+            hideMapSearchResults();
+
+            return;
+
+          }
+
+
+          const coordinateMatch =
+            query.match(
+              /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/
+            );
+
+
+          if(coordinateMatch){
+
+            searchMap(query);
+
+            return;
+
+          }
+
+
+          searchTimer =
+            setTimeout(
+              function(){
+
+                searchMap(query);
+
+              },
+              450
+            );
+
+        }
+      );
+
+
+    $("mapSearch")
+      .addEventListener(
+        "keydown",
+        function(event){
+
+          if(
+            event.key === "Enter"
+          ){
+
+            event.preventDefault();
+
+            clearTimeout(
+              searchTimer
+            );
+
+            searchMap(
+              this.value
             );
 
           }
 
 
-          /*
-            Keep the editor's local
-            saved version synchronized.
-          */
+          if(
+            event.key === "Escape"
+          ){
 
-          localStorage.setItem(
-            "polrad_editor_data",
-            JSON.stringify(
-              currentFiles
-            )
-          );
+            hideMapSearchResults();
 
-
-          setStatus(
-            "Published successfully."
-          );
-
-
-          alert(
-            "Published successfully!"
-          );
-
-
-        } catch (error) {
-
-          setStatus(
-            error.message
-          );
+          }
 
         }
+      );
 
-      };
 
-  </script>
+    $("mapSearchBox")
+      .addEventListener(
+        "click",
+        function(event){
+
+          event.stopPropagation();
+
+        }
+      );
+
+
+  }catch(error){
+
+    $("err")
+      .style.display =
+      "block";
+
+  }
+
+}
+
+
+/* =========================================================
+   LOGIN EVENTS
+   ========================================================= */
+
+window.addEventListener(
+  "load",
+  function(){
+
+    setTimeout(
+      function(){
+
+        $("password").focus();
+
+      },
+      50
+    );
+
+  }
+);
+
+
+$("loginbtn").onclick =
+  login;
+
+
+$("password").onkeydown =
+  function(event){
+
+    if(
+      event.key === "Enter"
+    ){
+
+      login();
+
+    }
+
+  };
+
+
+/* =========================================================
+   DRAW
+   ========================================================= */
+
+$("draw").onclick =
+  startDrawing;
+
+
+/* =========================================================
+   DELETE
+   ========================================================= */
+
+$("delete").onclick =
+  function(){
+
+    if(!selected) return;
+
+
+    groups[
+      selected._layer
+    ]
+    .removeLayer(
+      selected
+    );
+
+
+    selected = null;
+
+
+    $("selectedBox")
+      .style.display =
+      "none";
+
+
+    saveHistory();
+
+    renderSidebar();
+
+
+    setStatus(
+      "Polygon deleted."
+    );
+
+  };
+
+
+/* =========================================================
+   CHANGE LAYER
+   ========================================================= */
+
+$("selectedLayer").onchange =
+  function(event){
+
+    if(selected){
+
+      movePolygon(
+        selected,
+        event.target.value
+      );
+
+    }
+
+  };
+
+
+/* =========================================================
+   SIDEBAR SEARCH
+   ========================================================= */
+
+$("search").oninput =
+  renderSidebar;
+
+
+/* =========================================================
+   SAVE
+   ========================================================= */
+
+$("save").onclick =
+  function(){
+
+    localStorage.setItem(
+      "polrad_editor_data",
+      JSON.stringify(
+        getCurrentGeoJSON()
+      )
+    );
+
+
+    setStatus(
+      "Saved in this browser."
+    );
+
+
+    alert(
+      "Changes saved successfully."
+    );
+
+  };
+
+
+/* =========================================================
+   DOWNLOAD
+   ========================================================= */
+
+$("download").onclick =
+  function(){
+
+    const blob =
+      new Blob(
+        [
+          JSON.stringify(
+            getCurrentGeoJSON(),
+            null,
+            2
+          )
+        ],
+        {
+          type:
+            "application/json"
+        }
+      );
+
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+
+    link.href = url;
+
+    link.download =
+      "polrad-edited-data.json";
+
+
+    link.click();
+
+
+    URL.revokeObjectURL(
+      url
+    );
+
+  };
+
+
+/* =========================================================
+   RESET
+   ========================================================= */
+
+$("reset").onclick =
+  function(){
+
+    if(
+      confirm(
+        "Reset all edits?"
+      )
+    ){
+
+      localStorage.removeItem(
+        "polrad_editor_data"
+      );
+
+
+      location.reload();
+
+    }
+
+  };
+
+
+/* =========================================================
+   PUBLISH
+   ========================================================= */
+
+$("publish").onclick =
+  async function(){
+
+    setStatus(
+      "Publishing..."
+    );
+
+
+    try{
+
+      const currentFiles =
+        getCurrentGeoJSON();
+
+
+      const response =
+        await fetch(
+          WORKER,
+          {
+            method:"POST",
+
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+
+            body:JSON.stringify({
+
+              action:
+                "publish",
+
+              files:
+                currentFiles
+
+            })
+
+          }
+        );
+
+
+      const result =
+        await response.json();
+
+
+      if(
+        !response.ok ||
+        !result.success
+      ){
+
+        throw new Error(
+          result.error ||
+          "Publish failed"
+        );
+
+      }
+
+
+      /*
+        KEEP LOCAL EDITOR SAVE
+        SYNCHRONIZED WITH PUBLISHED MAP
+      */
+
+      localStorage.setItem(
+        "polrad_editor_data",
+        JSON.stringify(
+          currentFiles
+        )
+      );
+
+
+      setStatus(
+        "Published successfully."
+      );
+
+
+      alert(
+        "Published successfully!"
+      );
+
+
+    }catch(error){
+
+      setStatus(
+        error.message
+      );
+
+    }
+
+  };
+
+</script>
 
 </body>
 </html>
