@@ -783,6 +783,37 @@
     }
 
     async function load() {
+      // If the user has clicked Save before, restore that edited map first.
+      // Otherwise load the current GeoJSON files from the repository.
+      let savedData = null;
+
+      try {
+        const saved = localStorage.getItem("polrad_editor_data");
+        if (saved) {
+          savedData = JSON.parse(saved);
+        }
+      } catch (error) {
+        savedData = null;
+      }
+
+      if (savedData) {
+        LAYERS.forEach(function(c) {
+          groups[c[0]] = L.featureGroup().addTo(map);
+
+          const featureCollection = savedData[c[1]];
+          if (!featureCollection || !featureCollection.features) return;
+
+          featureCollection.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+        });
+
+        saveHistory();
+        renderSidebar();
+        setStatus("Loaded your saved changes.");
+        return;
+      }
+
       for (const c of LAYERS) {
         groups[c[0]] = L.featureGroup().addTo(map);
 
@@ -986,6 +1017,12 @@
         if (!response.ok || !result.success) {
           throw new Error(result.error || "Publish failed");
         }
+
+        // Keep the editor's local saved copy in sync with what was published.
+        localStorage.setItem(
+          "polrad_editor_data",
+          JSON.stringify(currentFiles)
+        );
 
         setStatus("Published successfully.");
         alert("Published successfully!");
