@@ -307,15 +307,17 @@
 
 
 <script>
-
 /* =========================================================
    LOGIN
 ========================================================= */
 
-const loginScreen = document.getElementById("loginScreen");
-const passwordInput = document.getElementById("passwordInput");
-const loginButton = document.getElementById("loginButton");
-const loginError = document.getElementById("loginError");
+const loginBox = document.getElementById("login");
+const passwordInput = document.getElementById("password");
+const loginButton = document.getElementById("login-button");
+const loginError = document.getElementById("login-error");
+
+const WORKER_URL =
+    "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
 async function attemptLogin() {
 
@@ -327,55 +329,61 @@ async function attemptLogin() {
 
     loginButton.disabled = true;
     loginButton.textContent = "Checking...";
-
     loginError.style.display = "none";
-
-    const WORKER_URL =
-        "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
     try {
 
-        const response = await fetch(
-            WORKER_URL,
-            {
-                method: "POST",
+        const response = await fetch(WORKER_URL, {
+            method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-                body: JSON.stringify({
-                    action: "login",
-                    password: password
-                })
-            }
-        );
+            body: JSON.stringify({
+                action: "login",
+                password: password
+            })
+        });
 
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-            throw new Error(
-                result.error || "Login failed."
-            );
+            throw new Error(result.error || "Login failed.");
         }
 
-        loginScreen.style.display = "none";
+        // Successful login
+        loginBox.style.display = "none";
 
-        initializeMap();
+        if (typeof initMap === "function") {
+            initMap();
+        }
 
     } catch (error) {
 
+        console.error("Login error:", error);
+
+        loginError.textContent =
+            "Login failed. Check the password or Worker.";
+
         loginError.style.display = "block";
-        passwordInput.value = "";
 
     } finally {
 
         loginButton.disabled = false;
-        loginButton.textContent = "Log in";
+        loginButton.textContent = "Enter";
 
     }
 }
 
+loginButton.addEventListener("click", attemptLogin);
+
+passwordInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+        attemptLogin();
+    }
+});
+</script>
 
 /* =========================================================
    DATA
