@@ -301,7 +301,6 @@
       <div class="actions">
         <button class="btn" id="save">Save</button>
         <button class="btn" id="download">Download</button>
-        <button class="btn" id="reset">Reset</button>
         <button class="btn primary" id="publish">Publish</button>
       </div>
 
@@ -361,6 +360,8 @@
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
+    const layerOpenState = {};
+    let hoveredSidebarLayer = null;
 
     // Prevent a Geoman vertex interaction from immediately triggering
     // the map's empty-space deselection handler.
@@ -556,6 +557,27 @@
       setStatus("Polygon moved to " + config(targetId)[1] + ".");
     }
 
+    function highlightSidebarPolygon(layer) {
+      if (!layer) return;
+
+      hoveredSidebarLayer = layer;
+      try {
+        layer.bringToFront();
+        layer.setStyle({
+          color: config(layer._layer)[3],
+          fillColor: config(layer._layer)[3],
+          fillOpacity: 0.6,
+          weight: 5
+        });
+      } catch (e) {}
+    }
+
+    function unhighlightSidebarPolygon(layer) {
+      if (!layer) return;
+      if (hoveredSidebarLayer === layer) hoveredSidebarLayer = null;
+      applyStyle(layer, layer === selected);
+    }
+
     function renderSidebar() {
       const query = $("search").value.trim().toLowerCase();
       const output = $("layers");
@@ -594,17 +616,17 @@
 
         const list = document.createElement("div");
         list.className = "plist";
-        list.hidden = true;
+        list.hidden = layerOpenState[id] !== true;
+        arrow.textContent = list.hidden ? "▸" : "▾";
 
-        arrow.onclick = function() {
+        function toggleLayer() {
           list.hidden = !list.hidden;
+          layerOpenState[id] = !list.hidden;
           arrow.textContent = list.hidden ? "▸" : "▾";
-        };
+        }
 
-        layerName.onclick = function() {
-          list.hidden = !list.hidden;
-          arrow.textContent = list.hidden ? "▸" : "▾";
-        };
+        arrow.onclick = toggleLayer;
+        layerName.onclick = toggleLayer;
 
         layers
           .filter(layer => {
@@ -627,6 +649,15 @@
             // Normal click selects the polygon.
             item.onclick = function() {
               select(layer);
+            };
+
+            // Highlight this exact polygon on the map while hovering its name.
+            item.onmouseenter = function() {
+              highlightSidebarPolygon(layer);
+            };
+
+            item.onmouseleave = function() {
+              unhighlightSidebarPolygon(layer);
             };
 
             // Drag the sidebar item onto another layer header to move it.
@@ -1107,13 +1138,6 @@
       link.click();
 
       URL.revokeObjectURL(url);
-    };
-
-    $("reset").onclick = function() {
-      if (confirm("Reset all edits?")) {
-        localStorage.removeItem("polrad_editor_data");
-        location.reload();
-      }
     };
 
     // PUBLISH = send the CURRENT edited geometry as proper GeoJSON
