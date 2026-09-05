@@ -299,6 +299,8 @@
 
     <div class="body">
       <div class="actions">
+        <button class="btn" id="undo">↶ Undo</button>
+        <button class="btn" id="redo">↷ Redo</button>
         <button class="btn" id="save">Save</button>
         <button class="btn" id="download">Download</button>
         <button class="btn primary" id="publish">Publish</button>
@@ -793,6 +795,20 @@
       historyIndex = history.length - 1;
     }
 
+    function undo() {
+      if (historyIndex <= 0) return;
+      historyIndex--;
+      restore(history[historyIndex]);
+      setStatus("Undid last change.");
+    }
+
+    function redo() {
+      if (historyIndex >= history.length - 1) return;
+      historyIndex++;
+      restore(history[historyIndex]);
+      setStatus("Redid change.");
+    }
+
     function restore(state) {
       deselect(false);
 
@@ -1112,6 +1128,9 @@
     };
 
     $("search").oninput = renderSidebar;
+
+    $("undo").onclick = undo;
+    $("redo").onclick = redo;
 
     // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
