@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 2.0</title>
+  <title>POLRAD map editor 3.0</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -345,7 +345,6 @@
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
-    const MAPTILER_KEY = "rj4gnCm18XIMEFW2FkxW";
 
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#d94b4b"],
@@ -1022,24 +1021,17 @@
           { attribution: "Tiles © Esri" }
         );
 
-        const labels = L.tileLayer(
-          "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-          { attribution: "Labels © Esri" }
-        );
-
-        const hybrid = L.layerGroup([satellite, labels]);
-
-        /* MapTiler Hybrid - DEFAULT */
-        const leafletHybrid = L.tileLayer(
-          "https://api.maptiler.com/maps/hybrid-v4/{z}/{x}/{y}.png?key=" + MAPTILER_KEY,
+        // CARTO label-only layer over Esri satellite imagery.
+        const cartoLabels = L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
           {
-            tileSize: 512,
-            zoomOffset: -1,
-            minZoom: 1,
-            maxZoom: 20,
-            attribution: "© MapTiler © OpenStreetMap contributors"
+            subdomains: "abcd",
+            attribution: "© CARTO © OpenStreetMap contributors",
+            pane: "overlayPane"
           }
         );
+
+        const esriCartoHybrid = L.layerGroup([satellite, cartoLabels]);
 
         const osm = L.tileLayer(
           "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -1051,12 +1043,11 @@
           { attribution: "© OpenTopoMap" }
         );
 
-        /* MapTiler Hybrid is the default basemap. */
-        leafletHybrid.addTo(map);
+        // Esri satellite + CARTO labels is the default basemap.
+        esriCartoHybrid.addTo(map);
 
         L.control.layers({
-          "Leaflet Hybrid (MapTiler)": leafletHybrid,
-          "Esri Hybrid": hybrid,
+          "Esri + CARTO Labels": esriCartoHybrid,
           "Esri Satellite": satellite,
           "OpenStreetMap": osm,
           "OpenTopoMap": topo
