@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 3.0</title>
+  <title>POLRAD map editor 4.0</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -303,6 +303,7 @@
         <button class="btn" id="redo">↷ Redo</button>
         <button class="btn" id="save">Save</button>
         <button class="btn" id="download">Download</button>
+        <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
         <button class="btn primary" id="publish">Publish</button>
       </div>
 
@@ -342,16 +343,17 @@
 
   <script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
     const LAYERS = [
-      ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#d94b4b"],
-      ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#4b83d9"],
-      ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#6fb7ff"],
-      ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#f1c40f"],
-      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#42b883"]
+      ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
+      ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
+      ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
+      ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
+      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"]
     ];
 
     let map;
@@ -363,6 +365,244 @@
     let historyIndex = -1;
     const layerOpenState = {};
     let hoveredSidebarLayer = null;
+
+    // Gray Zone is generated automatically from the current Russian-controlled
+    // and Ukrainian-controlled/regained geometry. It is kept separate from
+    // the editable polygon layers so it can be toggled on/off for checking.
+    let grayZoneLayer = null;
+    let grayZoneVisible = false;
+    let grayZoneData = null;
+
+    function getFeatureCollection(layerId) {
+      const features = groups[layerId]
+        ? groups[layerId].getLayers().map(function(layer) {
+            const feature = layer.toGeoJSON();
+            feature.properties = Object.assign(
+              {},
+              layer.feature && layer.feature.properties
+                ? layer.feature.properties
+                : {}
+            );
+            return feature;
+          })
+        : [];
+
+      return {
+        type: "FeatureCollection",
+        features: features
+      };
+    }
+
+    function safeFeatureCollection(fc) {
+      if (!fc || !fc.features || !fc.features.length) return null;
+      try {
+        return turf.featureCollection(
+          fc.features
+            .map(function(feature) {
+              try {
+                return turf.cleanCoords(feature);
+              } catch (e) {
+                return feature;
+              }
+            })
+            .filter(function(feature) {
+              return feature && feature.geometry &&
+                (feature.geometry.type === "Polygon" ||
+                 feature.geometry.type === "MultiPolygon");
+            })
+        );
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function unionFeatures(fc) {
+      if (!fc || !fc.features.length) return null;
+
+      let result = null;
+
+      fc.features.forEach(function(feature) {
+        try {
+          if (!result) {
+            result = feature;
+          } else {
+            result = turf.union(turf.featureCollection([result, feature]));
+          }
+        } catch (e) {
+          // Skip an invalid/problematic feature rather than breaking the editor.
+        }
+      });
+
+      return result;
+    }
+
+    function differenceFeatures(base, cutters) {
+      if (!base) return null;
+
+      let result = base;
+
+      cutters.forEach(function(cutter) {
+        if (!result) return;
+
+        try {
+          result = turf.difference(
+            turf.featureCollection([result, cutter])
+          );
+        } catch (e) {
+          // Keep the previous result if a boolean operation fails.
+        }
+      });
+
+      return result;
+    }
+
+    function generateGrayZone() {
+      // The gray zone is the free space between the current Russian-controlled
+      // and Ukrainian-controlled/regained polygons.
+      //
+      // We calculate it locally from the actual edited geometries. Because there
+      // is no meaningful "gray zone" outside the mapped front area, the result
+      // is restricted to a narrow corridor around the contact area.
+      //
+      // IMPORTANT: This is a derived/display layer only. It is never added to
+      // LAYERS and therefore cannot overwrite your editable GeoJSON layers.
+
+      grayZoneData = null;
+
+      const ru = safeFeatureCollection(getFeatureCollection("ru_territory"));
+      const uaTerritory = safeFeatureCollection(getFeatureCollection("ua_territory"));
+      const regained = safeFeatureCollection(getFeatureCollection("regained"));
+
+      if (!ru || !uaTerritory) {
+        updateGrayZoneLayer();
+        return null;
+      }
+
+      try {
+        const ruUnion = unionFeatures(ru);
+
+        const uaParts = [];
+        if (uaTerritory && uaTerritory.features.length) {
+          const u = unionFeatures(uaTerritory);
+          if (u) uaParts.push(u);
+        }
+        if (regained && regained.features.length) {
+          const r = unionFeatures(regained);
+          if (r) uaParts.push(r);
+        }
+
+        if (!ruUnion || !uaParts.length) {
+          updateGrayZoneLayer();
+          return null;
+        }
+
+        let uaUnion = uaParts[0];
+        for (let i = 1; i < uaParts.length; i++) {
+          try {
+            uaUnion = turf.union(
+              turf.featureCollection([uaUnion, uaParts[i]])
+            );
+          } catch (e) {}
+        }
+
+        if (!uaUnion) {
+          updateGrayZoneLayer();
+          return null;
+        }
+
+        // Build a corridor around both sides. The exact free space is then
+        // obtained by subtracting the controlled areas from that corridor.
+        // 15 km gives enough room for normal front-line gaps without creating
+        // a huge gray area across unrelated parts of Ukraine.
+        const ruBuffer = turf.buffer(ruUnion, 15, { units: "kilometers" });
+        const uaBuffer = turf.buffer(uaUnion, 15, { units: "kilometers" });
+
+        if (!ruBuffer || !uaBuffer) {
+          updateGrayZoneLayer();
+          return null;
+        }
+
+        let corridor = turf.union(
+          turf.featureCollection([ruBuffer, uaBuffer])
+        );
+
+        if (!corridor) {
+          updateGrayZoneLayer();
+          return null;
+        }
+
+        // Keep only the overlap of the two 15 km influence zones. This means
+        // the result exists only where the two sides are actually close.
+        corridor = turf.intersect(
+          turf.featureCollection([ruBuffer, uaBuffer])
+        );
+
+        if (!corridor) {
+          updateGrayZoneLayer();
+          return null;
+        }
+
+        let gray = differenceFeatures(corridor, [ruUnion, uaUnion]);
+
+        if (gray) {
+          gray.properties = {
+            Name: "Automatically generated Gray Zone"
+          };
+          grayZoneData = turf.featureCollection([gray]);
+        }
+
+      } catch (error) {
+        console.warn("Gray Zone generation failed:", error);
+        grayZoneData = null;
+      }
+
+      updateGrayZoneLayer();
+      return grayZoneData;
+    }
+
+    function updateGrayZoneLayer() {
+      if (grayZoneLayer) {
+        map.removeLayer(grayZoneLayer);
+        grayZoneLayer = null;
+      }
+
+      if (!grayZoneVisible || !grayZoneData || !map) return;
+
+      grayZoneLayer = L.geoJSON(grayZoneData, {
+        style: {
+          color: "#666",
+          fillColor: "#808080",
+          fillOpacity: 0.35,
+          weight: 1.5,
+          interactive: false
+        },
+        interactive: false
+      }).addTo(map);
+
+      // Keep the gray zone underneath the editable territory polygons.
+      grayZoneLayer.eachLayer(function(layer) {
+        if (layer.bringToBack) layer.bringToBack();
+      });
+    }
+
+    function toggleGrayZone() {
+      grayZoneVisible = !grayZoneVisible;
+
+      const button = $("grayZoneToggle");
+      if (button) {
+        button.textContent = grayZoneVisible
+          ? "Hide Gray Zone"
+          : "Show Gray Zone";
+      }
+
+      if (grayZoneVisible) {
+        generateGrayZone();
+        setStatus("Gray Zone shown for checking.");
+      } else {
+        updateGrayZoneLayer();
+        setStatus("Gray Zone hidden.");
+      }
+    }
 
     // Prevent a Geoman vertex interaction from immediately triggering
     // the map's empty-space deselection handler.
@@ -475,6 +715,7 @@
         if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
+          if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
       });
@@ -483,6 +724,7 @@
         if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
+          if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
       });
@@ -497,6 +739,7 @@
         if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
+          if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
       });
@@ -506,6 +749,7 @@
           suppressNextMapClick();
           saveHistory();
           renderSidebar();
+          if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
       });
@@ -767,6 +1011,20 @@
         };
       });
 
+      // Gray Zone is derived from the current edited geometry.
+      // It is included in the published package but is not part of the
+      // editable LAYERS list.
+      generateGrayZone();
+
+      if (grayZoneData) {
+        result["Gray Zone"] = grayZoneData;
+      } else {
+        result["Gray Zone"] = {
+          type: "FeatureCollection",
+          features: []
+        };
+      }
+
       return result;
     }
 
@@ -826,6 +1084,7 @@
       });
 
       renderSidebar();
+      generateGrayZone();
     }
 
     function startDrawing() {
@@ -966,6 +1225,7 @@
 
         saveHistory();
         renderSidebar();
+        generateGrayZone();
         setStatus("Loaded your saved changes.");
         return;
       }
@@ -987,6 +1247,7 @@
 
       saveHistory();
       renderSidebar();
+      generateGrayZone();
     }
 
     async function login() {
@@ -1122,6 +1383,7 @@
 
     $("undo").onclick = undo;
     $("redo").onclick = redo;
+    $("grayZoneToggle").onclick = toggleGrayZone;
 
     // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
