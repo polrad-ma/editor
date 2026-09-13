@@ -1019,10 +1019,15 @@
       groups[layerId].addLayer(layer);
     }
 
-    // Convert the ACTUAL current Leaflet polygons into valid GeoJSON.
-    // This is the important fix for Publish: edited vertex positions are
-    // read from the polygon on the map, not from the original loaded data.
-    function getCurrentGeoJSON() {
+    // Convert the ACTUAL current Leaflet polygons into valid GeoJSON, WITHOUT
+    // touching the Gray Zone. This is what the undo/redo history stack uses:
+    // restore() never reads the "Gray Zone" key, so there is no reason for
+    // every single edit to pay for a fresh union/buffer/intersect/difference
+    // pass. (Previously it did, via snapshot() -> getCurrentGeoJSON(), which
+    // silently doubled the Gray Zone recompute on every edit on top of the
+    // explicit generateGrayZone() calls in the vertex/drag handlers below —
+    // that double work was the main source of the lag/"bugging".)
+    function getEditableGeoJSON() {
       const result = {};
 
       LAYERS.forEach(function(c) {
@@ -1047,6 +1052,16 @@
         };
       });
 
+      return result;
+    }
+
+    // Same as above, but also (re)computes the derived Gray Zone layer.
+    // This is the expensive version: only call it where the Gray Zone
+    // output is actually needed (Save / Download / Publish), not on every
+    // edit event.
+    function getCurrentGeoJSON() {
+      const result = getEditableGeoJSON();
+
       // Gray Zone is derived from the current edited geometry.
       // It is included in the published package but is not part of the
       // editable LAYERS list.
@@ -1065,7 +1080,7 @@
     }
 
     function snapshot() {
-      return JSON.parse(JSON.stringify(getCurrentGeoJSON()));
+      return JSON.parse(JSON.stringify(getEditableGeoJSON()));
     }
 
     function saveHistory() {
