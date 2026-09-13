@@ -51,6 +51,7 @@
       display: flex;
       gap: 5px;
       margin-bottom: 9px;
+      flex-wrap: wrap;
     }
 
     .btn {
@@ -304,6 +305,7 @@
         <button class="btn" id="save">Save</button>
         <button class="btn" id="download">Download</button>
         <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
+        <button class="btn" id="grayZoneRecalc">Recalculate Gray Zone</button>
         <button class="btn primary" id="publish">Publish</button>
       </div>
 
@@ -436,13 +438,29 @@
       return result;
     }
 
+    function unionAll(parts) {
+      if (!parts.length) return null;
+
+      let result = parts[0];
+
+      for (let i = 1; i < parts.length; i++) {
+        try {
+          result = turf.union(turf.featureCollection([result, parts[i]]));
+        } catch (e) {
+          // Keep the previous result if a union fails on one part.
+        }
+      }
+
+      return result;
+    }
+
     function differenceFeatures(base, cutters) {
       if (!base) return null;
 
       let result = base;
 
       cutters.forEach(function(cutter) {
-        if (!result) return;
+        if (!result || !cutter) return;
 
         try {
           result = turf.difference(
@@ -464,6 +482,10 @@
       // is no meaningful "gray zone" outside the mapped front area, the result
       // is restricted to a narrow corridor around the contact area.
       //
+      // Both sides' "advances" layers are treated as claimed/contested ground
+      // too, so they are folded into each side's controlled area. That keeps
+      // the generated gray zone from overlapping the advance arrows/polygons.
+      //
       // IMPORTANT: This is a derived/display layer only. It is never added to
       // LAYERS and therefore cannot overwrite your editable GeoJSON layers.
 
@@ -472,6 +494,8 @@
       const ru = safeFeatureCollection(getFeatureCollection("ru_territory"));
       const uaTerritory = safeFeatureCollection(getFeatureCollection("ua_territory"));
       const regained = safeFeatureCollection(getFeatureCollection("regained"));
+      const ruAdvances = safeFeatureCollection(getFeatureCollection("ru_advances"));
+      const uaAdvances = safeFeatureCollection(getFeatureCollection("ua_advances"));
 
       if (!ru || !uaTerritory) {
         updateGrayZoneLayer();
@@ -479,7 +503,13 @@
       }
 
       try {
-        const ruUnion = unionFeatures(ru);
+        const ruParts = [];
+        const ruBase = unionFeatures(ru);
+        if (ruBase) ruParts.push(ruBase);
+        if (ruAdvances && ruAdvances.features.length) {
+          const a = unionFeatures(ruAdvances);
+          if (a) ruParts.push(a);
+        }
 
         const uaParts = [];
         if (uaTerritory && uaTerritory.features.length) {
@@ -490,30 +520,29 @@
           const r = unionFeatures(regained);
           if (r) uaParts.push(r);
         }
+        if (uaAdvances && uaAdvances.features.length) {
+          const a = unionFeatures(uaAdvances);
+          if (a) uaParts.push(a);
+        }
 
-        if (!ruUnion || !uaParts.length) {
+        if (!ruParts.length || !uaParts.length) {
           updateGrayZoneLayer();
           return null;
         }
 
-        let uaUnion = uaParts[0];
-        for (let i = 1; i < uaParts.length; i++) {
-          try {
-            uaUnion = turf.union(
-              turf.featureCollection([uaUnion, uaParts[i]])
-            );
-          } catch (e) {}
-        }
+        const ruUnion = unionAll(ruParts);
+        const uaUnion = unionAll(uaParts);
 
-        if (!uaUnion) {
+        if (!ruUnion || !uaUnion) {
           updateGrayZoneLayer();
           return null;
         }
 
         // Build a corridor around both sides. The exact free space is then
-        // obtained by subtracting the controlled areas from that corridor.
-        // 15 km gives enough room for normal front-line gaps without creating
-        // a huge gray area across unrelated parts of Ukraine.
+        // obtained by subtracting the controlled areas (territory + advances)
+        // from that corridor. 15 km gives enough room for normal front-line
+        // gaps without creating a huge gray area across unrelated parts of
+        // Ukraine.
         const ruBuffer = turf.buffer(ruUnion, 15, { units: "kilometers" });
         const uaBuffer = turf.buffer(uaUnion, 15, { units: "kilometers" });
 
@@ -522,18 +551,9 @@
           return null;
         }
 
-        let corridor = turf.union(
-          turf.featureCollection([ruBuffer, uaBuffer])
-        );
-
-        if (!corridor) {
-          updateGrayZoneLayer();
-          return null;
-        }
-
         // Keep only the overlap of the two 15 km influence zones. This means
         // the result exists only where the two sides are actually close.
-        corridor = turf.intersect(
+        const corridor = turf.intersect(
           turf.featureCollection([ruBuffer, uaBuffer])
         );
 
@@ -542,6 +562,8 @@
           return null;
         }
 
+        // Subtract BOTH sides' controlled area, which now includes their
+        // advances, so the gray zone never overlaps an advance polygon.
         let gray = differenceFeatures(corridor, [ruUnion, uaUnion]);
 
         if (gray) {
@@ -601,6 +623,20 @@
       } else {
         updateGrayZoneLayer();
         setStatus("Gray Zone hidden.");
+      }
+    }
+
+    // Manual recalculation, since the automatic recompute-on-every-edit-event
+    // path can lag behind or misfire during multi-step edits (dragging several
+    // vertices, moving polygons between layers, etc). Clicking this always
+    // regenerates from whatever is on the map right now.
+    function recalcGrayZone() {
+      generateGrayZone();
+
+      if (grayZoneVisible) {
+        setStatus("Gray Zone recalculated.");
+      } else {
+        setStatus("Gray Zone recalculated (currently hidden — click \"Show Gray Zone\" to view).");
       }
     }
 
@@ -1384,6 +1420,7 @@
     $("undo").onclick = undo;
     $("redo").onclick = redo;
     $("grayZoneToggle").onclick = toggleGrayZone;
+    $("grayZoneRecalc").onclick = recalcGrayZone;
 
     // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
