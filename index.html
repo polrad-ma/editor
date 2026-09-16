@@ -318,6 +318,15 @@
         <button class="btn primary" id="draw">Draw a polygon</button>
       </div>
 
+      <div class="box">
+        <b style="font-size:13px">Other Tools</b>
+        <label style="display:block;margin-top:7px">Curved line layer</label>
+        <select id="curveLayer"></select>
+        <button class="btn primary" id="curveDraw">Draw a curved line</button>
+        <button class="btn" id="curveFinish" style="display:none;margin-top:5px">Finish curved line</button>
+        <div class="small" style="margin-top:6px">Click 3 or more points. The line is smoothed automatically.</div>
+      </div>
+
       <div class="box" id="selectedBox" style="display:none">
         <b id="selectedName" style="font-size:13px"></b>
         <label style="display:block;margin-top:7px">Layer</label>
@@ -355,13 +364,18 @@
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
-      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"]
+      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
+      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff0000", "line"],
+      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ff8c00", "line"]
     ];
 
     let map;
     let groups = {};
     let selected = null;
     let drawing = false;
+    let curveDrawing = false;
+    let curvePoints = [];
+    let curvePreview = null;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
@@ -669,11 +683,13 @@
       const c = config(layer._layer);
       if (!c) return;
 
+      const isLine = c[4] === "line";
+
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
-        fillOpacity: 0.4,
-        weight: isSelected ? 4 : 2
+        fillOpacity: isLine ? 0 : 0.4,
+        weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
       });
     }
 
@@ -996,11 +1012,17 @@
     }
 
     function fillLayerSelects() {
-      ["drawLayer", "selectedLayer"].forEach(function(selectId) {
+      ["drawLayer", "selectedLayer", "curveLayer"].forEach(function(selectId) {
         const selectElement = $(selectId);
         selectElement.innerHTML = "";
 
         LAYERS.forEach(function(c) {
+          // The Draw a polygon tool should only target polygon layers.
+          // The line layers remain available in Selected Layer so their
+          // existing frontline geometry can still be moved between layers.
+          if (selectId === "drawLayer" && c[4] === "line") return;
+          if (selectId === "curveLayer" && c[4] !== "line") return;
+
           const option = document.createElement("option");
           option.value = c[0];
           option.textContent = c[1];
@@ -1136,6 +1158,136 @@
 
       renderSidebar();
       generateGrayZone();
+    }
+
+    // Smooth clicked control points into a Catmull-Rom curve.
+    // GeoJSON has no native curve geometry, so the finished curve is stored
+    // as a densely sampled LineString.
+    function makeCurve(points) {
+      if (points.length < 3) return points.slice();
+
+      const result = [];
+      const samples = 20;
+
+      function point(i) {
+        if (i < 0) return points[0];
+        if (i >= points.length) return points[points.length - 1];
+        return points[i];
+      }
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = point(i - 1);
+        const p1 = point(i);
+        const p2 = point(i + 1);
+        const p3 = point(i + 2);
+
+        for (let j = 0; j < samples; j++) {
+          const t = j / samples;
+          const t2 = t * t;
+          const t3 = t2 * t;
+
+          const lat = 0.5 * (
+            2 * p1.lat +
+            (-p0.lat + p2.lat) * t +
+            (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
+            (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
+          );
+
+          const lng = 0.5 * (
+            2 * p1.lng +
+            (-p0.lng + p2.lng) * t +
+            (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
+            (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
+          );
+
+          result.push(L.latLng(lat, lng));
+        }
+      }
+
+      result.push(points[points.length - 1]);
+      return result;
+    }
+
+    function updateCurvePreview() {
+      if (!curveDrawing) return;
+
+      if (curvePreview) map.removeLayer(curvePreview);
+
+      curvePreview = L.polyline(makeCurve(curvePoints), {
+        color: config($("curveLayer").value)[3],
+        weight: 4,
+        opacity: 0.9,
+        dashArray: "8,6",
+        interactive: false
+      }).addTo(map);
+    }
+
+    function startCurveDrawing() {
+      if (drawing) return;
+
+      deselect(false);
+      curveDrawing = true;
+      curvePoints = [];
+
+      Object.values(groups).forEach(function(group) {
+        group.eachLayer(function(layer) {
+          layer.pm.disable();
+        });
+      });
+
+      $("curveDraw").style.display = "none";
+      $("curveFinish").style.display = "block";
+      setStatus("Drawing curved line — click at least 3 points, then Finish curved line.");
+    }
+
+    function addCurvePoint(latlng) {
+      if (!curveDrawing) return;
+
+      curvePoints.push(L.latLng(latlng.lat, latlng.lng));
+      updateCurvePreview();
+      setStatus("Curved line: " + curvePoints.length + " points. Add more or finish.");
+    }
+
+    function finishCurveDrawing() {
+      if (!curveDrawing) return;
+
+      if (curvePoints.length < 3) {
+        setStatus("A curved line needs at least 3 points.");
+        return;
+      }
+
+      const targetId = $("curveLayer").value;
+      const layer = L.polyline(makeCurve(curvePoints), {
+        color: config(targetId)[3],
+        weight: 3,
+        opacity: 1
+      });
+
+      if (curvePreview) {
+        map.removeLayer(curvePreview);
+        curvePreview = null;
+      }
+
+      layer.feature = {
+        type: "Feature",
+        properties: {
+          Name: "New curved line " + polygonCounter++
+        }
+      };
+      layer._layer = targetId;
+      layer._fid = "new-" + Date.now() + "-" + Math.random();
+
+      setupPolygon(layer, targetId);
+      groups[targetId].addLayer(layer);
+
+      curveDrawing = false;
+      curvePoints = [];
+      $("curveDraw").style.display = "block";
+      $("curveFinish").style.display = "none";
+
+      saveHistory();
+      select(layer);
+      setStatus("New curved line added to " + config(targetId)[1] + ".");
     }
 
     function startDrawing() {
@@ -1367,7 +1519,13 @@
 
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
-        map.on("click", function() {
+        map.on("click", function(event) {
+          if (curveDrawing) {
+            if (ignoreNextMapClick) return;
+            addCurvePoint(event.latlng);
+            return;
+          }
+
           if (drawing || ignoreNextMapClick) return;
           deselect();
         });
@@ -1411,6 +1569,8 @@
     };
 
     $("draw").onclick = startDrawing;
+    $("curveDraw").onclick = startCurveDrawing;
+    $("curveFinish").onclick = finishCurveDrawing;
 
     $("delete").onclick = function() {
       if (!selected) return;
@@ -1421,7 +1581,7 @@
 
       saveHistory();
       renderSidebar();
-      setStatus("Polygon deleted.");
+      setStatus("Feature deleted.");
     };
 
     $("selectedLayer").onchange = function(event) {
