@@ -130,6 +130,13 @@
       width: 20px;
     }
 
+    .vis {
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
     .sw {
       width: 14px;
       height: 14px;
@@ -336,6 +343,7 @@
 
       <div class="section">
         <b style="font-size:12px;color:#777">LAYERS</b>
+        <div class="small" style="margin-top:4px">Use the checkbox to show/hide a layer on the map. Hidden layers stay in your data — they just aren't drawn.</div>
       </div>
 
       <div id="layers"></div>
@@ -365,9 +373,22 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff0000", "line"],
-      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ff8c00", "line"]
+      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ffeb3b", "line"],
+      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ffeb3b", "line"]
     ];
+
+    // Layers that should start OFF (hidden on the map) when the editor loads.
+    // The user can still toggle them on/off from the sidebar at any time;
+    // this only controls the initial state.
+    const DEFAULT_HIDDEN_LAYERS = ["deepstate_frontline", "ria_frontline"];
+
+    // Current show/hide state per layer id. Initialized from
+    // DEFAULT_HIDDEN_LAYERS, then only ever changed by the user via the
+    // sidebar checkbox (never reset by undo/redo/save/load).
+    const layerVisible = {};
+    LAYERS.forEach(function(c) {
+      layerVisible[c[0]] = DEFAULT_HIDDEN_LAYERS.indexOf(c[0]) === -1;
+    });
 
     let map;
     let groups = {};
@@ -667,6 +688,29 @@
       return LAYERS.find(layer => layer[0] === id);
     }
 
+    // Show/hide an editable layer's featureGroup on the map.
+    // This never touches the underlying data — it only adds/removes the
+    // Leaflet featureGroup from the map, so toggling a layer off and back
+    // on is lossless.
+    function setLayerVisible(id, visible) {
+      layerVisible[id] = visible;
+
+      const group = groups[id];
+      if (!group || !map) return;
+
+      if (visible) {
+        if (!map.hasLayer(group)) group.addTo(map);
+      } else {
+        if (map.hasLayer(group)) map.removeLayer(group);
+
+        // A polygon that's selected in a layer that just got hidden can no
+        // longer be edited/seen, so drop the selection cleanly.
+        if (selected && selected._layer === id) {
+          deselect();
+        }
+      }
+    }
+
     function polygonName(layer) {
       return (
         layer.feature &&
@@ -897,6 +941,15 @@
         const header = document.createElement("div");
         header.className = "lh";
 
+        const visToggle = document.createElement("input");
+        visToggle.type = "checkbox";
+        visToggle.className = "vis";
+        visToggle.checked = layerVisible[id];
+        visToggle.title = "Show/hide this layer on the map";
+        visToggle.onchange = function() {
+          setLayerVisible(id, visToggle.checked);
+        };
+
         const arrow = document.createElement("button");
         arrow.className = "arrow";
         arrow.textContent = "▸";
@@ -913,7 +966,7 @@
         count.className = "count";
         count.textContent = layers.length;
 
-        header.append(arrow, swatch, layerName, count);
+        header.append(visToggle, arrow, swatch, layerName, count);
         row.appendChild(header);
 
         const list = document.createElement("div");
@@ -1420,7 +1473,8 @@
 
       if (savedData) {
         LAYERS.forEach(function(c) {
-          groups[c[0]] = L.featureGroup().addTo(map);
+          groups[c[0]] = L.featureGroup();
+          if (layerVisible[c[0]]) groups[c[0]].addTo(map);
 
           const featureCollection = savedData[c[1]];
           if (!featureCollection || !featureCollection.features) return;
@@ -1438,7 +1492,8 @@
       }
 
       for (const c of LAYERS) {
-        groups[c[0]] = L.featureGroup().addTo(map);
+        groups[c[0]] = L.featureGroup();
+        if (layerVisible[c[0]]) groups[c[0]].addTo(map);
 
         try {
           const response = await fetch("data/" + c[2]);
