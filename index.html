@@ -320,11 +320,11 @@
 
       <div class="box">
         <b style="font-size:13px">Other Tools</b>
-        <label style="display:block;margin-top:7px">Curved line layer</label>
+        <label style="display:block;margin-top:7px">Layer for curved line</label>
         <select id="curveLayer"></select>
         <button class="btn primary" id="curveDraw">Draw a curved line</button>
         <button class="btn" id="curveFinish" style="display:none;margin-top:5px">Finish curved line</button>
-        <div class="small" style="margin-top:6px">Click 3 or more points. The line is smoothed automatically.</div>
+        <div class="small" style="margin-top:6px">Choose any layer, then click 3 or more points — even directly on existing polygons. The line is smoothed automatically.</div>
       </div>
 
       <div class="box" id="selectedBox" style="display:none">
@@ -757,6 +757,11 @@
       layer.on("click", function(event) {
         L.DomEvent.stopPropagation(event);
 
+        if (curveDrawing) {
+          addCurvePoint(event.latlng);
+          return;
+        }
+
         if (!drawing) {
           select(layer);
         }
@@ -1021,7 +1026,6 @@
           // The line layers remain available in Selected Layer so their
           // existing frontline geometry can still be moved between layers.
           if (selectId === "drawLayer" && c[4] === "line") return;
-          if (selectId === "curveLayer" && c[4] !== "line") return;
 
           const option = document.createElement("option");
           option.value = c[0];
