@@ -324,7 +324,7 @@
         <select id="curveLayer"></select>
         <button class="btn primary" id="curveDraw">Draw a curved line</button>
         <button class="btn" id="curveFinish" style="display:none;margin-top:5px">Finish curved line</button>
-        <div class="small" style="margin-top:6px">Click 3 or more control points. The finished curve uses only those control points for editing.</div>
+        <div class="small" style="margin-top:6px">Click 3 or more control points. Once a curve is drawn and selected: double-click the line to add a new control point, right-click a control point to remove it (minimum 3 points).</div>
       </div>
 
       <div class="box" id="selectedBox" style="display:none">
@@ -812,6 +812,13 @@
           L.DomEvent.stopPropagation(event);
         });
 
+        // Right-click (contextmenu) a control point to delete it.
+        handle.on("contextmenu", function(event) {
+          L.DomEvent.stopPropagation(event);
+          if (event.originalEvent) event.originalEvent.preventDefault();
+          removeCurvePoint(layer, handle._curveIndex);
+        });
+
         handle.on("drag", function(event) {
           const pos = event.target.getLatLng();
 
@@ -831,6 +838,70 @@
 
         layer._curveHandles.push(handle);
       });
+    }
+
+    // Removes a single control point from a curve (right-click on a handle).
+    // Refuses to go below 3 points, since a curve needs at least that many.
+    function removeCurvePoint(layer, pointIndex) {
+      if (!layer || !layer._isCurve || !layer._controlPoints) return;
+
+      if (layer._controlPoints.length <= 3) {
+        setStatus("A curved line needs at least 3 control points — can't remove more.");
+        return;
+      }
+
+      layer._controlPoints.splice(pointIndex, 1);
+      updateCurveGeometry(layer);
+
+      if (layer === selected) {
+        createCurveEditHandles(layer);
+      }
+
+      saveHistory();
+      renderSidebar();
+      if (grayZoneVisible) generateGrayZone();
+      setStatus("Curved line control point removed.");
+    }
+
+    // Inserts a new control point into an existing curve at the location the
+    // user double-clicked, placed into whichever segment (between two
+    // existing control points) the click is closest to.
+    function addCurvePointToExisting(layer, latlng) {
+      if (!layer || !layer._isCurve || !layer._controlPoints) return;
+
+      const clicked = turf.point([latlng.lng, latlng.lat]);
+      let bestIndex = layer._controlPoints.length;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < layer._controlPoints.length - 1; i++) {
+        const a = layer._controlPoints[i];
+        const b = layer._controlPoints[i + 1];
+
+        try {
+          const segment = turf.lineString([[a[1], a[0]], [b[1], b[0]]]);
+          const snapped = turf.nearestPointOnLine(segment, clicked);
+          const dist = snapped.properties.dist;
+
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIndex = i + 1;
+          }
+        } catch (e) {
+          // Skip a degenerate segment rather than breaking insertion.
+        }
+      }
+
+      layer._controlPoints.splice(bestIndex, 0, [latlng.lat, latlng.lng]);
+      updateCurveGeometry(layer);
+
+      if (layer === selected) {
+        createCurveEditHandles(layer);
+      }
+
+      saveHistory();
+      renderSidebar();
+      if (grayZoneVisible) generateGrayZone();
+      setStatus("Curved line control point added.");
     }
 
     function deselect(renderSidebar = true) {
@@ -918,6 +989,19 @@
 
         if (!drawing) {
           select(layer);
+        }
+      });
+
+      // Double-click an existing, selected curve to insert a new control
+      // point at that spot.
+      layer.on("dblclick", function(event) {
+        L.DomEvent.stopPropagation(event);
+        if (event.originalEvent) event.originalEvent.preventDefault();
+
+        if (curveDrawing || drawing) return;
+
+        if (layer._isCurve && layer === selected) {
+          addCurvePointToExisting(layer, event.latlng);
         }
       });
 
@@ -1745,6 +1829,13 @@
 
     $("delete").onclick = function() {
       if (!selected) return;
+
+      // Clean up the curve's edit-handle markers (they're added straight to
+      // the map, not into the layer group, so removing the layer alone
+      // doesn't remove them).
+      if (selected._isCurve) {
+        removeCurveEditHandles(selected);
+      }
 
       groups[selected._layer].removeLayer(selected);
       selected = null;
