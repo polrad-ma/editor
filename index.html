@@ -130,13 +130,6 @@
       width: 20px;
     }
 
-    .vis {
-      width: 15px;
-      height: 15px;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-
     .sw {
       width: 14px;
       height: 14px;
@@ -331,7 +324,7 @@
         <select id="curveLayer"></select>
         <button class="btn primary" id="curveDraw">Draw a curved line</button>
         <button class="btn" id="curveFinish" style="display:none;margin-top:5px">Finish curved line</button>
-        <div class="small" style="margin-top:6px">Choose any layer, then click 3 or more points — even directly on existing polygons. The line is smoothed automatically.</div>
+        <div class="small" style="margin-top:6px">Click 3 or more control points. The finished curve uses only those control points for editing.</div>
       </div>
 
       <div class="box" id="selectedBox" style="display:none">
@@ -343,7 +336,6 @@
 
       <div class="section">
         <b style="font-size:12px;color:#777">LAYERS</b>
-        <div class="small" style="margin-top:4px">Use the checkbox to show/hide a layer on the map. Hidden layers stay in your data — they just aren't drawn.</div>
       </div>
 
       <div id="layers"></div>
@@ -373,18 +365,11 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ffeb3b", "line"],
-      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ffeb3b", "line"]
+      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff8c00", "line"],
+      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ff8c00", "line"]
     ];
 
-    // Layers that should start OFF (hidden on the map) when the editor loads.
-    // The user can still toggle them on/off from the sidebar at any time;
-    // this only controls the initial state.
     const DEFAULT_HIDDEN_LAYERS = ["deepstate_frontline", "ria_frontline"];
-
-    // Current show/hide state per layer id. Initialized from
-    // DEFAULT_HIDDEN_LAYERS, then only ever changed by the user via the
-    // sidebar checkbox (never reset by undo/redo/save/load).
     const layerVisible = {};
     LAYERS.forEach(function(c) {
       layerVisible[c[0]] = DEFAULT_HIDDEN_LAYERS.indexOf(c[0]) === -1;
@@ -688,29 +673,6 @@
       return LAYERS.find(layer => layer[0] === id);
     }
 
-    // Show/hide an editable layer's featureGroup on the map.
-    // This never touches the underlying data — it only adds/removes the
-    // Leaflet featureGroup from the map, so toggling a layer off and back
-    // on is lossless.
-    function setLayerVisible(id, visible) {
-      layerVisible[id] = visible;
-
-      const group = groups[id];
-      if (!group || !map) return;
-
-      if (visible) {
-        if (!map.hasLayer(group)) group.addTo(map);
-      } else {
-        if (map.hasLayer(group)) map.removeLayer(group);
-
-        // A polygon that's selected in a layer that just got hidden can no
-        // longer be edited/seen, so drop the selection cleanly.
-        if (selected && selected._layer === id) {
-          deselect();
-        }
-      }
-    }
-
     function polygonName(layer) {
       return (
         layer.feature &&
@@ -727,13 +689,11 @@
       const c = config(layer._layer);
       if (!c) return;
 
-      const isLine = c[4] === "line";
-
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
-        fillOpacity: isLine ? 0 : 0.4,
-        weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
+        fillOpacity: 0.4,
+        weight: isSelected ? 4 : 2
       });
     }
 
@@ -746,9 +706,141 @@
       }, 300);
     }
 
+    function removeCurveEditHandles(layer) {
+      if (!layer || !layer._curveHandles) return;
+
+      layer._curveHandles.forEach(function(handle) {
+        if (map && map.hasLayer(handle)) {
+          map.removeLayer(handle);
+        }
+      });
+
+      layer._curveHandles = [];
+    }
+
+    function makeCurve(points) {
+      if (!points || points.length < 2) return points ? points.slice() : [];
+      if (points.length === 2) return points.slice();
+
+      const result = [];
+      const samples = 12;
+
+      function point(i) {
+        if (i < 0) return points[0];
+        if (i >= points.length) return points[points.length - 1];
+        return points[i];
+      }
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = point(i - 1);
+        const p1 = point(i);
+        const p2 = point(i + 1);
+        const p3 = point(i + 2);
+
+        for (let j = 0; j < samples; j++) {
+          const t = j / samples;
+          const t2 = t * t;
+          const t3 = t2 * t;
+
+          const lat = 0.5 * (
+            2 * p1.lat +
+            (-p0.lat + p2.lat) * t +
+            (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
+            (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
+          );
+
+          const lng = 0.5 * (
+            2 * p1.lng +
+            (-p0.lng + p2.lng) * t +
+            (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
+            (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
+          );
+
+          result.push(L.latLng(lat, lng));
+        }
+      }
+
+      result.push(points[points.length - 1]);
+      return result;
+    }
+
+    function updateCurveGeometry(layer) {
+      if (!layer || !layer._isCurve || !layer._controlPoints) return;
+
+      const points = layer._controlPoints.map(function(p) {
+        return L.latLng(p[0], p[1]);
+      });
+
+      layer.setLatLngs(makeCurve(points));
+      applyStyle(layer, layer === selected);
+    }
+
+    function createCurveEditHandles(layer) {
+      removeCurveEditHandles(layer);
+
+      if (!layer || !layer._isCurve || !layer._controlPoints) return;
+
+      layer._curveHandles = [];
+
+      layer._controlPoints.forEach(function(point, index) {
+        const icon = L.divIcon({
+          className: "curve-control-icon",
+          html: '<div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #1677ff;box-shadow:0 1px 4px rgba(0,0,0,.5);"></div>',
+          iconSize: [12, 12],
+          iconAnchor: [6, 6]
+        });
+
+        const handle = L.marker(
+          [point[0], point[1]],
+          {
+            icon: icon,
+            draggable: true,
+            interactive: true,
+            bubblingMouseEvents: false,
+            zIndexOffset: 10000
+          }
+        ).addTo(map);
+
+        handle._curveParent = layer;
+        handle._curveIndex = index;
+
+        handle.on("click", function(event) {
+          L.DomEvent.stopPropagation(event);
+        });
+
+        handle.on("mousedown", function(event) {
+          L.DomEvent.stopPropagation(event);
+        });
+
+        handle.on("drag", function(event) {
+          const pos = event.target.getLatLng();
+
+          layer._controlPoints[index] = [pos.lat, pos.lng];
+          updateCurveGeometry(layer);
+        });
+
+        handle.on("dragend", function(event) {
+          const pos = event.target.getLatLng();
+
+          layer._controlPoints[index] = [pos.lat, pos.lng];
+          updateCurveGeometry(layer);
+          saveHistory();
+          renderSidebar();
+          setStatus("Curved line control point moved.");
+        });
+
+        layer._curveHandles.push(handle);
+      });
+    }
+
     function deselect(renderSidebar = true) {
       if (selected) {
         selected.pm.disable();
+
+        if (selected._isCurve) {
+          removeCurveEditHandles(selected);
+        }
+
         applyStyle(selected);
       }
 
@@ -761,15 +853,29 @@
     }
 
     function select(layer) {
-      if (!layer || drawing) return;
+      if (!layer || drawing || curveDrawing) return;
 
       if (selected && selected !== layer) {
         selected.pm.disable();
+
+        if (selected._isCurve) {
+          removeCurveEditHandles(selected);
+        }
+
         applyStyle(selected);
       }
 
       selected = layer;
-      layer.pm.enable();
+
+      if (layer._isCurve && layer._controlPoints) {
+        // IMPORTANT: don't enable Geoman on the sampled curve.
+        // It would expose every sampled point and bring the lag back.
+        layer.pm.disable();
+        createCurveEditHandles(layer);
+      } else {
+        layer.pm.enable();
+      }
+
       applyStyle(layer, true);
 
       $("selectedBox").style.display = "block";
@@ -796,6 +902,10 @@
         layer.feature.properties.Name = "New polygon " + polygonCounter++;
       }
 
+      if (layer._isCurve && layer._controlPoints) {
+        updateCurveGeometry(layer);
+      }
+
       applyStyle(layer);
 
       layer.on("click", function(event) {
@@ -811,9 +921,8 @@
         }
       });
 
-      // Keep the polygon selected while editing vertices.
       layer.on("pm:vertexadded", function() {
-        if (layer === selected) {
+        if (layer === selected && !layer._isCurve) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -822,7 +931,7 @@
       });
 
       layer.on("pm:vertexremoved", function() {
-        if (layer === selected) {
+        if (layer === selected && !layer._isCurve) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -831,13 +940,13 @@
       });
 
       layer.on("pm:markerdragstart", function() {
-        if (layer === selected) {
+        if (layer === selected && !layer._isCurve) {
           suppressNextMapClick();
         }
       });
 
       layer.on("pm:markerdragend", function() {
-        if (layer === selected) {
+        if (layer === selected && !layer._isCurve) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -846,7 +955,7 @@
       });
 
       layer.on("pm:edit", function() {
-        if (!drawing && layer === selected) {
+        if (!drawing && layer === selected && !layer._isCurve) {
           suppressNextMapClick();
           saveHistory();
           renderSidebar();
@@ -944,10 +1053,14 @@
         const visToggle = document.createElement("input");
         visToggle.type = "checkbox";
         visToggle.className = "vis";
-        visToggle.checked = layerVisible[id];
-        visToggle.title = "Show/hide this layer on the map";
+        visToggle.checked = layerVisible[id] !== false;
+        visToggle.title = "Show/hide this layer";
         visToggle.onchange = function() {
-          setLayerVisible(id, visToggle.checked);
+          layerVisible[id] = visToggle.checked;
+          if (groups[id]) {
+            if (visToggle.checked) groups[id].addTo(map);
+            else map.removeLayer(groups[id]);
+          }
         };
 
         const arrow = document.createElement("button");
@@ -1075,11 +1188,6 @@
         selectElement.innerHTML = "";
 
         LAYERS.forEach(function(c) {
-          // The Draw a polygon tool should only target polygon layers.
-          // The line layers remain available in Selected Layer so their
-          // existing frontline geometry can still be moved between layers.
-          if (selectId === "drawLayer" && c[4] === "line") return;
-
           const option = document.createElement("option");
           option.value = c[0];
           option.textContent = c[1];
@@ -1092,8 +1200,28 @@
       const layer = L.geoJSON(feature).getLayers()[0];
       if (!layer) return;
 
-      // Keep the complete original properties object.
       layer.feature = feature;
+
+      if (
+        feature.properties &&
+        feature.properties._curve &&
+        Array.isArray(feature.properties._controlPoints) &&
+        feature.properties._controlPoints.length >= 3
+      ) {
+        layer._isCurve = true;
+        layer._controlPoints = feature.properties._controlPoints.map(function(p) {
+          return [Number(p[0]), Number(p[1])];
+        });
+
+        layer.setLatLngs(
+          makeCurve(
+            layer._controlPoints.map(function(p) {
+              return L.latLng(p[0], p[1]);
+            })
+          )
+        );
+      }
+
       setupPolygon(layer, layerId);
       groups[layerId].addLayer(layer);
     }
@@ -1121,6 +1249,11 @@
                 ? layer.feature.properties
                 : {}
             );
+
+            if (layer._isCurve && layer._controlPoints) {
+              feature.properties._curve = true;
+              feature.properties._controlPoints = layer._controlPoints;
+            }
 
             return feature;
           });
@@ -1217,66 +1350,23 @@
       generateGrayZone();
     }
 
-    // Smooth clicked control points into a Catmull-Rom curve.
-    // GeoJSON has no native curve geometry, so the finished curve is stored
-    // as a densely sampled LineString.
-    function makeCurve(points) {
-      if (points.length < 3) return points.slice();
-
-      const result = [];
-      const samples = 20;
-
-      function point(i) {
-        if (i < 0) return points[0];
-        if (i >= points.length) return points[points.length - 1];
-        return points[i];
-      }
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const p0 = point(i - 1);
-        const p1 = point(i);
-        const p2 = point(i + 1);
-        const p3 = point(i + 2);
-
-        for (let j = 0; j < samples; j++) {
-          const t = j / samples;
-          const t2 = t * t;
-          const t3 = t2 * t;
-
-          const lat = 0.5 * (
-            2 * p1.lat +
-            (-p0.lat + p2.lat) * t +
-            (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
-            (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
-          );
-
-          const lng = 0.5 * (
-            2 * p1.lng +
-            (-p0.lng + p2.lng) * t +
-            (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
-            (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
-          );
-
-          result.push(L.latLng(lat, lng));
-        }
-      }
-
-      result.push(points[points.length - 1]);
-      return result;
-    }
-
     function updateCurvePreview() {
       if (!curveDrawing) return;
 
-      if (curvePreview) map.removeLayer(curvePreview);
+      if (curvePreview) {
+        map.removeLayer(curvePreview);
+      }
 
-      curvePreview = L.polyline(makeCurve(curvePoints), {
-        color: config($("curveLayer").value)[3],
-        weight: 4,
-        opacity: 0.9,
-        dashArray: "8,6",
-        interactive: false
-      }).addTo(map);
+      curvePreview = L.polyline(
+        makeCurve(curvePoints),
+        {
+          color: config($("curveLayer").value)[3],
+          weight: 4,
+          opacity: 0.9,
+          dashArray: "8,6",
+          interactive: false
+        }
+      ).addTo(map);
     }
 
     function startCurveDrawing() {
@@ -1289,12 +1379,14 @@
       Object.values(groups).forEach(function(group) {
         group.eachLayer(function(layer) {
           layer.pm.disable();
+          if (layer._isCurve) removeCurveEditHandles(layer);
         });
       });
 
       $("curveDraw").style.display = "none";
       $("curveFinish").style.display = "block";
-      setStatus("Drawing curved line — click at least 3 points, then Finish curved line.");
+
+      setStatus("Drawing curved line — click 3 or more control points, then Finish.");
     }
 
     function addCurvePoint(latlng) {
@@ -1302,23 +1394,32 @@
 
       curvePoints.push(L.latLng(latlng.lat, latlng.lng));
       updateCurvePreview();
-      setStatus("Curved line: " + curvePoints.length + " points. Add more or finish.");
+
+      setStatus(
+        "Curved line: " +
+        curvePoints.length +
+        " control points."
+      );
     }
 
     function finishCurveDrawing() {
       if (!curveDrawing) return;
 
       if (curvePoints.length < 3) {
-        setStatus("A curved line needs at least 3 points.");
+        setStatus("A curved line needs at least 3 control points.");
         return;
       }
 
       const targetId = $("curveLayer").value;
-      const layer = L.polyline(makeCurve(curvePoints), {
-        color: config(targetId)[3],
-        weight: 3,
-        opacity: 1
-      });
+
+      const layer = L.polyline(
+        makeCurve(curvePoints),
+        {
+          color: config(targetId)[3],
+          weight: 3,
+          opacity: 1
+        }
+      );
 
       if (curvePreview) {
         map.removeLayer(curvePreview);
@@ -1331,20 +1432,33 @@
           Name: "New curved line " + polygonCounter++
         }
       };
+
       layer._layer = targetId;
       layer._fid = "new-" + Date.now() + "-" + Math.random();
+      layer._isCurve = true;
+
+      // Store ONLY the few points the user actually clicked.
+      layer._controlPoints = curvePoints.map(function(p) {
+        return [p.lat, p.lng];
+      });
 
       setupPolygon(layer, targetId);
       groups[targetId].addLayer(layer);
 
       curveDrawing = false;
       curvePoints = [];
+
       $("curveDraw").style.display = "block";
       $("curveFinish").style.display = "none";
 
       saveHistory();
       select(layer);
-      setStatus("New curved line added to " + config(targetId)[1] + ".");
+
+      setStatus(
+        "New curved line added to " +
+        config(targetId)[1] +
+        "."
+      );
     }
 
     function startDrawing() {
@@ -1473,8 +1587,7 @@
 
       if (savedData) {
         LAYERS.forEach(function(c) {
-          groups[c[0]] = L.featureGroup();
-          if (layerVisible[c[0]]) groups[c[0]].addTo(map);
+          groups[c[0]] = L.featureGroup().addTo(map);
 
           const featureCollection = savedData[c[1]];
           if (!featureCollection || !featureCollection.features) return;
@@ -1492,8 +1605,7 @@
       }
 
       for (const c of LAYERS) {
-        groups[c[0]] = L.featureGroup();
-        if (layerVisible[c[0]]) groups[c[0]].addTo(map);
+        groups[c[0]] = L.featureGroup().addTo(map);
 
         try {
           const response = await fetch("data/" + c[2]);
@@ -1640,7 +1752,7 @@
 
       saveHistory();
       renderSidebar();
-      setStatus("Feature deleted.");
+      setStatus("Polygon deleted.");
     };
 
     $("selectedLayer").onchange = function(event) {
