@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 4.0</title>
+  <title>POLRAD map editor 4.1</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -318,15 +318,6 @@
         <button class="btn primary" id="draw">Draw a polygon</button>
       </div>
 
-      <div class="box">
-        <b style="font-size:13px">Other Tools</b>
-        <label style="display:block;margin-top:7px">Layer for curved line</label>
-        <select id="curveLayer"></select>
-        <button class="btn primary" id="curveDraw">Draw a curved line</button>
-        <button class="btn" id="curveFinish" style="display:none;margin-top:5px">Finish curved line</button>
-        <div class="small" style="margin-top:6px">Click 3 or more control points. Once a curve is drawn and selected: double-click the line to add a new control point, right-click a control point to remove it (minimum 3 points).</div>
-      </div>
-
       <div class="box" id="selectedBox" style="display:none">
         <b id="selectedName" style="font-size:13px"></b>
         <label style="display:block;margin-top:7px">Layer</label>
@@ -365,23 +356,14 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff8c00", "line"],
+      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff0000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ff8c00", "line"]
     ];
-
-    const DEFAULT_HIDDEN_LAYERS = ["deepstate_frontline", "ria_frontline"];
-    const layerVisible = {};
-    LAYERS.forEach(function(c) {
-      layerVisible[c[0]] = DEFAULT_HIDDEN_LAYERS.indexOf(c[0]) === -1;
-    });
 
     let map;
     let groups = {};
     let selected = null;
     let drawing = false;
-    let curveDrawing = false;
-    let curvePoints = [];
-    let curvePreview = null;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
@@ -689,11 +671,13 @@
       const c = config(layer._layer);
       if (!c) return;
 
+      const isLine = c[4] === "line";
+
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
-        fillOpacity: 0.4,
-        weight: isSelected ? 4 : 2
+        fillOpacity: isLine ? 0 : 0.4,
+        weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
       });
     }
 
@@ -706,212 +690,9 @@
       }, 300);
     }
 
-    function removeCurveEditHandles(layer) {
-      if (!layer || !layer._curveHandles) return;
-
-      layer._curveHandles.forEach(function(handle) {
-        if (map && map.hasLayer(handle)) {
-          map.removeLayer(handle);
-        }
-      });
-
-      layer._curveHandles = [];
-    }
-
-    function makeCurve(points) {
-      if (!points || points.length < 2) return points ? points.slice() : [];
-      if (points.length === 2) return points.slice();
-
-      const result = [];
-      const samples = 12;
-
-      function point(i) {
-        if (i < 0) return points[0];
-        if (i >= points.length) return points[points.length - 1];
-        return points[i];
-      }
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const p0 = point(i - 1);
-        const p1 = point(i);
-        const p2 = point(i + 1);
-        const p3 = point(i + 2);
-
-        for (let j = 0; j < samples; j++) {
-          const t = j / samples;
-          const t2 = t * t;
-          const t3 = t2 * t;
-
-          const lat = 0.5 * (
-            2 * p1.lat +
-            (-p0.lat + p2.lat) * t +
-            (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
-            (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
-          );
-
-          const lng = 0.5 * (
-            2 * p1.lng +
-            (-p0.lng + p2.lng) * t +
-            (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
-            (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
-          );
-
-          result.push(L.latLng(lat, lng));
-        }
-      }
-
-      result.push(points[points.length - 1]);
-      return result;
-    }
-
-    function updateCurveGeometry(layer) {
-      if (!layer || !layer._isCurve || !layer._controlPoints) return;
-
-      const points = layer._controlPoints.map(function(p) {
-        return L.latLng(p[0], p[1]);
-      });
-
-      layer.setLatLngs(makeCurve(points));
-      applyStyle(layer, layer === selected);
-    }
-
-    function createCurveEditHandles(layer) {
-      removeCurveEditHandles(layer);
-
-      if (!layer || !layer._isCurve || !layer._controlPoints) return;
-
-      layer._curveHandles = [];
-
-      layer._controlPoints.forEach(function(point, index) {
-        const icon = L.divIcon({
-          className: "curve-control-icon",
-          html: '<div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #1677ff;box-shadow:0 1px 4px rgba(0,0,0,.5);"></div>',
-          iconSize: [12, 12],
-          iconAnchor: [6, 6]
-        });
-
-        const handle = L.marker(
-          [point[0], point[1]],
-          {
-            icon: icon,
-            draggable: true,
-            interactive: true,
-            bubblingMouseEvents: false,
-            zIndexOffset: 10000
-          }
-        ).addTo(map);
-
-        handle._curveParent = layer;
-        handle._curveIndex = index;
-
-        handle.on("click", function(event) {
-          L.DomEvent.stopPropagation(event);
-        });
-
-        handle.on("mousedown", function(event) {
-          L.DomEvent.stopPropagation(event);
-        });
-
-        // Right-click (contextmenu) a control point to delete it.
-        handle.on("contextmenu", function(event) {
-          L.DomEvent.stopPropagation(event);
-          if (event.originalEvent) event.originalEvent.preventDefault();
-          removeCurvePoint(layer, handle._curveIndex);
-        });
-
-        handle.on("drag", function(event) {
-          const pos = event.target.getLatLng();
-
-          layer._controlPoints[index] = [pos.lat, pos.lng];
-          updateCurveGeometry(layer);
-        });
-
-        handle.on("dragend", function(event) {
-          const pos = event.target.getLatLng();
-
-          layer._controlPoints[index] = [pos.lat, pos.lng];
-          updateCurveGeometry(layer);
-          saveHistory();
-          renderSidebar();
-          setStatus("Curved line control point moved.");
-        });
-
-        layer._curveHandles.push(handle);
-      });
-    }
-
-    // Removes a single control point from a curve (right-click on a handle).
-    // Refuses to go below 3 points, since a curve needs at least that many.
-    function removeCurvePoint(layer, pointIndex) {
-      if (!layer || !layer._isCurve || !layer._controlPoints) return;
-
-      if (layer._controlPoints.length <= 3) {
-        setStatus("A curved line needs at least 3 control points — can't remove more.");
-        return;
-      }
-
-      layer._controlPoints.splice(pointIndex, 1);
-      updateCurveGeometry(layer);
-
-      if (layer === selected) {
-        createCurveEditHandles(layer);
-      }
-
-      saveHistory();
-      renderSidebar();
-      if (grayZoneVisible) generateGrayZone();
-      setStatus("Curved line control point removed.");
-    }
-
-    // Inserts a new control point into an existing curve at the location the
-    // user double-clicked, placed into whichever segment (between two
-    // existing control points) the click is closest to.
-    function addCurvePointToExisting(layer, latlng) {
-      if (!layer || !layer._isCurve || !layer._controlPoints) return;
-
-      const clicked = turf.point([latlng.lng, latlng.lat]);
-      let bestIndex = layer._controlPoints.length;
-      let bestDist = Infinity;
-
-      for (let i = 0; i < layer._controlPoints.length - 1; i++) {
-        const a = layer._controlPoints[i];
-        const b = layer._controlPoints[i + 1];
-
-        try {
-          const segment = turf.lineString([[a[1], a[0]], [b[1], b[0]]]);
-          const snapped = turf.nearestPointOnLine(segment, clicked);
-          const dist = snapped.properties.dist;
-
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestIndex = i + 1;
-          }
-        } catch (e) {
-          // Skip a degenerate segment rather than breaking insertion.
-        }
-      }
-
-      layer._controlPoints.splice(bestIndex, 0, [latlng.lat, latlng.lng]);
-      updateCurveGeometry(layer);
-
-      if (layer === selected) {
-        createCurveEditHandles(layer);
-      }
-
-      saveHistory();
-      renderSidebar();
-      if (grayZoneVisible) generateGrayZone();
-      setStatus("Curved line control point added.");
-    }
-
     function deselect(renderSidebar = true) {
       if (selected) {
         selected.pm.disable();
-
-        if (selected._isCurve) {
-          removeCurveEditHandles(selected);
-        }
-
         applyStyle(selected);
       }
 
@@ -924,29 +705,15 @@
     }
 
     function select(layer) {
-      if (!layer || drawing || curveDrawing) return;
+      if (!layer || drawing) return;
 
       if (selected && selected !== layer) {
         selected.pm.disable();
-
-        if (selected._isCurve) {
-          removeCurveEditHandles(selected);
-        }
-
         applyStyle(selected);
       }
 
       selected = layer;
-
-      if (layer._isCurve && layer._controlPoints) {
-        // IMPORTANT: don't enable Geoman on the sampled curve.
-        // It would expose every sampled point and bring the lag back.
-        layer.pm.disable();
-        createCurveEditHandles(layer);
-      } else {
-        layer.pm.enable();
-      }
-
+      layer.pm.enable();
       applyStyle(layer, true);
 
       $("selectedBox").style.display = "block";
@@ -973,40 +740,19 @@
         layer.feature.properties.Name = "New polygon " + polygonCounter++;
       }
 
-      if (layer._isCurve && layer._controlPoints) {
-        updateCurveGeometry(layer);
-      }
-
       applyStyle(layer);
 
       layer.on("click", function(event) {
         L.DomEvent.stopPropagation(event);
-
-        if (curveDrawing) {
-          addCurvePoint(event.latlng);
-          return;
-        }
 
         if (!drawing) {
           select(layer);
         }
       });
 
-      // Double-click an existing, selected curve to insert a new control
-      // point at that spot.
-      layer.on("dblclick", function(event) {
-        L.DomEvent.stopPropagation(event);
-        if (event.originalEvent) event.originalEvent.preventDefault();
-
-        if (curveDrawing || drawing) return;
-
-        if (layer._isCurve && layer === selected) {
-          addCurvePointToExisting(layer, event.latlng);
-        }
-      });
-
+      // Keep the polygon selected while editing vertices.
       layer.on("pm:vertexadded", function() {
-        if (layer === selected && !layer._isCurve) {
+        if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -1015,7 +761,7 @@
       });
 
       layer.on("pm:vertexremoved", function() {
-        if (layer === selected && !layer._isCurve) {
+        if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -1024,13 +770,13 @@
       });
 
       layer.on("pm:markerdragstart", function() {
-        if (layer === selected && !layer._isCurve) {
+        if (layer === selected) {
           suppressNextMapClick();
         }
       });
 
       layer.on("pm:markerdragend", function() {
-        if (layer === selected && !layer._isCurve) {
+        if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
           if (grayZoneVisible) generateGrayZone();
@@ -1039,7 +785,7 @@
       });
 
       layer.on("pm:edit", function() {
-        if (!drawing && layer === selected && !layer._isCurve) {
+        if (!drawing && layer === selected) {
           suppressNextMapClick();
           saveHistory();
           renderSidebar();
@@ -1134,19 +880,6 @@
         const header = document.createElement("div");
         header.className = "lh";
 
-        const visToggle = document.createElement("input");
-        visToggle.type = "checkbox";
-        visToggle.className = "vis";
-        visToggle.checked = layerVisible[id] !== false;
-        visToggle.title = "Show/hide this layer";
-        visToggle.onchange = function() {
-          layerVisible[id] = visToggle.checked;
-          if (groups[id]) {
-            if (visToggle.checked) groups[id].addTo(map);
-            else map.removeLayer(groups[id]);
-          }
-        };
-
         const arrow = document.createElement("button");
         arrow.className = "arrow";
         arrow.textContent = "▸";
@@ -1163,7 +896,7 @@
         count.className = "count";
         count.textContent = layers.length;
 
-        header.append(visToggle, arrow, swatch, layerName, count);
+        header.append(arrow, swatch, layerName, count);
         row.appendChild(header);
 
         const list = document.createElement("div");
@@ -1267,11 +1000,16 @@
     }
 
     function fillLayerSelects() {
-      ["drawLayer", "selectedLayer", "curveLayer"].forEach(function(selectId) {
+      ["drawLayer", "selectedLayer"].forEach(function(selectId) {
         const selectElement = $(selectId);
         selectElement.innerHTML = "";
 
         LAYERS.forEach(function(c) {
+          // The Draw a polygon tool should only target polygon layers.
+          // The line layers remain available in Selected Layer so their
+          // existing frontline geometry can still be moved between layers.
+          if (selectId === "drawLayer" && c[4] === "line") return;
+
           const option = document.createElement("option");
           option.value = c[0];
           option.textContent = c[1];
@@ -1284,28 +1022,8 @@
       const layer = L.geoJSON(feature).getLayers()[0];
       if (!layer) return;
 
+      // Keep the complete original properties object.
       layer.feature = feature;
-
-      if (
-        feature.properties &&
-        feature.properties._curve &&
-        Array.isArray(feature.properties._controlPoints) &&
-        feature.properties._controlPoints.length >= 3
-      ) {
-        layer._isCurve = true;
-        layer._controlPoints = feature.properties._controlPoints.map(function(p) {
-          return [Number(p[0]), Number(p[1])];
-        });
-
-        layer.setLatLngs(
-          makeCurve(
-            layer._controlPoints.map(function(p) {
-              return L.latLng(p[0], p[1]);
-            })
-          )
-        );
-      }
-
       setupPolygon(layer, layerId);
       groups[layerId].addLayer(layer);
     }
@@ -1333,11 +1051,6 @@
                 ? layer.feature.properties
                 : {}
             );
-
-            if (layer._isCurve && layer._controlPoints) {
-              feature.properties._curve = true;
-              feature.properties._controlPoints = layer._controlPoints;
-            }
 
             return feature;
           });
@@ -1432,117 +1145,6 @@
 
       renderSidebar();
       generateGrayZone();
-    }
-
-    function updateCurvePreview() {
-      if (!curveDrawing) return;
-
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-      }
-
-      curvePreview = L.polyline(
-        makeCurve(curvePoints),
-        {
-          color: config($("curveLayer").value)[3],
-          weight: 4,
-          opacity: 0.9,
-          dashArray: "8,6",
-          interactive: false
-        }
-      ).addTo(map);
-    }
-
-    function startCurveDrawing() {
-      if (drawing) return;
-
-      deselect(false);
-      curveDrawing = true;
-      curvePoints = [];
-
-      Object.values(groups).forEach(function(group) {
-        group.eachLayer(function(layer) {
-          layer.pm.disable();
-          if (layer._isCurve) removeCurveEditHandles(layer);
-        });
-      });
-
-      $("curveDraw").style.display = "none";
-      $("curveFinish").style.display = "block";
-
-      setStatus("Drawing curved line — click 3 or more control points, then Finish.");
-    }
-
-    function addCurvePoint(latlng) {
-      if (!curveDrawing) return;
-
-      curvePoints.push(L.latLng(latlng.lat, latlng.lng));
-      updateCurvePreview();
-
-      setStatus(
-        "Curved line: " +
-        curvePoints.length +
-        " control points."
-      );
-    }
-
-    function finishCurveDrawing() {
-      if (!curveDrawing) return;
-
-      if (curvePoints.length < 3) {
-        setStatus("A curved line needs at least 3 control points.");
-        return;
-      }
-
-      const targetId = $("curveLayer").value;
-
-      const layer = L.polyline(
-        makeCurve(curvePoints),
-        {
-          color: config(targetId)[3],
-          weight: 3,
-          opacity: 1
-        }
-      );
-
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-        curvePreview = null;
-      }
-
-      layer.feature = {
-        type: "Feature",
-        properties: {
-          Name: "New curved line " + polygonCounter++
-        }
-      };
-
-      layer._layer = targetId;
-      layer._fid = "new-" + Date.now() + "-" + Math.random();
-      layer._isCurve = true;
-
-      // Store ONLY the few points the user actually clicked.
-      layer._controlPoints = curvePoints.map(function(p) {
-        return [p.lat, p.lng];
-      });
-
-      setupPolygon(layer, targetId);
-      groups[targetId].addLayer(layer);
-
-      curveDrawing = false;
-      curvePoints = [];
-
-      $("curveDraw").style.display = "block";
-      $("curveFinish").style.display = "none";
-
-      saveHistory();
-      select(layer);
-
-      setStatus(
-        "New curved line added to " +
-        config(targetId)[1] +
-        "."
-      );
     }
 
     function startDrawing() {
@@ -1774,13 +1376,7 @@
 
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
-        map.on("click", function(event) {
-          if (curveDrawing) {
-            if (ignoreNextMapClick) return;
-            addCurvePoint(event.latlng);
-            return;
-          }
-
+        map.on("click", function() {
           if (drawing || ignoreNextMapClick) return;
           deselect();
         });
@@ -1824,18 +1420,9 @@
     };
 
     $("draw").onclick = startDrawing;
-    $("curveDraw").onclick = startCurveDrawing;
-    $("curveFinish").onclick = finishCurveDrawing;
 
     $("delete").onclick = function() {
       if (!selected) return;
-
-      // Clean up the curve's edit-handle markers (they're added straight to
-      // the map, not into the layer group, so removing the layer alone
-      // doesn't remove them).
-      if (selected._isCurve) {
-        removeCurveEditHandles(selected);
-      }
 
       groups[selected._layer].removeLayer(selected);
       selected = null;
@@ -1843,7 +1430,7 @@
 
       saveHistory();
       renderSidebar();
-      setStatus("Polygon deleted.");
+      setStatus("Feature deleted.");
     };
 
     $("selectedLayer").onchange = function(event) {
@@ -1924,5 +1511,1083 @@
       }
     };
   </script>
+
+<script>
+/* =========================================================
+   POLRAD ADVANCE EDITOR
+   Fully embedded in this HTML — no second JS file needed.
+   ========================================================= */
+(function () {
+  "use strict";
+
+  const ADVANCE_STORAGE_KEY = "polrad_editor_advances";
+
+  let advances = [];
+  let advanceState = {
+    active: false,
+    side: "ru",
+    before: null,
+    focus: null,
+    createdFids: []
+  };
+
+  function A(id) {
+    return document.getElementById(id);
+  }
+
+  function addAdvanceCSS() {
+    if (A("polrad-advance-css")) return;
+
+    const style = document.createElement("style");
+    style.id = "polrad-advance-css";
+    style.textContent = `
+      #advanceEditorBox {
+        margin-top:10px;
+        border:1px solid #ddd;
+        border-radius:7px;
+        padding:10px;
+        background:#f8f9fa;
+      }
+
+      #advanceEditorBox h4 {
+        margin:0 0 8px;
+        font-size:13px;
+      }
+
+      #advanceEditorBox label {
+        display:block;
+        margin-top:7px;
+        font-size:11px;
+        color:#777;
+      }
+
+      #advanceEditorBox select,
+      #advanceEditorBox textarea {
+        width:100%;
+        box-sizing:border-box;
+        border:1px solid #ccc;
+        border-radius:5px;
+        background:#fff;
+        padding:7px;
+        font:13px Arial,sans-serif;
+      }
+
+      #advanceEditorBox select {
+        height:34px;
+      }
+
+      #advanceEditorBox textarea {
+        min-height:78px;
+        resize:vertical;
+      }
+
+      .advance-row {
+        display:flex;
+        gap:6px;
+        margin-top:7px;
+      }
+
+      .advance-row .btn {
+        flex:1;
+      }
+
+      #advanceStatus {
+        font-size:11px;
+        color:#777;
+        line-height:1.4;
+        margin-top:8px;
+      }
+
+      #advanceStatus.active {
+        color:#b3261e;
+        font-weight:600;
+      }
+
+      #advanceAreaPreview {
+        margin-top:8px;
+        padding:7px;
+        border-radius:5px;
+        background:#fff;
+        border:1px solid #e1e1e1;
+        font-size:12px;
+      }
+
+      .advance-effect {
+        display:inline-block;
+        margin:2px 4px 2px 0;
+        padding:2px 5px;
+        border-radius:4px;
+        font-weight:600;
+      }
+
+      .advance-effect.ru {
+        color:#e53935;
+        background:#ffebee;
+      }
+
+      .advance-effect.ua {
+        color:#1e88e5;
+        background:#e3f2fd;
+      }
+
+      #advanceHistory {
+        margin-top:9px;
+        padding-top:8px;
+        border-top:1px solid #e5e5e5;
+        max-height:240px;
+        overflow:auto;
+      }
+
+      .advance-history-item {
+        position:relative;
+        padding:7px;
+        margin-bottom:6px;
+        border:1px solid #e5e5e5;
+        border-radius:5px;
+        background:#fff;
+        font-size:11px;
+        line-height:1.35;
+      }
+
+      .advance-history-item button {
+        float:right;
+        font-size:11px;
+        border:1px solid #ccc;
+        background:#fff;
+        border-radius:4px;
+        cursor:pointer;
+        padding:3px 6px;
+      }
+
+      .advance-history-date {
+        font-weight:700;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function loadAdvances() {
+    try {
+      const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      advances = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      advances = [];
+    }
+  }
+
+  function saveAdvances() {
+    localStorage.setItem(
+      ADVANCE_STORAGE_KEY,
+      JSON.stringify(advances)
+    );
+  }
+
+  function getLayerFeatures(layerId) {
+    if (!groups || !groups[layerId]) return [];
+
+    return groups[layerId].getLayers().map(function(layer) {
+      const feature = layer.toGeoJSON();
+      feature.properties = Object.assign(
+        {},
+        layer.feature && layer.feature.properties
+          ? layer.feature.properties
+          : {}
+      );
+      return feature;
+    });
+  }
+
+  function unionAreaKm2(layerIds) {
+    let features = [];
+
+    layerIds.forEach(function(layerId) {
+      getLayerFeatures(layerId).forEach(function(feature) {
+        if (
+          feature &&
+          feature.geometry &&
+          (
+            feature.geometry.type === "Polygon" ||
+            feature.geometry.type === "MultiPolygon"
+          )
+        ) {
+          features.push(feature);
+        }
+      });
+    });
+
+    if (!features.length) return 0;
+
+    let result = features[0];
+
+    for (let i = 1; i < features.length; i++) {
+      try {
+        result = turf.union(
+          turf.featureCollection([result, features[i]])
+        );
+      } catch (e) {
+        // If a union fails, continue with the accumulated geometry.
+      }
+    }
+
+    try {
+      return turf.area(result) / 1000000;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function currentControlledAreas() {
+    return {
+      ru: unionAreaKm2([
+        "ru_territory",
+        "ru_advances"
+      ]),
+      ua: unionAreaKm2([
+        "ua_territory",
+        "regained",
+        "ua_advances"
+      ])
+    };
+  }
+
+  function calculateEffects(before, after) {
+    const ru = Number((after.ru - before.ru).toFixed(2));
+    const ua = Number((after.ua - before.ua).toFixed(2));
+
+    const effects = [];
+
+    if (Math.abs(ru) >= 0.005) {
+      effects.push({
+        side: "ru",
+        value: ru
+      });
+    }
+
+    if (Math.abs(ua) >= 0.005) {
+      effects.push({
+        side: "ua",
+        value: ua
+      });
+    }
+
+    return effects;
+  }
+
+  function formatAreaEffects(effects) {
+    if (!effects || !effects.length) {
+      return '<span style="color:#777">No controlled-area change detected.</span>';
+    }
+
+    return effects.map(function(effect) {
+      const value = Number(effect.value);
+      const sign = value > 0 ? "+" : "";
+
+      return (
+        '<span class="advance-effect ' +
+        effect.side +
+        '">' +
+        sign +
+        value.toFixed(2) +
+        " km²" +
+        "</span>"
+      );
+    }).join(" ");
+  }
+
+  function areaDisplay(effects) {
+    return (effects || []).map(function(effect) {
+      const value = Number(effect.value);
+      const sign = value > 0 ? "+" : "";
+      return sign + value.toFixed(2) + " km²";
+    }).join(" ");
+  }
+
+  function currentFocus() {
+    if (!map) return null;
+
+    const center = map.getCenter();
+
+    return {
+      lat: center.lat,
+      lng: center.lng,
+      zoom: map.getZoom()
+    };
+  }
+
+  function dateTimeNow() {
+    const now = new Date();
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    return {
+      date:
+        now.getFullYear() +
+        "-" +
+        pad(now.getMonth() + 1) +
+        "-" +
+        pad(now.getDate()),
+
+      time:
+        pad(now.getHours()) +
+        ":" +
+        pad(now.getMinutes()) +
+        ":" +
+        pad(now.getSeconds())
+    };
+  }
+
+  function ensureAdvanceColors() {
+    const ru = config("ru_advances");
+    const ua = config("ua_advances");
+
+    if (ru) ru[3] = "#e53935";
+    if (ua) ua[3] = "#1e88e5";
+
+    if (groups && groups.ru_advances) {
+      groups.ru_advances.eachLayer(function(layer) {
+        applyStyle(layer, layer === selected);
+      });
+    }
+
+    if (groups && groups.ua_advances) {
+      groups.ua_advances.eachLayer(function(layer) {
+        applyStyle(layer, layer === selected);
+      });
+    }
+  }
+
+  function createAdvanceUI() {
+    const actions = document.querySelector(".actions");
+
+    if (!actions || A("advanceEditorBox")) return;
+
+    const createButton = document.createElement("button");
+    createButton.className = "btn";
+    createButton.id = "createAdvanceButton";
+    createButton.textContent = "+ Create Advance";
+
+    actions.insertBefore(
+      createButton,
+      A("publish")
+    );
+
+    const box = document.createElement("div");
+    box.className = "box";
+    box.id = "advanceEditorBox";
+
+    box.innerHTML = `
+      <h4>Advance / Gray Zone Update</h4>
+
+      <label>Advance side</label>
+      <select id="advanceSide">
+        <option value="ru">🔴 Russia</option>
+        <option value="ua">🔵 Ukraine</option>
+      </select>
+
+      <div class="advance-row">
+        <button class="btn primary" id="advanceStart">
+          Create Advance
+        </button>
+
+        <button class="btn" id="advanceFinish" disabled>
+          Finish Advance
+        </button>
+      </div>
+
+      <div id="advanceStatus">
+        No advance in progress.
+      </div>
+
+      <div id="advanceAreaPreview">
+        Area changes will appear here after you click Finish Advance.
+        <br>
+        <span style="color:#777">
+          Colors are automatic: red = Russian area change, blue = Ukrainian area change.
+        </span>
+      </div>
+
+      <div id="advanceTextWrap" style="display:none">
+        <label>Advance description</label>
+
+        <textarea
+          id="advanceText"
+          placeholder="Example: Russian forces captured the eastern part of ..."
+        ></textarea>
+
+        <div class="advance-row">
+          <button class="btn primary" id="advanceSave">
+            Save Advance
+          </button>
+
+          <button class="btn" id="advanceCancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div id="advanceHistory"></div>
+    `;
+
+    actions.parentNode.insertBefore(
+      box,
+      A("search")
+    );
+
+    createButton.onclick = startAdvance;
+    A("advanceStart").onclick = startAdvance;
+    A("advanceFinish").onclick = finishAdvance;
+    A("advanceSave").onclick = saveAdvance;
+    A("advanceCancel").onclick = cancelAdvance;
+
+    renderAdvanceHistory();
+  }
+
+  function setAdvanceStatus(text, active) {
+    const node = A("advanceStatus");
+    if (!node) return;
+
+    node.textContent = text;
+    node.className = active
+      ? "active"
+      : "";
+  }
+
+  function startAdvance() {
+    if (advanceState.active) return;
+
+    if (!map || !groups) {
+      alert("The map has not finished loading yet.");
+      return;
+    }
+
+    advanceState.active = true;
+    advanceState.side = A("advanceSide").value;
+    advanceState.before = currentControlledAreas();
+    advanceState.focus = currentFocus();
+    advanceState.createdFids = [];
+
+    A("advanceStart").disabled = true;
+    A("advanceFinish").disabled = false;
+    A("advanceSide").disabled = true;
+
+    setAdvanceStatus(
+      "Advance mode active. Now draw the advance polygon below, or edit existing polygons as needed. When finished, click Finish Advance.",
+      true
+    );
+
+    addDrawAdvanceButton();
+  }
+
+  function addDrawAdvanceButton() {
+    if (A("drawAdvancePolygon")) return;
+
+    const row = document.createElement("div");
+    row.className = "advance-row";
+    row.id = "advancePolygonRow";
+
+    const sideName =
+      advanceState.side === "ru"
+        ? "Russian"
+        : "Ukrainian";
+
+    row.innerHTML =
+      '<button class="btn" id="drawAdvancePolygon">' +
+      "Draw " +
+      sideName +
+      " advance polygon" +
+      "</button>";
+
+    A("advanceTextWrap").parentNode.insertBefore(
+      row,
+      A("advanceTextWrap")
+    );
+
+    A("drawAdvancePolygon").onclick =
+      drawAdvancePolygon;
+  }
+
+  function drawAdvancePolygon() {
+    if (!advanceState.active) return;
+
+    const layerId =
+      advanceState.side === "ru"
+        ? "ru_advances"
+        : "ua_advances";
+
+    if (!groups[layerId]) {
+      alert("The advance layer is not loaded.");
+      return;
+    }
+
+    deselect(false);
+    drawing = true;
+
+    map.pm.enableDraw("Polygon", {
+      snappable: true,
+      allowSelfIntersection: false
+    });
+
+    setAdvanceStatus(
+      "Drawing the " +
+      (advanceState.side === "ru"
+        ? "Russian"
+        : "Ukrainian") +
+      " advance polygon...",
+      true
+    );
+
+    function onCreate(event) {
+      map.off("pm:create", onCreate);
+
+      const layer = event.layer;
+
+      map.pm.disableDraw();
+      drawing = false;
+
+      map.removeLayer(layer);
+
+      const feature = layer.toGeoJSON();
+
+      const advanceNumber =
+        advances.length + 1;
+
+      feature.properties = {
+        Name: "Advance " + advanceNumber
+      };
+
+      layer.feature = feature;
+      layer._layer = layerId;
+      layer._fid =
+        "advance-" +
+        Date.now() +
+        "-" +
+        Math.random()
+          .toString(36)
+          .slice(2);
+
+      layer.feature.properties._advanceId = "pending";
+
+      setupPolygon(layer, layerId);
+      groups[layerId].addLayer(layer);
+
+      advanceState.createdFids.push(
+        layer._fid
+      );
+
+      saveHistory();
+      renderSidebar();
+      ensureAdvanceColors();
+      select(layer);
+
+      setAdvanceStatus(
+        "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.",
+        true
+      );
+    }
+
+    map.on("pm:create", onCreate);
+  }
+
+  function finishAdvance() {
+    if (!advanceState.active) return;
+
+    advanceState.focus = currentFocus();
+
+    // Recalculate the gray zone immediately from the finished geometry.
+    generateGrayZone();
+
+    const after = currentControlledAreas();
+    const effects = calculateEffects(
+      advanceState.before,
+      after
+    );
+
+    A("advanceAreaPreview").innerHTML =
+      formatAreaEffects(effects) +
+      '<div style="margin-top:5px;color:#777;font-size:11px">' +
+      "You do not select these colors manually. " +
+      "They are determined automatically from the side and sign of the calculated area change." +
+      "</div>";
+
+    A("advanceTextWrap").style.display =
+      "block";
+
+    A("advanceFinish").disabled = true;
+
+    A("advanceText").focus();
+
+    setAdvanceStatus(
+      "Area calculated. Write the update text and click Save Advance.",
+      false
+    );
+  }
+
+  function saveAdvance() {
+    if (!advanceState.active) return;
+
+    const text =
+      A("advanceText").value.trim();
+
+    if (!text) {
+      alert("Please enter the advance description.");
+      A("advanceText").focus();
+      return;
+    }
+
+    const now = dateTimeNow();
+    const after = currentControlledAreas();
+
+    const effects = calculateEffects(
+      advanceState.before,
+      after
+    );
+
+    const primaryEffect =
+      effects.find(function(effect) {
+        return effect.side === advanceState.side;
+      });
+
+    const primaryValue =
+      primaryEffect
+        ? primaryEffect.value
+        : 0;
+
+    const id =
+      "adv-" +
+      Date.now();
+
+    advanceState.createdFids.forEach(
+      function(fid) {
+        const layer =
+          findPolygon(fid);
+
+        if (
+          layer &&
+          layer.feature &&
+          layer.feature.properties
+        ) {
+          layer.feature.properties._advanceId =
+            id;
+        }
+      }
+    );
+
+    // Make sure the snapshot contains the final edited geometry.
+    generateGrayZone();
+
+    const snapshot =
+      getCurrentGeoJSON();
+
+    const item = {
+      id: id,
+      date: now.date,
+      time: now.time,
+      text: text,
+      side: advanceState.side,
+
+      areaChange:
+        Number(primaryValue.toFixed(2)),
+
+      areaEffects: effects,
+
+      areaDisplay:
+        areaDisplay(effects),
+
+      focus:
+        advanceState.focus,
+
+      polygonFids:
+        advanceState.createdFids.slice(),
+
+      snapshot:
+        "history/advances/" +
+        id +
+        ".json",
+
+      snapshotData:
+        snapshot,
+
+      beforeAreas:
+        advanceState.before
+    };
+
+    advances.push(item);
+    saveAdvances();
+
+    // Keep normal editor Save/local persistence working.
+    localStorage.setItem(
+      "polrad_editor_data",
+      JSON.stringify(
+        getCurrentGeoJSON()
+      )
+    );
+
+    renderAdvanceHistory();
+
+    advanceState.active = false;
+    advanceState.before = null;
+    advanceState.focus = null;
+    advanceState.createdFids = [];
+
+    A("advanceStart").disabled = false;
+    A("advanceFinish").disabled = true;
+    A("advanceSide").disabled = false;
+
+    A("advanceTextWrap").style.display =
+      "none";
+
+    A("advanceText").value = "";
+
+    const polygonRow =
+      A("advancePolygonRow");
+
+    if (polygonRow) {
+      polygonRow.remove();
+    }
+
+    setAdvanceStatus(
+      "Advance saved. Click the normal Publish button to send the map and advance history to GitHub.",
+      false
+    );
+
+    renderSidebar();
+  }
+
+  function cancelAdvance() {
+    if (!advanceState.active) return;
+
+    advanceState.active = false;
+    advanceState.before = null;
+    advanceState.focus = null;
+    advanceState.createdFids = [];
+
+    A("advanceStart").disabled = false;
+    A("advanceFinish").disabled = true;
+    A("advanceSide").disabled = false;
+
+    A("advanceTextWrap").style.display =
+      "none";
+
+    A("advanceText").value = "";
+
+    const polygonRow =
+      A("advancePolygonRow");
+
+    if (polygonRow) {
+      polygonRow.remove();
+    }
+
+    setAdvanceStatus(
+      "Advance cancelled. Any map geometry you changed remains changed; use Undo if necessary.",
+      false
+    );
+  }
+
+  function renderAdvanceHistory() {
+    const box = A("advanceHistory");
+
+    if (!box) return;
+
+    box.innerHTML = "";
+
+    if (!advances.length) {
+      box.innerHTML =
+        '<div class="small">No advance history saved in this browser yet.</div>';
+      return;
+    }
+
+    advances
+      .slice()
+      .reverse()
+      .forEach(function(item) {
+        const row =
+          document.createElement("div");
+
+        row.className =
+          "advance-history-item";
+
+        const sideLabel =
+          item.side === "ru"
+            ? "🔴 Russia"
+            : "🔵 Ukraine";
+
+        row.innerHTML =
+          '<button type="button">Edit</button>' +
+          '<div class="advance-history-date">' +
+          item.date +
+          " " +
+          item.time +
+          " · " +
+          sideLabel +
+          "</div>" +
+          "<div>" +
+          (item.text || "") +
+          "</div>" +
+          (
+            item.areaDisplay
+              ? "<div>Area: " +
+                item.areaDisplay +
+                "</div>"
+              : ""
+          );
+
+        row.querySelector(
+          "button"
+        ).onclick = function() {
+          editAdvance(item.id);
+        };
+
+        box.appendChild(row);
+      });
+  }
+
+  function editAdvance(id) {
+    const item =
+      advances.find(function(a) {
+        return a.id === id;
+      });
+
+    if (!item) return;
+
+    const newText =
+      prompt(
+        "Edit advance text:",
+        item.text || ""
+      );
+
+    if (newText === null) return;
+
+    const cleanText =
+      newText.trim();
+
+    if (cleanText) {
+      item.text = cleanText;
+    }
+
+    const side =
+      prompt(
+        "Side: enter ru or ua",
+        item.side || "ru"
+      );
+
+    if (side === "ru" || side === "ua") {
+      item.side = side;
+    }
+
+    /*
+      Area values are normally calculated automatically.
+      The manual area edit below is only a correction tool for cases where
+      the editor cannot produce a clean Turf union because of invalid or
+      overlapping geometry.
+    */
+    const areaAnswer =
+      prompt(
+        "Optional manual area correction in km². Leave blank to keep the calculated area:",
+        item.areaChange !== undefined &&
+        item.areaChange !== null
+          ? String(item.areaChange)
+          : ""
+      );
+
+    if (
+      areaAnswer !== null &&
+      areaAnswer.trim() !== ""
+    ) {
+      const n =
+        Number(
+          areaAnswer
+            .replace(",", ".")
+        );
+
+      if (Number.isFinite(n)) {
+        item.areaChange =
+          Number(n.toFixed(2));
+
+        item.areaEffects = [
+          {
+            side: item.side,
+            value: item.areaChange
+          }
+        ];
+
+        item.areaDisplay =
+          (
+            n > 0
+              ? "+"
+              : ""
+          ) +
+          n.toFixed(2) +
+          " km²";
+      }
+    }
+
+    // Select the polygon associated with this advance so the normal
+    // Geoman handles can be used to reshape it.
+    const fids =
+      item.polygonFids || [];
+
+    if (fids.length) {
+      const polygon =
+        findPolygon(fids[0]);
+
+      if (polygon) {
+        select(polygon);
+
+        setStatus(
+          "Advance polygon selected. Reshape it with the normal editor handles, then Publish."
+        );
+      }
+    }
+
+    saveAdvances();
+    renderAdvanceHistory();
+  }
+
+  /*
+   * Replace the normal Publish button with a version that sends:
+   *
+   * files
+   * advances
+   * advanceSnapshots
+   *
+   * The normal map publishing behavior remains the same.
+   */
+  function installAdvancePublish() {
+    const publish =
+      A("publish");
+
+    if (!publish) return;
+
+    if (publish.dataset.advancePublishInstalled === "1") {
+      return;
+    }
+
+    publish.dataset.advancePublishInstalled = "1";
+
+    publish.onclick =
+      async function() {
+        setStatus(
+          "Publishing map and advance history..."
+        );
+
+        try {
+          const currentFiles =
+            getCurrentGeoJSON();
+
+          const advanceSnapshots =
+            {};
+
+          advances.forEach(
+            function(item) {
+              advanceSnapshots[item.id] =
+                item.snapshotData || null;
+            }
+          );
+
+          const response =
+            await fetch(
+              WORKER,
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json"
+                },
+
+                body:
+                  JSON.stringify({
+                    action: "publish",
+
+                    files:
+                      currentFiles,
+
+                    advances:
+                      advances,
+
+                    advanceSnapshots:
+                      advanceSnapshots
+                  })
+              }
+            );
+
+          const result =
+            await response.json();
+
+          if (
+            !response.ok ||
+            !result.success
+          ) {
+            throw new Error(
+              result.error ||
+              "Publish failed."
+            );
+          }
+
+          localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(
+              currentFiles
+            )
+          );
+
+          saveAdvances();
+
+          setStatus(
+            "Published successfully, including advance history."
+          );
+
+          alert(
+            "Published successfully!"
+          );
+
+        } catch (error) {
+          setStatus(
+            error.message ||
+            "Publish failed."
+          );
+        }
+      };
+  }
+
+  function initAdvanceEditor() {
+    addAdvanceCSS();
+    loadAdvances();
+    createAdvanceUI();
+    ensureAdvanceColors();
+    installAdvancePublish();
+    renderAdvanceHistory();
+  }
+
+  /*
+   * The original editor defines all of its functions in the global script.
+   * Wait a little so those definitions and the login UI exist.
+   */
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      function() {
+        setTimeout(
+          initAdvanceEditor,
+          150
+        );
+      }
+    );
+  } else {
+    setTimeout(
+      initAdvanceEditor,
+      150
+    );
+  }
+
+})();
+</script>
+
 </body>
 </html>
