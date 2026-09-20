@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 4.2</title>
+  <title>POLRAD map editor 4.3</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -46,6 +46,32 @@
     }
 
     .body { padding: 12px; }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      background: #f7f8f9;
+    }
+
+    .tab {
+      flex: 1;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: none;
+      padding: 10px 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #777;
+      cursor: pointer;
+    }
+
+    .tab:hover { color: #333; }
+
+    .tab.active {
+      color: #1a73e8;
+      border-bottom-color: #1a73e8;
+      background: #fff;
+    }
 
     .actions {
       display: flex;
@@ -309,7 +335,12 @@
   <div id="side">
     <div class="head">POLRAD map editor 2.0</div>
 
-    <div class="body">
+    <div class="tabs">
+      <button class="tab active" id="tabTools" type="button">Editor tools</button>
+      <button class="tab" id="tabAdvances" type="button">Advances</button>
+    </div>
+
+    <div class="body" id="paneTools">
       <div class="actions">
         <button class="btn" id="undo">↶ Undo</button>
         <button class="btn" id="redo">↷ Redo</button>
@@ -355,6 +386,14 @@
       <div id="layers"></div>
       <div class="small" id="status">Ready.</div>
     </div>
+
+    <div class="body" id="paneAdvances" style="display:none">
+      <b style="font-size:13px">Advance updates</b>
+      <div class="small" style="margin-top:3px">
+        Saved advance updates. New advances are created in the Editor tools tab.
+      </div>
+      <div id="advanceHistory"></div>
+    </div>
   </div>
 
   <div id="map"></div>
@@ -379,8 +418,8 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#FFFF00"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#ff0000", "line"],
-      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#ff8c00", "line"]
+      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
+      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
 
     let map;
@@ -392,7 +431,17 @@
     let historyIndex = -1;
     const layerOpenState = {};
     // Per-layer visibility on the map (true unless explicitly switched off).
-    const layerVisible = {};
+    const layerVisible = {
+      deepstate_frontline: false,
+      ria_frontline: false
+    };
+
+    // Create a layer group; it is only added to the map if its layer is visible.
+    function createGroup(id) {
+      const group = L.featureGroup();
+      if (layerVisible[id] !== false) group.addTo(map);
+      return group;
+    }
     let hoveredSidebarLayer = null;
 
     // Gray Zone is generated automatically from the current Russian-controlled
@@ -743,11 +792,7 @@
 
       const isLine = c[4] === "line";
 
-      // Russian advances use a stronger fill so the yellow does not look
-      // washed out / pinkish over satellite imagery.
-      const fillOpacity = isLine
-        ? 0
-        : (layer._layer === "ru_advances" ? 0.7 : 0.4);
+      const fillOpacity = isLine ? 0 : 0.4;
 
       layer.setStyle({
         color: c[3],
@@ -1454,7 +1499,7 @@
 
       if (savedData) {
         LAYERS.forEach(function(c) {
-          groups[c[0]] = L.featureGroup().addTo(map);
+          groups[c[0]] = createGroup(c[0]);
 
           const featureCollection = savedData[c[1]];
           if (!featureCollection || !featureCollection.features) return;
@@ -1472,7 +1517,7 @@
       }
 
       for (const c of LAYERS) {
-        groups[c[0]] = L.featureGroup().addTo(map);
+        groups[c[0]] = createGroup(c[0]);
 
         try {
           const response = await fetch("data/" + c[2]);
@@ -1621,6 +1666,18 @@
     };
 
     $("simplifyBtn").onclick = simplifySelected;
+
+    function showEditorTab(name) {
+      const tools = name === "tools";
+
+      $("paneTools").style.display = tools ? "block" : "none";
+      $("paneAdvances").style.display = tools ? "none" : "block";
+      $("tabTools").classList.toggle("active", tools);
+      $("tabAdvances").classList.toggle("active", !tools);
+    }
+
+    $("tabTools").onclick = function() { showEditorTab("tools"); };
+    $("tabAdvances").onclick = function() { showEditorTab("advances"); };
 
     $("search").oninput = renderSidebar;
 
@@ -1814,11 +1871,7 @@
       }
 
       #advanceHistory {
-        margin-top:9px;
-        padding-top:8px;
-        border-top:1px solid #e5e5e5;
-        max-height:240px;
-        overflow:auto;
+        margin-top:8px;
       }
 
       .advance-history-item {
@@ -2118,7 +2171,6 @@
         </div>
       </div>
 
-      <div id="advanceHistory"></div>
     `;
 
     actions.parentNode.insertBefore(
