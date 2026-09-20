@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 4.3</title>
+  <title>POLRAD map editor 4.4</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -416,7 +416,7 @@
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
-      ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
+      ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#FFFF00"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
@@ -1768,7 +1768,8 @@
     side: "ru",
     before: null,
     focus: null,
-    createdFids: []
+    createdFids: [],
+    lastEffects: null
   };
 
   function A(id) {
@@ -1866,6 +1867,16 @@
       }
 
       .advance-effect.ua {
+        color:#1e88e5;
+        background:#e3f2fd;
+      }
+
+      .advance-effect.red {
+        color:#e53935;
+        background:#ffebee;
+      }
+
+      .advance-effect.blue {
         color:#1e88e5;
         background:#e3f2fd;
       }
@@ -2010,7 +2021,7 @@
     return effects;
   }
 
-  function formatAreaEffects(effects) {
+  function formatAreaEffects(effects, color) {
     if (!effects || !effects.length) {
       return '<span style="color:#777">No controlled-area change detected.</span>';
     }
@@ -2021,7 +2032,7 @@
 
       return (
         '<span class="advance-effect ' +
-        effect.side +
+        (color === "blue" ? "blue" : "red") +
         '">' +
         sign +
         value.toFixed(2) +
@@ -2130,6 +2141,12 @@
         <option value="ua">🔵 Ukraine</option>
       </select>
 
+      <label>Area gain/loss color (shown on the public map)</label>
+      <select id="advanceColor">
+        <option value="red">🔴 Red</option>
+        <option value="blue">🔵 Blue</option>
+      </select>
+
       <div class="advance-row">
         <button class="btn primary" id="advanceStart">
           Create Advance
@@ -2148,7 +2165,7 @@
         Area changes will appear here after you click Finish Advance.
         <br>
         <span style="color:#777">
-          Colors are automatic: red = Russian area change, blue = Ukrainian area change.
+          Choose the area change color above (red or blue).
         </span>
       </div>
 
@@ -2184,6 +2201,14 @@
     A("advanceSave").onclick = saveAdvance;
     A("advanceCancel").onclick = cancelAdvance;
 
+    // Suggest a matching color when the side changes (you can still override it).
+    A("advanceSide").onchange = function() {
+      A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red";
+    };
+
+    // Re-draw the area preview when the color changes.
+    A("advanceColor").onchange = renderAreaPreview;
+
     renderAdvanceHistory();
   }
 
@@ -2210,6 +2235,7 @@
     advanceState.before = currentControlledAreas();
     advanceState.focus = currentFocus();
     advanceState.createdFids = [];
+    advanceState.lastEffects = null;
 
     A("advanceStart").disabled = true;
     A("advanceFinish").disabled = false;
@@ -2338,6 +2364,19 @@
     map.on("pm:create", onCreate);
   }
 
+  function renderAreaPreview() {
+    const effects = advanceState.lastEffects;
+    const box = A("advanceAreaPreview");
+
+    if (!effects || !box) return;
+
+    box.innerHTML =
+      formatAreaEffects(effects, A("advanceColor").value) +
+      '<div style="margin-top:5px;color:#777;font-size:11px">' +
+      "This color is used for the area text on the public map." +
+      "</div>";
+  }
+
   function finishAdvance() {
     if (!advanceState.active) return;
 
@@ -2352,12 +2391,8 @@
       after
     );
 
-    A("advanceAreaPreview").innerHTML =
-      formatAreaEffects(effects) +
-      '<div style="margin-top:5px;color:#777;font-size:11px">' +
-      "You do not select these colors manually. " +
-      "They are determined automatically from the side and sign of the calculated area change." +
-      "</div>";
+    advanceState.lastEffects = effects;
+    renderAreaPreview();
 
     A("advanceTextWrap").style.display =
       "block";
@@ -2442,6 +2477,9 @@
 
       areaDisplay:
         areaDisplay(effects),
+
+      areaColor:
+        A("advanceColor").value,
 
       focus:
         advanceState.focus,
@@ -2576,8 +2614,15 @@
           (
             item.areaDisplay
               ? "<div>Area: " +
+                '<span style="font-weight:700;color:' +
+                (
+                  (item.areaColor || (item.side === "ua" ? "blue" : "red")) === "blue"
+                    ? "#1e88e5"
+                    : "#e53935"
+                ) +
+                '">' +
                 item.areaDisplay +
-                "</div>"
+                "</span></div>"
               : ""
           );
 
@@ -2622,6 +2667,19 @@
 
     if (side === "ru" || side === "ua") {
       item.side = side;
+    }
+
+    const colorAnswer =
+      prompt(
+        "Area change color: enter red or blue",
+        item.areaColor || (item.side === "ua" ? "blue" : "red")
+      );
+
+    if (colorAnswer) {
+      const c = colorAnswer.trim().toLowerCase();
+      if (c === "red" || c === "blue") {
+        item.areaColor = c;
+      }
     }
 
     /*
