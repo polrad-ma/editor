@@ -1762,6 +1762,14 @@
 
   const ADVANCE_STORAGE_KEY = "polrad_editor_advances";
 
+  // Same-side territory that an advance polygon must NOT overlap.
+  // An advance is, by definition, ground gained OUTSIDE the territory the
+  // side already controlled, so anything inside these layers is trimmed off.
+  const ADVANCE_TERRITORY = {
+    ru_advances: ["ru_territory"],
+    ua_advances: ["ua_territory", "regained"]
+  };
+
   let advances = [];
   let advanceState = {
     active: false,
@@ -1945,6 +1953,184 @@
     });
   }
 
+  /* ---------------------------------------------------------
+     OVERLAP TRIMMING
+     Removes from an advance polygon any part that lies inside
+     the same side's already-controlled territory, so advances
+     and territory never overlap.
+     --------------------------------------------------------- */
+
+  function territoryUnionFor(advanceLayerId) {
+    const ids = ADVANCE_TERRITORY[advanceLayerId] || [];
+    const parts = [];
+
+    ids.forEach(function(id) {
+      getLayerFeatures(id).forEach(function(feature) {
+        if (
+          feature &&
+          feature.geometry &&
+          (
+            feature.geometry.type === "Polygon" ||
+            feature.geometry.type === "MultiPolygon"
+          )
+        ) {
+          try {
+            parts.push(turf.cleanCoords(feature));
+          } catch (e) {
+            parts.push(feature);
+          }
+        }
+      });
+    });
+
+    if (!parts.length) return null;
+
+    return unionAll(parts);
+  }
+
+  // Returns "unchanged", "trimmed" or "removed".
+  function trimAdvanceToTerritory(layer) {
+    if (!layer || !layer._layer) return "unchanged";
+
+    const territory = territoryUnionFor(layer._layer);
+    if (!territory) return "unchanged";
+
+    let feature;
+    try {
+      feature = turf.cleanCoords(layer.toGeoJSON());
+    } catch (e) {
+      feature = layer.toGeoJSON();
+    }
+
+    let result;
+    try {
+      result = turf.difference(
+        turf.featureCollection([feature, territory])
+      );
+    } catch (e) {
+      console.warn("Advance trim failed:", e);
+      return "unchanged";
+    }
+
+    // Nothing left: the whole polygon was inside existing territory.
+    if (!result) {
+      const groupId = layer._layer;
+
+      if (layer === selected) {
+        deselect(false);
+      }
+
+      if (groups[groupId]) {
+        groups[groupId].removeLayer(layer);
+      }
+
+      return "removed";
+    }
+
+    let beforeArea = 0;
+    let afterArea = 0;
+
+    try {
+      beforeArea = turf.area(feature);
+      afterArea = turf.area(result);
+    } catch (e) {}
+
+    // Less than 1 m² difference = no real overlap.
+    if (Math.abs(beforeArea - afterArea) < 1) {
+      return "unchanged";
+    }
+
+    const geometry = result.geometry;
+    const level = geometry.type === "MultiPolygon" ? 2 : 1;
+    const wasSelected = layer === selected;
+
+    if (wasSelected) layer.pm.disable();
+
+    layer.setLatLngs(
+      L.GeoJSON.coordsToLatLngs(geometry.coordinates, level)
+    );
+    layer.redraw();
+
+    if (wasSelected) {
+      layer.pm.enable();
+      updatePointCount();
+    }
+
+    return "trimmed";
+  }
+
+  // Trims every advance polygon created during the current advance.
+  // Returns a short human-readable summary (or "").
+  function trimCreatedAdvances() {
+    let trimmed = 0;
+    let removed = 0;
+    const kept = [];
+
+    advanceState.createdFids.forEach(function(fid) {
+      const layer = findPolygon(fid);
+
+      if (!layer) return;
+
+      const result = trimAdvanceToTerritory(layer);
+
+      if (result === "removed") {
+        removed++;
+      } else {
+        if (result === "trimmed") trimmed++;
+        kept.push(fid);
+      }
+    });
+
+    advanceState.createdFids = kept;
+
+    if (trimmed || removed) {
+      saveHistory();
+      renderSidebar();
+    }
+
+    const notes = [];
+    if (trimmed) notes.push(trimmed + " polygon(s) trimmed to remove overlap with existing territory");
+    if (removed) notes.push(removed + " polygon(s) discarded (entirely inside existing territory)");
+
+    return notes.join("; ");
+  }
+
+  // Manual tool: trim ALL polygons in both advance layers against their
+  // side's territory (useful to clean up advances drawn earlier).
+  function trimAllAdvances() {
+    if (!groups) return;
+
+    let trimmed = 0;
+    let removed = 0;
+
+    ["ru_advances", "ua_advances"].forEach(function(id) {
+      if (!groups[id]) return;
+
+      groups[id].getLayers().slice().forEach(function(layer) {
+        const result = trimAdvanceToTerritory(layer);
+        if (result === "trimmed") trimmed++;
+        if (result === "removed") removed++;
+      });
+    });
+
+    if (trimmed || removed) {
+      saveHistory();
+      renderSidebar();
+      updatePointCount();
+      if (grayZoneVisible) generateGrayZone();
+
+      setStatus(
+        "Advance overlaps fixed: " +
+        trimmed +
+        " trimmed, " +
+        removed +
+        " removed. Unsaved changes."
+      );
+    } else {
+      setStatus("No advance overlaps found.");
+    }
+  }
+
   function unionAreaKm2(layerIds) {
     let features = [];
 
@@ -2086,13 +2272,13 @@
     };
   }
 
-  // Layer colors used while editing advances. Russian advances are yellow
-  // (matching the public map); Ukrainian advances stay blue.
+  // Layer colors used while editing advances. Russian advances use #ffd600;
+  // Ukrainian advances stay blue.
   function ensureAdvanceColors() {
     const ru = config("ru_advances");
     const ua = config("ua_advances");
 
-    if (ru) ru[3] = "#FFFF00";
+    if (ru) ru[3] = "#ffd600";
     if (ua) ua[3] = "#1e88e5";
 
     if (groups && groups.ru_advances) {
@@ -2127,6 +2313,20 @@
       createButton,
       A("publish")
     );
+
+    const trimButton = document.createElement("button");
+    trimButton.className = "btn";
+    trimButton.id = "trimAdvancesButton";
+    trimButton.textContent = "Trim Advance Overlaps";
+    trimButton.title =
+      "Cut every advance polygon so it no longer overlaps its own side's territory";
+
+    actions.insertBefore(
+      trimButton,
+      A("publish")
+    );
+
+    trimButton.onclick = trimAllAdvances;
 
     const box = document.createElement("div");
     box.className = "box";
@@ -2346,6 +2546,21 @@
       setupPolygon(layer, layerId);
       groups[layerId].addLayer(layer);
 
+      // Cut away any part that lies inside the side's existing territory.
+      const trimResult = trimAdvanceToTerritory(layer);
+
+      if (trimResult === "removed") {
+        saveHistory();
+        renderSidebar();
+
+        setAdvanceStatus(
+          "That polygon lies entirely inside already-controlled territory, so it was discarded. Draw another one, or click Finish Advance.",
+          true
+        );
+
+        return;
+      }
+
       advanceState.createdFids.push(
         layer._fid
       );
@@ -2356,7 +2571,9 @@
       select(layer);
 
       setAdvanceStatus(
-        "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.",
+        trimResult === "trimmed"
+          ? "Advance polygon created and trimmed so it does not overlap existing territory. You can reshape it with the normal editor handles, then click Finish Advance."
+          : "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.",
         true
       );
     }
@@ -2382,6 +2599,10 @@
 
     advanceState.focus = currentFocus();
 
+    // The polygon may have been reshaped after it was drawn, so trim it
+    // against the territory again before calculating areas.
+    const trimNote = trimCreatedAdvances();
+
     // Recalculate the gray zone immediately from the finished geometry.
     generateGrayZone();
 
@@ -2402,7 +2623,9 @@
     A("advanceText").focus();
 
     setAdvanceStatus(
-      "Area calculated. Write the update text and click Save Advance.",
+      trimNote
+        ? "Area calculated (" + trimNote + "). Write the update text and click Save Advance."
+        : "Area calculated. Write the update text and click Save Advance.",
       false
     );
   }
