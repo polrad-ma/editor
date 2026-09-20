@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>POLRAD map editor 4.1</title>
+  <title>POLRAD map editor 4.2</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.css">
@@ -130,6 +130,12 @@
       width: 20px;
     }
 
+    .vis {
+      margin: 0;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
     .sw {
       width: 14px;
       height: 14px;
@@ -141,6 +147,11 @@
       flex: 1;
       font-size: 13px;
       cursor: pointer;
+    }
+
+    .lname.off {
+      color: #999;
+      text-decoration: line-through;
     }
 
     .count {
@@ -322,11 +333,23 @@
         <b id="selectedName" style="font-size:13px"></b>
         <label style="display:block;margin-top:7px">Layer</label>
         <select id="selectedLayer"></select>
+
+        <label style="display:block;margin-top:9px">Simplify (fewer points)</label>
+        <select id="simplifyLevel">
+          <option value="0.0001">Very light</option>
+          <option value="0.0003">Light</option>
+          <option value="0.0006" selected>Medium</option>
+          <option value="0.0012">Strong</option>
+        </select>
+        <button class="btn" id="simplifyBtn">Simplify shape</button>
+        <div class="small" id="pointCount" style="margin-top:5px"></div>
+
         <button class="btn" id="delete" style="color:#b3261e">Delete polygon</button>
       </div>
 
       <div class="section">
         <b style="font-size:12px;color:#777">LAYERS</b>
+        <span class="small" style="margin-left:6px">(tick = visible on map)</span>
       </div>
 
       <div id="layers"></div>
@@ -368,6 +391,8 @@
     let history = [];
     let historyIndex = -1;
     const layerOpenState = {};
+    // Per-layer visibility on the map (true unless explicitly switched off).
+    const layerVisible = {};
     let hoveredSidebarLayer = null;
 
     // Gray Zone is generated automatically from the current Russian-controlled
@@ -476,6 +501,23 @@
       return result;
     }
 
+    // Buffer with few arc steps, then simplify. Buffering a big polygon with
+    // the default settings adds a rounded arc of many points at every corner,
+    // which is what made the gray zone's curved edges consist of thousands of
+    // points. The buffers only define the OUTER limit of the corridor, so a
+    // small simplification tolerance (~300 m) is harmless here; the exact
+    // territory edges are subtracted afterwards and are never simplified.
+    function lightBuffer(feature, km) {
+      const buffered = turf.buffer(feature, km, { units: "kilometers", steps: 4 });
+      if (!buffered) return null;
+
+      try {
+        return turf.simplify(buffered, { tolerance: 0.003, highQuality: false });
+      } catch (e) {
+        return buffered;
+      }
+    }
+
     function generateGrayZone() {
       // The gray zone is the free space between the current Russian-controlled
       // and Ukrainian-controlled/regained polygons.
@@ -545,8 +587,8 @@
         // from that corridor. 15 km gives enough room for normal front-line
         // gaps without creating a huge gray area across unrelated parts of
         // Ukraine.
-        const ruBuffer = turf.buffer(ruUnion, 15, { units: "kilometers" });
-        const uaBuffer = turf.buffer(uaUnion, 15, { units: "kilometers" });
+        const ruBuffer = lightBuffer(ruUnion, 15);
+        const uaBuffer = lightBuffer(uaUnion, 15);
 
         if (!ruBuffer || !uaBuffer) {
           updateGrayZoneLayer();
@@ -667,16 +709,50 @@
       $("status").textContent = text;
     }
 
+    // Number of vertices in a layer's geometry.
+    function countPoints(layer) {
+      let n = 0;
+
+      try {
+        const geometry = layer.toGeoJSON().geometry;
+
+        (function walk(c) {
+          if (typeof c[0] === "number") {
+            n++;
+          } else {
+            c.forEach(walk);
+          }
+        })(geometry.coordinates);
+      } catch (e) {}
+
+      return n;
+    }
+
+    function updatePointCount() {
+      const node = $("pointCount");
+      if (!node) return;
+
+      node.textContent = selected
+        ? countPoints(selected) + " points"
+        : "";
+    }
+
     function applyStyle(layer, isSelected = false) {
       const c = config(layer._layer);
       if (!c) return;
 
       const isLine = c[4] === "line";
 
+      // Russian advances use a stronger fill so the yellow does not look
+      // washed out / pinkish over satellite imagery.
+      const fillOpacity = isLine
+        ? 0
+        : (layer._layer === "ru_advances" ? 0.7 : 0.4);
+
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
-        fillOpacity: isLine ? 0 : 0.4,
+        fillOpacity: fillOpacity,
         weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
       });
     }
@@ -690,7 +766,10 @@
       }, 300);
     }
 
-    function deselect(renderSidebar = true) {
+    // NOTE: the parameter used to be called "renderSidebar", which shadowed the
+    // renderSidebar() function and made it crash ("renderSidebar is not a
+    // function") whenever deselect() was called with the default value.
+    function deselect(shouldRender = true) {
       if (selected) {
         selected.pm.disable();
         applyStyle(selected);
@@ -699,13 +778,41 @@
       selected = null;
       $("selectedBox").style.display = "none";
 
-      if (renderSidebar) {
+      if (shouldRender) {
         renderSidebar();
       }
     }
 
+    // Show/hide a whole layer on the map.
+    function setLayerVisible(id, visible) {
+      layerVisible[id] = visible;
+
+      const group = groups[id];
+
+      if (group && map) {
+        if (visible) {
+          if (!map.hasLayer(group)) map.addLayer(group);
+        } else {
+          // Can't keep editing a polygon that is being hidden.
+          if (selected && selected._layer === id) {
+            deselect(false);
+          }
+
+          if (map.hasLayer(group)) map.removeLayer(group);
+        }
+      }
+
+      renderSidebar();
+    }
+
     function select(layer) {
       if (!layer || drawing) return;
+
+      // Selecting a polygon from the sidebar while its layer is hidden
+      // switches that layer back on.
+      if (layerVisible[layer._layer] === false) {
+        setLayerVisible(layer._layer, true);
+      }
 
       if (selected && selected !== layer) {
         selected.pm.disable();
@@ -719,6 +826,7 @@
       $("selectedBox").style.display = "block";
       $("selectedName").textContent = polygonName(layer);
       $("selectedLayer").value = layer._layer;
+      updatePointCount();
 
       renderSidebar();
     }
@@ -755,6 +863,7 @@
         if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
+          updatePointCount();
           if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
@@ -764,6 +873,7 @@
         if (layer === selected) {
           suppressNextMapClick();
           saveHistory();
+          updatePointCount();
           if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
@@ -789,6 +899,7 @@
           suppressNextMapClick();
           saveHistory();
           renderSidebar();
+          updatePointCount();
           if (grayZoneVisible) generateGrayZone();
           setStatus("Unsaved changes.");
         }
@@ -821,6 +932,14 @@
       if (sourceId === targetId) {
         select(layer);
         return;
+      }
+
+      // Don't let a polygon vanish into a hidden layer.
+      if (layerVisible[targetId] === false) {
+        layerVisible[targetId] = true;
+        if (map && !map.hasLayer(groups[targetId])) {
+          map.addLayer(groups[targetId]);
+        }
       }
 
       const wasSelected = selected === layer;
@@ -872,6 +991,7 @@
         const id = c[0];
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
+        const isVisible = layerVisible[id] !== false;
 
         const row = document.createElement("div");
         row.className = "layer";
@@ -884,19 +1004,32 @@
         arrow.className = "arrow";
         arrow.textContent = "▸";
 
+        // Visibility checkbox: show/hide the whole layer on the map.
+        const visibility = document.createElement("input");
+        visibility.type = "checkbox";
+        visibility.className = "vis";
+        visibility.checked = isVisible;
+        visibility.title = "Show / hide this layer on the map";
+        visibility.onclick = function(event) {
+          event.stopPropagation();
+        };
+        visibility.onchange = function() {
+          setLayerVisible(id, visibility.checked);
+        };
+
         const swatch = document.createElement("span");
         swatch.className = "sw";
         swatch.style.background = c[3];
 
         const layerName = document.createElement("span");
-        layerName.className = "lname";
+        layerName.className = "lname" + (isVisible ? "" : " off");
         layerName.textContent = c[1];
 
         const count = document.createElement("span");
         count.className = "count";
         count.textContent = layers.length;
 
-        header.append(arrow, swatch, layerName, count);
+        header.append(arrow, visibility, swatch, layerName, count);
         row.appendChild(header);
 
         const list = document.createElement("div");
@@ -1032,10 +1165,7 @@
     // touching the Gray Zone. This is what the undo/redo history stack uses:
     // restore() never reads the "Gray Zone" key, so there is no reason for
     // every single edit to pay for a fresh union/buffer/intersect/difference
-    // pass. (Previously it did, via snapshot() -> getCurrentGeoJSON(), which
-    // silently doubled the Gray Zone recompute on every edit on top of the
-    // explicit generateGrayZone() calls in the vertex/drag handlers below —
-    // that double work was the main source of the lag/"bugging".)
+    // pass.
     function getEditableGeoJSON() {
       const result = {};
 
@@ -1151,6 +1281,12 @@
       deselect(false);
       drawing = true;
 
+      // Drawing into a hidden layer would make the new polygon invisible.
+      const target = $("drawLayer").value;
+      if (layerVisible[target] === false) {
+        setLayerVisible(target, true);
+      }
+
       Object.values(groups).forEach(function(group) {
         group.eachLayer(function(layer) {
           layer.pm.disable();
@@ -1189,6 +1325,51 @@
       select(layer);
 
       setStatus("New polygon added to " + config(targetId)[1] + ".");
+    }
+
+    // Reduce the number of points of the selected polygon / line.
+    // Useful for shapes that have accumulated far too many vertices.
+    function simplifySelected() {
+      if (!selected) return;
+
+      const tolerance = Number($("simplifyLevel").value);
+      const before = countPoints(selected);
+
+      try {
+        const simplified = turf.simplify(selected.toGeoJSON(), {
+          tolerance: tolerance,
+          highQuality: true
+        });
+
+        const geometry = simplified.geometry;
+
+        // Nesting depth of the coordinate array for Leaflet.
+        let level = 0;
+        if (geometry.type === "Polygon" || geometry.type === "MultiLineString") {
+          level = 1;
+        } else if (geometry.type === "MultiPolygon") {
+          level = 2;
+        }
+
+        selected.pm.disable();
+        selected.setLatLngs(
+          L.GeoJSON.coordsToLatLngs(geometry.coordinates, level)
+        );
+        selected.redraw();
+        selected.pm.enable();
+
+        const after = countPoints(selected);
+
+        saveHistory();
+        updatePointCount();
+        renderSidebar();
+        if (grayZoneVisible) generateGrayZone();
+
+        setStatus("Simplified: " + before + " → " + after + " points. Unsaved changes.");
+      } catch (error) {
+        console.warn("Simplify failed:", error);
+        setStatus("Could not simplify this shape.");
+      }
     }
 
 
@@ -1438,6 +1619,8 @@
         movePolygon(selected, event.target.value);
       }
     };
+
+    $("simplifyBtn").onclick = simplifySelected;
 
     $("search").oninput = renderSidebar;
 
@@ -1839,11 +2022,13 @@
     };
   }
 
+  // Layer colors used while editing advances. Russian advances are yellow
+  // (matching the public map); Ukrainian advances stay blue.
   function ensureAdvanceColors() {
     const ru = config("ru_advances");
     const ua = config("ua_advances");
 
-    if (ru) ru[3] = "#e53935";
+    if (ru) ru[3] = "#FFFF00";
     if (ua) ua[3] = "#1e88e5";
 
     if (groups && groups.ru_advances) {
@@ -1856,6 +2041,11 @@
       groups.ua_advances.eachLayer(function(layer) {
         applyStyle(layer, layer === selected);
       });
+    }
+
+    // Refresh the sidebar swatches with the new colors.
+    if (typeof renderSidebar === "function" && groups && groups.ru_advances) {
+      renderSidebar();
     }
   }
 
@@ -2020,6 +2210,11 @@
     if (!groups[layerId]) {
       alert("The advance layer is not loaded.");
       return;
+    }
+
+    // Make sure the target layer is visible so the new polygon can be seen.
+    if (typeof setLayerVisible === "function" && layerVisible[layerId] === false) {
+      setLayerVisible(layerId, true);
     }
 
     deselect(false);
