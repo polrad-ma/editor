@@ -1768,18 +1768,182 @@
 (function () {
   "use strict";
 
-
   const ADVANCE_STORAGE_KEY = "polrad_editor_advances";
+
+  // Same-side territory that an advance polygon must NOT overlap.
+  // An advance is, by definition, ground gained OUTSIDE the territory the
+  // side already controlled, so anything inside these layers is trimmed off.
+  const ADVANCE_TERRITORY = {
+    ru_advances: ["ru_territory"],
+    ua_advances: ["ua_territory", "regained"]
+  };
+
+  let advances = [];
+  let advanceState = {
+    active: false,
+    side: "ru",
+    type: "normal",          // "normal" or "gray"
+    before: null,
+    focus: null,
+    createdFids: [],
+    lastEffects: null
+  };
+
+  function A(id) {
+    return document.getElementById(id);
+  }
+
+  function addAdvanceCSS() {
+    if (A("polrad-advance-css")) return;
+
+    const style = document.createElement("style");
+    style.id = "polrad-advance-css";
+    style.textContent = `
+      #advanceEditorBox {
+        margin-top:10px;
+        border:1px solid #ddd;
+        border-radius:7px;
+        padding:10px;
+        background:#f8f9fa;
+      }
+
+      #advanceEditorBox h4 {
+        margin:0 0 8px;
+        font-size:13px;
+      }
+
+      #advanceEditorBox label {
+        display:block;
+        margin-top:7px;
+        font-size:11px;
+        color:#777;
+      }
+
+      #advanceEditorBox select,
+      #advanceEditorBox textarea {
+        width:100%;
+        box-sizing:border-box;
+        border:1px solid #ccc;
+        border-radius:5px;
+        background:#fff;
+        padding:7px;
+        font:13px Arial,sans-serif;
+      }
+
+      #advanceEditorBox select {
+        height:34px;
+      }
+
+      #advanceEditorBox textarea {
+        min-height:78px;
+        resize:vertical;
+      }
+
+      .advance-row {
+        display:flex;
+        gap:6px;
+        margin-top:7px;
+      }
+
+      .advance-row .btn {
+        flex:1;
+      }
+
+      #advanceStatus {
+        font-size:11px;
+        color:#777;
+        line-height:1.4;
+        margin-top:8px;
+      }
+
+      #advanceStatus.active {
+        color:#b3261e;
+        font-weight:600;
+      }
+
+      #advanceAreaPreview {
+        margin-top:8px;
+        padding:7px;
+        border-radius:5px;
+        background:#fff;
+        border:1px solid #e1e1e1;
+        font-size:12px;
+      }
+
+      .advance-effect {
+        display:inline-block;
+        margin:2px 4px 2px 0;
+        padding:2px 5px;
+        border-radius:4px;
+        font-weight:600;
+      }
+
+      .advance-effect.ru {
+        color:#e53935;
+        background:#ffebee;
+      }
+
+      .advance-effect.ua {
+        color:#1e88e5;
+        background:#e3f2fd;
+      }
+
+      .advance-effect.red {
+        color:#e53935;
+        background:#ffebee;
+      }
+
+      .advance-effect.blue {
+        color:#1e88e5;
+        background:#e3f2fd;
+      }
+
+      #advanceHistory {
+        margin-top:8px;
+      }
+
+      .advance-history-item {
+        position:relative;
+        padding:7px;
+        margin-bottom:6px;
+        border:1px solid #e5e5e5;
+        border-radius:5px;
+        background:#fff;
+        font-size:11px;
+        line-height:1.35;
+      }
+
+      .advance-history-item button {
+        float:right;
+        font-size:11px;
+        border:1px solid #ccc;
+        background:#fff;
+        border-radius:4px;
+        cursor:pointer;
+        padding:3px 6px;
+      }
+
+      .advance-history-date {
+        font-weight:700;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  /* ---------------------------------------------------------
+     ADVANCE SNAPSHOT STORAGE
+     Keep history metadata in localStorage, but keep large map snapshots
+     in IndexedDB so saving an advance cannot fill the localStorage quota.
+     --------------------------------------------------------- */
   const ADVANCE_DB_NAME = "polrad_editor_advance_db";
   const ADVANCE_DB_VERSION = 1;
   const ADVANCE_SNAPSHOT_STORE = "snapshots";
-
   let advanceSnapshotDB = null;
 
   function openAdvanceSnapshotDB() {
     return new Promise(function(resolve, reject) {
-      if (!("indexedDB" in window)) {
-        reject(new Error("IndexedDB is not available in this browser."));
+      if (!window.indexedDB) {
+        reject(new Error("IndexedDB is not available."));
         return;
       }
 
@@ -1795,7 +1959,6 @@
 
       request.onupgradeneeded = function(event) {
         const db = event.target.result;
-
         if (!db.objectStoreNames.contains(ADVANCE_SNAPSHOT_STORE)) {
           db.createObjectStore(
             ADVANCE_SNAPSHOT_STORE,
@@ -1810,10 +1973,7 @@
       };
 
       request.onerror = function() {
-        reject(
-          request.error ||
-          new Error("Could not open the advance snapshot database.")
-        );
+        reject(request.error || new Error("Could not open advance storage."));
       };
     });
   }
@@ -1821,32 +1981,17 @@
   function putAdvanceSnapshot(id, snapshotData) {
     return openAdvanceSnapshotDB().then(function(db) {
       return new Promise(function(resolve, reject) {
-        const tx = db.transaction(
-          ADVANCE_SNAPSHOT_STORE,
-          "readwrite"
-        );
-
+        const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readwrite");
         tx.objectStore(ADVANCE_SNAPSHOT_STORE).put({
           id: id,
           snapshotData: snapshotData
         });
-
-        tx.oncomplete = function() {
-          resolve();
-        };
-
+        tx.oncomplete = function() { resolve(); };
         tx.onerror = function() {
-          reject(
-            tx.error ||
-            new Error("Could not save the advance snapshot.")
-          );
+          reject(tx.error || new Error("Could not save advance snapshot."));
         };
-
         tx.onabort = function() {
-          reject(
-            tx.error ||
-            new Error("The advance snapshot save was aborted.")
-          );
+          reject(tx.error || new Error("Advance snapshot save was aborted."));
         };
       });
     });
@@ -1855,27 +2000,13 @@
   function getAdvanceSnapshot(id) {
     return openAdvanceSnapshotDB().then(function(db) {
       return new Promise(function(resolve, reject) {
-        const tx = db.transaction(
-          ADVANCE_SNAPSHOT_STORE,
-          "readonly"
-        );
-
-        const request =
-          tx.objectStore(ADVANCE_SNAPSHOT_STORE).get(id);
-
+        const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readonly");
+        const request = tx.objectStore(ADVANCE_SNAPSHOT_STORE).get(id);
         request.onsuccess = function() {
-          resolve(
-            request.result
-              ? request.result.snapshotData
-              : null
-          );
+          resolve(request.result ? request.result.snapshotData : null);
         };
-
         request.onerror = function() {
-          reject(
-            request.error ||
-            new Error("Could not read the advance snapshot.")
-          );
+          reject(request.error || new Error("Could not read advance snapshot."));
         };
       });
     });
@@ -1884,22 +2015,11 @@
   function deleteAdvanceSnapshot(id) {
     return openAdvanceSnapshotDB().then(function(db) {
       return new Promise(function(resolve, reject) {
-        const tx = db.transaction(
-          ADVANCE_SNAPSHOT_STORE,
-          "readwrite"
-        );
-
+        const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readwrite");
         tx.objectStore(ADVANCE_SNAPSHOT_STORE).delete(id);
-
-        tx.oncomplete = function() {
-          resolve();
-        };
-
+        tx.oncomplete = function() { resolve(); };
         tx.onerror = function() {
-          reject(
-            tx.error ||
-            new Error("Could not delete the advance snapshot.")
-          );
+          reject(tx.error || new Error("Could not delete advance snapshot."));
         };
       });
     });
@@ -1911,115 +2031,75 @@
     return clean;
   }
 
-  async function loadAdvances() {
+  /*
+   * Load history SYNCHRONOUSLY first.  This is intentional: the editor UI
+   * must never wait for IndexedDB before the Create Advance button appears.
+   * Old history entries are kept exactly as they are while their snapshots
+   * are migrated in the background.
+   */
+  function loadAdvances() {
     try {
-      const raw =
-        localStorage.getItem(ADVANCE_STORAGE_KEY);
-
-      const parsed =
-        raw ? JSON.parse(raw) : [];
-
-      advances =
-        Array.isArray(parsed) ? parsed : [];
-
-      /*
-       * Older versions stored the complete map snapshot inside every
-       * localStorage advance. Migrate those snapshots to IndexedDB once.
-       * This is the important part of the fix: localStorage now contains
-       * only small advance-history metadata.
-       */
-      let migrated = false;
-
-      for (const item of advances) {
-        if (item && item.id && item.snapshotData) {
-          try {
-            await putAdvanceSnapshot(
-              item.id,
-              item.snapshotData
-            );
-
-            delete item.snapshotData;
-            migrated = true;
-          } catch (error) {
-            console.warn(
-              "Could not migrate advance snapshot:",
-              item.id,
-              error
-            );
-
-            /*
-             * Keep the snapshot in memory for this session if IndexedDB
-             * cannot be used. It will still be available for publishing.
-             */
-          }
-        }
-      }
-
-      if (migrated) {
-        saveAdvances();
-      }
-
-      /*
-       * Load snapshots back into memory. They are intentionally NOT put
-       * back into localStorage.
-       */
-      for (const item of advances) {
-        if (!item || !item.id || item.snapshotData) continue;
-
-        try {
-          const snapshot =
-            await getAdvanceSnapshot(item.id);
-
-          if (snapshot) {
-            item.snapshotData = snapshot;
-          }
-        } catch (error) {
-          console.warn(
-            "Could not load advance snapshot:",
-            item.id,
-            error
-          );
-        }
-      }
+      const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      advances = Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      console.error(
-        "Could not load advance history:",
-        e
-      );
-
+      console.error("Could not load advance history:", e);
       advances = [];
     }
   }
 
   function saveAdvances() {
-    /*
-     * Never store snapshotData in localStorage.
-     * The old implementation could hit the browser's localStorage quota
-     * because every advance contained a complete copy of the map.
-     */
     try {
-      const metadata =
-        advances.map(stripSnapshotData);
-
+      const metadata = advances.map(stripSnapshotData);
       localStorage.setItem(
         ADVANCE_STORAGE_KEY,
         JSON.stringify(metadata)
       );
-
       return true;
     } catch (error) {
-      console.error(
-        "Could not save advance history:",
-        error
-      );
-
+      console.error("Could not save advance history:", error);
       setAdvanceStatus(
-        "Advance metadata could not be saved. Check browser storage permissions.",
+        "Advance history could not be saved. Browser storage may be full.",
         true
       );
-
       return false;
     }
+  }
+
+  /*
+   * Move old large snapshotData entries into IndexedDB without delaying
+   * creation of the Advance UI. If migration fails, the old snapshot stays
+   * in memory so the user does not lose it.
+   */
+  async function migrateAdvanceSnapshots() {
+    for (const item of advances.slice()) {
+      if (!item || !item.id || !item.snapshotData) continue;
+
+      try {
+        await putAdvanceSnapshot(item.id, item.snapshotData);
+        delete item.snapshotData;
+        saveAdvances();
+      } catch (error) {
+        console.warn(
+          "Could not migrate advance snapshot; keeping the old snapshot in memory:",
+          item.id,
+          error
+        );
+      }
+    }
+
+    // Load snapshots which were already stored in IndexedDB.
+    for (const item of advances) {
+      if (!item || !item.id || item.snapshotData) continue;
+      try {
+        const snapshot = await getAdvanceSnapshot(item.id);
+        if (snapshot) item.snapshotData = snapshot;
+      } catch (error) {
+        console.warn("Could not load advance snapshot:", item.id, error);
+      }
+    }
+
+    renderAdvanceHistory();
   }
 
   function getLayerFeatures(layerId) {
@@ -2503,11 +2583,11 @@
       </select>
 
       <div class="advance-row">
-        <button type="button" class="btn primary" id="advanceStart">
+        <button class="btn primary" id="advanceStart">
           Create Advance
         </button>
 
-        <button type="button" class="btn" id="advanceFinish" disabled>
+        <button class="btn" id="advanceFinish" disabled>
           Finish Advance
         </button>
       </div>
@@ -2533,11 +2613,11 @@
         ></textarea>
 
         <div class="advance-row">
-          <button type="button" class="btn primary" id="advanceSave">
+          <button class="btn primary" id="advanceSave">
             Save Advance
           </button>
 
-          <button type="button" class="btn" id="advanceCancel">
+          <button class="btn" id="advanceCancel">
             Cancel
           </button>
         </div>
@@ -2618,7 +2698,7 @@
         : "Ukrainian";
 
     row.innerHTML =
-      '<button type="button" class="btn" id="drawAdvancePolygon">' +
+      '<button class="btn" id="drawAdvancePolygon">' +
       "Draw " +
       sideName +
       " advance polygon" +
@@ -2871,8 +2951,7 @@
   async function saveAdvance() {
     if (!advanceState.active) return;
 
-    const text =
-      A("advanceText").value.trim();
+    const text = A("advanceText").value.trim();
 
     if (!text) {
       alert("Please enter the advance description.");
@@ -2881,7 +2960,6 @@
     }
 
     const saveButton = A("advanceSave");
-
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.textContent = "Saving...";
@@ -2889,38 +2967,19 @@
 
     try {
       const now = dateTimeNow();
-
-      const effects =
-        computeAdvanceEffects();
-
-      const primaryValue =
-        effects.length
-          ? effects[0].value
-          : 0;
-
-      const id =
-        "adv-" + Date.now();
+      const effects = computeAdvanceEffects();
+      const primaryValue = effects.length ? effects[0].value : 0;
+      const id = "adv-" + Date.now();
 
       advanceState.createdFids.forEach(function(fid) {
-        const layer =
-          findPolygon(fid);
-
-        if (
-          layer &&
-          layer.feature &&
-          layer.feature.properties
-        ) {
+        const layer = findPolygon(fid);
+        if (layer && layer.feature && layer.feature.properties) {
           layer.feature.properties._advanceId = id;
         }
       });
 
-      /*
-       * Generate the final map snapshot once. It is kept in IndexedDB,
-       * not localStorage, so large maps cannot make the Save button fail
-       * with a QuotaExceededError.
-       */
-      const snapshot =
-        getCurrentGeoJSON();
+      generateGrayZone();
+      const snapshot = getCurrentGeoJSON();
 
       const item = {
         id: id,
@@ -2929,83 +2988,39 @@
         text: text,
         side: advanceState.side,
         advanceType: advanceState.type,
-
-        areaChange:
-          Number(primaryValue.toFixed(2)),
-
+        areaChange: Number(primaryValue.toFixed(2)),
         areaEffects: effects,
-
-        areaDisplay:
-          areaDisplay(effects),
-
-        areaColor:
-          A("advanceColor").value,
-
-        focus:
-          advanceState.focus,
-
-        polygonFids:
-          advanceState.createdFids.slice(),
-
-        snapshot:
-          "history/advances/" +
-          id +
-          ".json",
-
-        beforeAreas:
-          advanceState.before
+        areaDisplay: areaDisplay(effects),
+        areaColor: A("advanceColor").value,
+        focus: advanceState.focus,
+        polygonFids: advanceState.createdFids.slice(),
+        snapshot: "history/advances/" + id + ".json",
+        beforeAreas: advanceState.before
       };
 
-      /*
-       * Put the snapshot in IndexedDB first. The history entry itself is
-       * deliberately small and safe to store in localStorage.
-       */
-      await putAdvanceSnapshot(
-        id,
-        snapshot
-      );
-
-      item.snapshotData = snapshot;
+      // Save the large snapshot first.
+      await putAdvanceSnapshot(id, snapshot);
 
       advances.push(item);
 
       if (!saveAdvances()) {
-        /*
-         * The snapshot is safe in IndexedDB, but the metadata could not
-         * be persisted. Remove the in-memory entry so the UI does not
-         * claim that a permanently saved history item exists.
-         */
-        advances =
-          advances.filter(function(a) {
-            return a.id !== id;
-          });
-
-        await deleteAdvanceSnapshot(id);
-
-        throw new Error(
-          "The advance could not be saved to browser storage."
-        );
+        advances = advances.filter(function(a) { return a.id !== id; });
+        try { await deleteAdvanceSnapshot(id); } catch (e) {}
+        throw new Error("The advance could not be saved to browser storage.");
       }
 
-      /*
-       * Keep the normal editor data cache up to date too.
-       */
+      // Keep the snapshot in memory for this session.
+      item.snapshotData = snapshot;
+
+      // The normal editor cache is optional; don't let quota errors undo a
+      // successfully saved advance.
       try {
         localStorage.setItem(
           "polrad_editor_data",
-          JSON.stringify(
-            getCurrentGeoJSON()
-          )
+          JSON.stringify(getCurrentGeoJSON())
         );
       } catch (storageError) {
-        /*
-         * This cache is optional. The advance itself has already been
-         * safely stored in IndexedDB + advance metadata.
-         */
-        console.warn(
-          "Could not update editor localStorage cache:",
-          storageError
-        );
+        console.warn("Could not update editor cache:", storageError);
       }
 
       renderAdvanceHistory();
@@ -3019,16 +3034,11 @@
       A("advanceStart").disabled = false;
       A("advanceFinish").disabled = true;
       A("advanceSide").disabled = false;
-
       A("advanceTextWrap").style.display = "none";
       A("advanceText").value = "";
 
-      const polygonRow =
-        A("advancePolygonRow");
-
-      if (polygonRow) {
-        polygonRow.remove();
-      }
+      const polygonRow = A("advancePolygonRow");
+      if (polygonRow) polygonRow.remove();
 
       setAdvanceStatus(
         "Advance saved. Click the normal Publish button to send the map and advance history to GitHub.",
@@ -3036,29 +3046,16 @@
       );
 
       renderSidebar();
-
     } catch (error) {
-      console.error(
-        "Save Advance failed:",
-        error
-      );
-
+      console.error("Save Advance failed:", error);
       setAdvanceStatus(
-        error && error.message
-          ? error.message
-          : "Save Advance failed. Open the browser console for details.",
+        error && error.message ? error.message : "Save Advance failed.",
         true
       );
-
       alert(
         "Save Advance failed.\n\n" +
-        (
-          error && error.message
-            ? error.message
-            : "Unknown error."
-        )
+        (error && error.message ? error.message : "Unknown error.")
       );
-
     } finally {
       if (saveButton) {
         saveButton.disabled = false;
@@ -3102,7 +3099,7 @@
   /* ---------------------------------------------------------
      DELETE ADVANCE
      --------------------------------------------------------- */
-  async function deleteAdvance(id) {
+  function deleteAdvance(id) {
     const item = advances.find(function(a) { return a.id === id; });
     if (!item) return;
 
@@ -3138,16 +3135,6 @@
 
     advances = advances.filter(function(a) { return a.id !== id; });
     saveAdvances();
-
-    try {
-      await deleteAdvanceSnapshot(id);
-    } catch (error) {
-      console.warn(
-        "Could not delete advance snapshot:",
-        id,
-        error
-      );
-    }
 
     if (alsoPolygons) {
       saveHistory();
@@ -3331,185 +3318,90 @@
    * The normal map publishing behavior remains the same.
    */
   function installAdvancePublish() {
-    const publish =
-      A("publish");
-
+    const publish = A("publish");
     if (!publish) return;
-
-    if (
-      publish.dataset.advancePublishInstalled === "1"
-    ) {
-      return;
-    }
+    if (publish.dataset.advancePublishInstalled === "1") return;
 
     publish.dataset.advancePublishInstalled = "1";
 
-    publish.onclick =
-      async function() {
-        publish.disabled = true;
+    publish.onclick = async function() {
+      publish.disabled = true;
+      setStatus("Publishing map and advance history...");
 
-        setStatus(
-          "Publishing map and advance history..."
-        );
+      try {
+        const currentFiles = getCurrentGeoJSON();
+        const publishAdvances = advances.map(stripSnapshotData);
+        const advanceSnapshots = {};
+
+        for (const item of advances) {
+          let snapshot = item.snapshotData || null;
+          if (!snapshot && item.id) {
+            try {
+              snapshot = await getAdvanceSnapshot(item.id);
+            } catch (e) {
+              console.warn("Could not load snapshot for publish:", item.id, e);
+            }
+          }
+          advanceSnapshots[item.id] = snapshot;
+        }
+
+        const response = await fetch(WORKER, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "publish",
+            files: currentFiles,
+            advances: publishAdvances,
+            advanceSnapshots: advanceSnapshots
+          })
+        });
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (e) {
+          throw new Error("The server returned an invalid response.");
+        }
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Publish failed.");
+        }
 
         try {
-          const currentFiles =
-            getCurrentGeoJSON();
-
-          /*
-           * Do NOT send snapshotData inside every advance AND again in
-           * advanceSnapshots. That duplicated the entire map for every
-           * advance and could make the request unnecessarily enormous.
-           *
-           * The worker receives:
-           *   - small advance metadata
-           *   - snapshots separately
-           */
-          const publishAdvances =
-            advances.map(stripSnapshotData);
-
-          const advanceSnapshots = {};
-
-          for (const item of advances) {
-            let snapshot =
-              item.snapshotData || null;
-
-            /*
-             * If this page was freshly loaded and the snapshot was not
-             * available in memory, try IndexedDB once more before publish.
-             */
-            if (!snapshot && item.id) {
-              try {
-                snapshot =
-                  await getAdvanceSnapshot(item.id);
-              } catch (snapshotError) {
-                console.warn(
-                  "Could not load snapshot for publish:",
-                  item.id,
-                  snapshotError
-                );
-              }
-            }
-
-            advanceSnapshots[item.id] =
-              snapshot;
-          }
-
-          const response =
-            await fetch(
-              WORKER,
-              {
-                method: "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json"
-                },
-
-                body:
-                  JSON.stringify({
-                    action: "publish",
-
-                    files:
-                      currentFiles,
-
-                    advances:
-                      publishAdvances,
-
-                    advanceSnapshots:
-                      advanceSnapshots
-                  })
-              }
-            );
-
-          let result;
-
-          try {
-            result =
-              await response.json();
-          } catch (jsonError) {
-            throw new Error(
-              "The server returned an invalid response."
-            );
-          }
-
-          if (
-            !response.ok ||
-            !result.success
-          ) {
-            throw new Error(
-              result.error ||
-              "Publish failed."
-            );
-          }
-
-          /*
-           * This cache is optional and can be large. If it exceeds the
-           * browser quota, publishing itself has already succeeded, so do
-           * not report the publish as failed.
-           */
-          try {
-            localStorage.setItem(
-              "polrad_editor_data",
-              JSON.stringify(currentFiles)
-            );
-          } catch (storageError) {
-            console.warn(
-              "Could not update editor cache after publish:",
-              storageError
-            );
-          }
-
-          saveAdvances();
-
-          setStatus(
-            "Published successfully, including advance history."
+          localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(currentFiles)
           );
-
-          alert(
-            "Published successfully!"
-          );
-
-        } catch (error) {
-          console.error(
-            "Publish failed:",
-            error
-          );
-
-          setStatus(
-            error && error.message
-              ? error.message
-              : "Publish failed."
-          );
-
-          alert(
-            "Publish failed.\n\n" +
-            (
-              error && error.message
-                ? error.message
-                : "Unknown error."
-            )
-          );
-
-        } finally {
-          publish.disabled = false;
+        } catch (e) {
+          console.warn("Could not update editor cache after publish:", e);
         }
-      };
+
+        saveAdvances();
+        setStatus("Published successfully, including advance history.");
+        alert("Published successfully!");
+      } catch (error) {
+        console.error("Publish failed:", error);
+        setStatus(error && error.message ? error.message : "Publish failed.");
+        alert(
+          "Publish failed.\n\n" +
+          (error && error.message ? error.message : "Unknown error.")
+        );
+      } finally {
+        publish.disabled = false;
+      }
+    };
   }
 
-  async function initAdvanceEditor() {
+  function initAdvanceEditor() {
     addAdvanceCSS();
-
-    /*
-     * Wait for IndexedDB/localStorage history migration before rendering
-     * the history panel. This also restores old snapshotData entries.
-     */
-    await loadAdvances();
-
+    loadAdvances();
     createAdvanceUI();
     ensureAdvanceColors();
     installAdvancePublish();
     renderAdvanceHistory();
+
+    // Migrate/load large snapshots only after the UI is already usable.
+    migrateAdvanceSnapshots();
   }
 
   /*
@@ -3531,14 +3423,7 @@
     );
   } else {
     setTimeout(
-      function() {
-        initAdvanceEditor().catch(function(error) {
-          console.error(
-            "Advance editor initialization failed:",
-            error
-          );
-        });
-      },
+      initAdvanceEditor,
       150
     );
   }
