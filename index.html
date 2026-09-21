@@ -1782,6 +1782,7 @@
   let advanceState = {
     active: false,
     side: "ru",
+    type: "normal",          // "normal" or "gray"
     before: null,
     focus: null,
     createdFids: [],
@@ -2511,6 +2512,7 @@
 
     advanceState.active = true;
     advanceState.side = A("advanceSide").value;
+    advanceState.type = "normal";
     advanceState.before = currentControlledAreas();
     advanceState.focus = currentFocus();
     advanceState.createdFids = [];
@@ -2666,45 +2668,121 @@
     map.on("pm:create", onCreate);
   }
 
+  /* ---------------------------------------------------------
+     ADVANCE TYPE POPUP
+     --------------------------------------------------------- */
+  function chooseAdvanceType() {
+    return new Promise(function(resolve) {
+      const sideName  = advanceState.side === "ru" ? "Russian" : "Ukrainian";
+      const otherName = advanceState.side === "ru" ? "Ukrainian" : "Russian";
+
+      const overlay = document.createElement("div");
+      overlay.style.cssText =
+        "position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.55);" +
+        "display:flex;align-items:center;justify-content:center;";
+
+      overlay.innerHTML =
+        '<div style="background:#fff;border-radius:10px;padding:20px;width:380px;max-width:90vw;font-family:Arial,sans-serif">' +
+          '<div style="font-weight:700;font-size:16px;margin-bottom:6px">What kind of advance is this?</div>' +
+          '<div style="font-size:12px;color:#777;margin-bottom:14px">' + sideName + ' advance</div>' +
+          '<button id="advTypeNormal" class="btn primary" style="width:100%;margin-bottom:8px;text-align:left">' +
+            '<b>Normal advance</b><br><span style="font-size:11px;font-weight:400">' +
+            'Area = size of the new ' + sideName + ' advance polygon</span></button>' +
+          '<button id="advTypeGray" class="btn" style="width:100%;margin-bottom:8px;text-align:left">' +
+            '<b>Gray zone expansion</b><br><span style="font-size:11px;font-weight:400">' +
+            'Area = territory taken away from ' + otherName + ' control</span></button>' +
+          '<button id="advTypeCancel" class="btn" style="width:100%">Cancel</button>' +
+        '</div>';
+
+      document.body.appendChild(overlay);
+
+      function done(value) {
+        overlay.remove();
+        resolve(value);
+      }
+
+      overlay.querySelector("#advTypeNormal").onclick = function() { done("normal"); };
+      overlay.querySelector("#advTypeGray").onclick   = function() { done("gray"); };
+      overlay.querySelector("#advTypeCancel").onclick = function() { done(null); };
+    });
+  }
+
+  // Area (km²) of the advance polygons created during this advance.
+  function createdPolygonsAreaKm2() {
+    let total = 0;
+
+    advanceState.createdFids.forEach(function(fid) {
+      const layer = findPolygon(fid);
+      if (!layer) return;
+      try { total += turf.area(layer.toGeoJSON()); } catch (e) {}
+    });
+
+    return total / 1000000;
+  }
+
+  // normal: + area of the new polygon(s), for the advancing side
+  // gray:   - area lost by the OTHER side (its controlled area shrank)
+  function computeAdvanceEffects() {
+    if (advanceState.type === "gray") {
+      const other = advanceState.side === "ru" ? "ua" : "ru";
+      const after = currentControlledAreas();
+      const diff = Number((after[other] - advanceState.before[other]).toFixed(2));
+
+      return Math.abs(diff) >= 0.005 ? [{ side: other, value: diff }] : [];
+    }
+
+    const value = Number(createdPolygonsAreaKm2().toFixed(2));
+    return value >= 0.005 ? [{ side: advanceState.side, value: value }] : [];
+  }
+
   function renderAreaPreview() {
     const effects = advanceState.lastEffects;
     const box = A("advanceAreaPreview");
 
     if (!effects || !box) return;
 
+    const label = advanceState.type === "gray"
+      ? "Gray zone expansion – area lost by " +
+        (advanceState.side === "ru" ? "Ukraine" : "Russia")
+      : "Advance polygon area";
+
     box.innerHTML =
+      '<div style="font-size:11px;color:#777;margin-bottom:3px">' + label + "</div>" +
       formatAreaEffects(effects, A("advanceColor").value) +
       '<div style="margin-top:5px;color:#777;font-size:11px">' +
       "This color is used for the area text on the public map." +
       "</div>";
   }
 
-  function finishAdvance() {
+  async function finishAdvance() {
     if (!advanceState.active) return;
 
+    const type = await chooseAdvanceType();
+    if (!type) return;               // cancelled: stay in advance mode
+
+    advanceState.type = type;
     advanceState.focus = currentFocus();
 
-    // The polygon may have been reshaped after it was drawn, so trim it
-    // against the territory again before calculating areas.
-    const trimNote = trimCreatedAdvances();
+    // Only a normal advance polygon needs trimming against own territory.
+    const trimNote = type === "normal" ? trimCreatedAdvances() : "";
 
-    // Recalculate the gray zone immediately from the finished geometry.
     generateGrayZone();
 
-    const after = currentControlledAreas();
-    const effects = calculateEffects(
-      advanceState.before,
-      after
-    );
+    advanceState.lastEffects = computeAdvanceEffects();
 
-    advanceState.lastEffects = effects;
+    // Gray zone expansion: text uses the color of the side that LOSES control
+    // (Russia advances -> Ukraine loses -> blue; Ukraine advances -> red).
+    // Normal advance: color of the advancing side.
+    const losingIsBlue = advanceState.side === "ru";
+    A("advanceColor").value =
+      type === "gray"
+        ? (losingIsBlue ? "blue" : "red")
+        : (advanceState.side === "ua" ? "blue" : "red");
+
     renderAreaPreview();
 
-    A("advanceTextWrap").style.display =
-      "block";
-
+    A("advanceTextWrap").style.display = "block";
     A("advanceFinish").disabled = true;
-
     A("advanceText").focus();
 
     setAdvanceStatus(
@@ -2728,22 +2806,9 @@
     }
 
     const now = dateTimeNow();
-    const after = currentControlledAreas();
 
-    const effects = calculateEffects(
-      advanceState.before,
-      after
-    );
-
-    const primaryEffect =
-      effects.find(function(effect) {
-        return effect.side === advanceState.side;
-      });
-
-    const primaryValue =
-      primaryEffect
-        ? primaryEffect.value
-        : 0;
+    const effects = computeAdvanceEffects();
+    const primaryValue = effects.length ? effects[0].value : 0;
 
     const id =
       "adv-" +
@@ -2777,6 +2842,7 @@
       time: now.time,
       text: text,
       side: advanceState.side,
+      advanceType: advanceState.type,
 
       areaChange:
         Number(primaryValue.toFixed(2)),
@@ -2821,6 +2887,7 @@
     renderAdvanceHistory();
 
     advanceState.active = false;
+    advanceState.type = "normal";
     advanceState.before = null;
     advanceState.focus = null;
     advanceState.createdFids = [];
@@ -2854,6 +2921,7 @@
     if (!advanceState.active) return;
 
     advanceState.active = false;
+    advanceState.type = "normal";
     advanceState.before = null;
     advanceState.focus = null;
     advanceState.createdFids = [];
@@ -2880,9 +2948,62 @@
     );
   }
 
+  /* ---------------------------------------------------------
+     DELETE ADVANCE
+     --------------------------------------------------------- */
+  function deleteAdvance(id) {
+    const item = advances.find(function(a) { return a.id === id; });
+    if (!item) return;
+
+    if (!confirm(
+      "Delete this advance from the history?\n\n" +
+      item.date + " " + item.time + "\n" + (item.text || "")
+    )) return;
+
+    const alsoPolygons = confirm(
+      "Also remove this advance's polygon(s) from the map?\n\n" +
+      "OK = remove polygons too\nCancel = keep polygons, delete only the history entry"
+    );
+
+    let removed = 0;
+
+    if (alsoPolygons) {
+      ADVANCE_LAYER_IDS.forEach(function(layerId) {
+        if (!groups[layerId]) return;
+
+        groups[layerId].getLayers().slice().forEach(function(layer) {
+          const p = layer.feature && layer.feature.properties;
+          const byId  = p && p._advanceId === id;
+          const byFid = (item.polygonFids || []).indexOf(layer._fid) !== -1;
+
+          if (byId || byFid) {
+            if (layer === selected) deselect(false);
+            groups[layerId].removeLayer(layer);
+            removed++;
+          }
+        });
+      });
+    }
+
+    advances = advances.filter(function(a) { return a.id !== id; });
+    saveAdvances();
+
+    if (alsoPolygons) {
+      saveHistory();
+      renderSidebar();
+      generateGrayZone();
+    }
+
+    renderAdvanceHistory();
+    setStatus(
+      "Advance deleted" +
+      (alsoPolygons ? " (" + removed + " polygon(s) removed)" : "") +
+      ". Click Publish to update the public map."
+    );
+  }
+
   function renderAdvanceHistory() {
     const box = A("advanceHistory");
-
     if (!box) return;
 
     box.innerHTML = "";
@@ -2893,56 +3014,33 @@
       return;
     }
 
-    advances
-      .slice()
-      .reverse()
-      .forEach(function(item) {
-        const row =
-          document.createElement("div");
+    advances.slice().reverse().forEach(function(item) {
+      const row = document.createElement("div");
+      row.className = "advance-history-item";
 
-        row.className =
-          "advance-history-item";
+      const sideLabel = item.side === "ru" ? "🔴 Russia" : "🔵 Ukraine";
+      const typeLabel = item.advanceType === "gray" ? " · Gray zone expansion" : "";
+      const color =
+        (item.areaColor || (item.side === "ua" ? "blue" : "red")) === "blue"
+          ? "#1e88e5" : "#e53935";
 
-        const sideLabel =
-          item.side === "ru"
-            ? "🔴 Russia"
-            : "🔵 Ukraine";
+      row.innerHTML =
+        '<button type="button" class="adv-del" style="color:#b3261e;margin-left:4px">Delete</button>' +
+        '<button type="button" class="adv-edit">Edit</button>' +
+        '<div class="advance-history-date">' +
+        item.date + " " + item.time + " · " + sideLabel + typeLabel +
+        "</div>" +
+        "<div>" + (item.text || "") + "</div>" +
+        (item.areaDisplay
+          ? '<div>Area: <span style="font-weight:700;color:' + color + '">' +
+            item.areaDisplay + "</span></div>"
+          : "");
 
-        row.innerHTML =
-          '<button type="button">Edit</button>' +
-          '<div class="advance-history-date">' +
-          item.date +
-          " " +
-          item.time +
-          " · " +
-          sideLabel +
-          "</div>" +
-          "<div>" +
-          (item.text || "") +
-          "</div>" +
-          (
-            item.areaDisplay
-              ? "<div>Area: " +
-                '<span style="font-weight:700;color:' +
-                (
-                  (item.areaColor || (item.side === "ua" ? "blue" : "red")) === "blue"
-                    ? "#1e88e5"
-                    : "#e53935"
-                ) +
-                '">' +
-                item.areaDisplay +
-                "</span></div>"
-              : ""
-          );
+      row.querySelector(".adv-edit").onclick = function() { editAdvance(item.id); };
+      row.querySelector(".adv-del").onclick  = function() { deleteAdvance(item.id); };
 
-        row.querySelector(
-          "button"
-        ).onclick = function() {
-          editAdvance(item.id);
-        };
-
-        box.appendChild(row);
-      });
+      box.appendChild(row);
+    });
   }
 
   function editAdvance(id) {
@@ -3020,12 +3118,14 @@
         item.areaChange =
           Number(n.toFixed(2));
 
-        item.areaEffects = [
-          {
-            side: item.side,
-            value: item.areaChange
-          }
-        ];
+        // Gray zone entries store the loss under the OTHER side,
+        // so keep whichever side the effect was originally stored under.
+        const effectSide =
+          item.areaEffects && item.areaEffects[0]
+            ? item.areaEffects[0].side
+            : item.side;
+
+        item.areaEffects = [{ side: effectSide, value: item.areaChange }];
 
         item.areaDisplay =
           (
