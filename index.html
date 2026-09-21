@@ -1323,6 +1323,7 @@
     }
 
     function startDrawing() {
+      window.polradAdvanceDrawing = false;
       deselect(false);
       drawing = true;
 
@@ -1346,7 +1347,14 @@
       setStatus("Drawing polygon...");
     }
 
+    // Set to true by the Advance editor while it is drawing an advance polygon,
+    // so this general handler does not ALSO add the same polygon to the
+    // "New polygon layer" chosen in the Draw polygon box.
+    window.polradAdvanceDrawing = false;
+
     function polygonCreated(event) {
+      if (window.polradAdvanceDrawing) return;
+
       const layer = event.layer;
       const targetId = $("drawLayer").value;
 
@@ -2095,15 +2103,80 @@
     return notes.join("; ");
   }
 
-  // Manual tool: trim ALL polygons in both advance layers against their
-  // side's territory (useful to clean up advances drawn earlier).
+  const ADVANCE_LAYER_IDS = ["ru_advances", "ua_advances"];
+
+  // An advance polygon carries a "_advanceId" property. If a polygon with
+  // that property sits in a NON-advance layer (e.g. Russian-controlled
+  // territory), it is an accidental duplicate of an advance, created when
+  // the normal draw handler and the advance handler both ran on the same
+  // drawn shape. Remove those copies (also from saved advance snapshots).
+  function removeStrayAdvanceCopies() {
+    let removed = 0;
+    let snapshotsCleaned = 0;
+
+    LAYERS.forEach(function(c) {
+      const id = c[0];
+
+      if (ADVANCE_LAYER_IDS.indexOf(id) !== -1 || !groups[id]) return;
+
+      groups[id].getLayers().slice().forEach(function(layer) {
+        const props = layer.feature && layer.feature.properties;
+
+        if (!props || !props._advanceId) return;
+
+        if (layer === selected) deselect(false);
+
+        groups[id].removeLayer(layer);
+
+        // The very same polygon object may also belong to its real advance
+        // layer; removing it from the wrong group took it off the map, so
+        // put it back.
+        const home = layer._layer;
+        if (home !== id && groups[home] && groups[home].hasLayer(layer)) {
+          groups[home].addLayer(layer);
+        }
+
+        removed++;
+      });
+    });
+
+    advances.forEach(function(item) {
+      if (!item.snapshotData) return;
+
+      LAYERS.forEach(function(c) {
+        if (ADVANCE_LAYER_IDS.indexOf(c[0]) !== -1) return;
+
+        const fc = item.snapshotData[c[1]];
+        if (!fc || !fc.features) return;
+
+        const kept = fc.features.filter(function(f) {
+          return !(f.properties && f.properties._advanceId);
+        });
+
+        if (kept.length !== fc.features.length) {
+          fc.features = kept;
+          snapshotsCleaned++;
+        }
+      });
+    });
+
+    if (snapshotsCleaned) saveAdvances();
+
+    return { removed: removed, snapshotsCleaned: snapshotsCleaned };
+  }
+
+  // Manual tool: 1) remove accidental advance copies from other layers,
+  // 2) trim ALL polygons in both advance layers against their side's
+  // territory (useful to clean up advances drawn earlier).
   function trimAllAdvances() {
     if (!groups) return;
+
+    const stray = removeStrayAdvanceCopies();
 
     let trimmed = 0;
     let removed = 0;
 
-    ["ru_advances", "ua_advances"].forEach(function(id) {
+    ADVANCE_LAYER_IDS.forEach(function(id) {
       if (!groups[id]) return;
 
       groups[id].getLayers().slice().forEach(function(layer) {
@@ -2113,21 +2186,27 @@
       });
     });
 
-    if (trimmed || removed) {
+    if (stray.removed || trimmed || removed) {
       saveHistory();
       renderSidebar();
       updatePointCount();
       if (grayZoneVisible) generateGrayZone();
 
       setStatus(
-        "Advance overlaps fixed: " +
+        "Advance layers fixed: " +
+        stray.removed +
+        " stray copies removed, " +
         trimmed +
         " trimmed, " +
         removed +
-        " removed. Unsaved changes."
+        " discarded" +
+        (stray.snapshotsCleaned
+          ? ", " + stray.snapshotsCleaned + " saved snapshot layer(s) cleaned"
+          : "") +
+        ". Unsaved changes."
       );
     } else {
-      setStatus("No advance overlaps found.");
+      setStatus("No advance problems found.");
     }
   }
 
@@ -2317,9 +2396,9 @@
     const trimButton = document.createElement("button");
     trimButton.className = "btn";
     trimButton.id = "trimAdvancesButton";
-    trimButton.textContent = "Trim Advance Overlaps";
+    trimButton.textContent = "Fix Advance Layers";
     trimButton.title =
-      "Cut every advance polygon so it no longer overlaps its own side's territory";
+      "Remove accidental advance copies from other layers, then cut every advance polygon so it no longer overlaps its own side's territory";
 
     actions.insertBefore(
       trimButton,
@@ -2497,6 +2576,7 @@
 
     deselect(false);
     drawing = true;
+    window.polradAdvanceDrawing = true;
 
     map.pm.enableDraw("Polygon", {
       snappable: true,
@@ -2514,6 +2594,11 @@
 
     function onCreate(event) {
       map.off("pm:create", onCreate);
+
+      // If the user switched to the normal Draw tool meanwhile, this polygon
+      // belongs to that tool, not to the advance.
+      if (!window.polradAdvanceDrawing) return;
+      window.polradAdvanceDrawing = false;
 
       const layer = event.layer;
 
@@ -2765,6 +2850,7 @@
   }
 
   function cancelAdvance() {
+    window.polradAdvanceDrawing = false;
     if (!advanceState.active) return;
 
     advanceState.active = false;
