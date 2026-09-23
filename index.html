@@ -1353,7 +1353,7 @@
     window.polradAdvanceDrawing = false;
 
     function polygonCreated(event) {
-      if (window.polradAdvanceDrawing) return;
+      if (window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) return;
 
       const layer = event.layer;
       const targetId = $("drawLayer").value;
