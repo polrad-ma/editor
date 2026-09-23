@@ -1779,6 +1779,8 @@
   };
 
   let advances = [];
+  let advanceFocusRectangle = null;
+  window.polradAdvanceFocusDrawing = false;
   let advanceState = {
     active: false,
     side: "ru",
@@ -2480,6 +2482,66 @@
     }).join(" ");
   }
 
+  function clearAdvanceFocusRectangle() {
+    if (advanceFocusRectangle && map && map.hasLayer(advanceFocusRectangle)) {
+      map.removeLayer(advanceFocusRectangle);
+    }
+    advanceFocusRectangle = null;
+  }
+
+  function setAdvanceFocus(bounds) {
+    if (!bounds) return;
+    clearAdvanceFocusRectangle();
+
+    advanceFocusRectangle = L.rectangle(bounds, {
+      color: "#7b1fa2",
+      weight: 2,
+      dashArray: "6 4",
+      fillOpacity: 0.08,
+      interactive: false
+    }).addTo(map);
+
+    advanceState.focus = {
+      south: Number(bounds.getSouth()),
+      west: Number(bounds.getWest()),
+      north: Number(bounds.getNorth()),
+      east: Number(bounds.getEast())
+    };
+
+    if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "Focus rectangle selected.";
+    setAdvanceStatus("Public map focus area selected. You can redraw it if needed.", true);
+  }
+
+  function selectAdvanceFocus() {
+    if (!advanceState.active || !map) return;
+
+    clearAdvanceFocusRectangle();
+    window.polradAdvanceFocusDrawing = true;
+    drawing = true;
+
+    map.pm.enableDraw("Rectangle", {
+      snappable: false
+    });
+
+    setAdvanceStatus("Draw a rectangle around the area the public map should zoom to.", true);
+
+    function onCreate(event) {
+      map.off("pm:create", onCreate);
+      if (!window.polradAdvanceFocusDrawing) return;
+
+      window.polradAdvanceFocusDrawing = false;
+      map.pm.disableDraw();
+      drawing = false;
+
+      const layer = event.layer;
+      const bounds = layer.getBounds();
+      map.removeLayer(layer);
+      setAdvanceFocus(bounds);
+    }
+
+    map.on("pm:create", onCreate);
+  }
+
   function currentFocus() {
     if (!map) return null;
 
@@ -2613,6 +2675,15 @@
         </span>
       </div>
 
+      <div id="advanceFocusWrap" style="margin-top:8px">
+        <label>Public map focus area</label>
+        <div class="advance-row">
+          <button class="btn" id="advanceFocusSelect">Select / Redraw Focus Rectangle</button>
+          <button class="btn" id="advanceFocusClear">Clear</button>
+        </div>
+        <div class="small" id="advanceFocusStatus">No focus rectangle selected.</div>
+      </div>
+
       <div id="advanceTextWrap" style="display:none">
         <label>English advance description</label>
 
@@ -2649,6 +2720,12 @@
     createButton.onclick = startAdvance;
     A("advanceStart").onclick = startAdvance;
     A("advanceFinish").onclick = finishAdvance;
+    A("advanceFocusSelect").onclick = selectAdvanceFocus;
+    A("advanceFocusClear").onclick = function() {
+      clearAdvanceFocusRectangle();
+      advanceState.focus = null;
+      A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+    };
     A("advanceSave").onclick = saveAdvance;
     A("advanceCancel").onclick = cancelAdvance;
 
@@ -2685,7 +2762,9 @@
     advanceState.side = A("advanceSide").value;
     advanceState.type = "normal";
     advanceState.before = currentControlledAreas();
-    advanceState.focus = currentFocus();
+    clearAdvanceFocusRectangle();
+    advanceState.focus = null;
+    A("advanceFocusStatus").textContent = "No focus rectangle selected.";
     advanceState.createdFids = [];
     advanceState.lastEffects = null;
 
@@ -2932,7 +3011,11 @@
     if (!type) return;               // cancelled: stay in advance mode
 
     advanceState.type = type;
-    advanceState.focus = currentFocus();
+
+    if (!advanceState.focus) {
+      alert("Please select a public map focus rectangle before finishing the advance.");
+      return;
+    }
 
     // Only a normal advance polygon needs trimming against own territory.
     const trimNote = type === "normal" ? trimCreatedAdvances() : "";
@@ -3048,6 +3131,7 @@
       advanceState.active = false;
       advanceState.type = "normal";
       advanceState.before = null;
+      clearAdvanceFocusRectangle();
       advanceState.focus = null;
       advanceState.createdFids = [];
 
@@ -3057,6 +3141,7 @@
       A("advanceTextWrap").style.display = "none";
       A("advanceTextEn").value = "";
       A("advanceTextRu").value = "";
+      if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
 
       const polygonRow = A("advancePolygonRow");
       if (polygonRow) polygonRow.remove();
@@ -3092,6 +3177,7 @@
     advanceState.active = false;
     advanceState.type = "normal";
     advanceState.before = null;
+    clearAdvanceFocusRectangle();
     advanceState.focus = null;
     advanceState.createdFids = [];
 
@@ -3104,6 +3190,7 @@
 
     A("advanceTextEn").value = "";
     A("advanceTextRu").value = "";
+    if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
 
     const polygonRow =
       A("advancePolygonRow");
