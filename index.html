@@ -2042,6 +2042,15 @@
       const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
       advances = Array.isArray(parsed) ? parsed : [];
+
+      // Migrate old single-language entries. New entries always keep both
+      // English and Russian descriptions.
+      advances.forEach(function(item) {
+        if (!item || typeof item !== "object") return;
+        if (!item.text_en && item.text) item.text_en = item.text;
+        if (!item.text_ru) item.text_ru = "";
+        if (!item.text && item.text_en) item.text = item.text_en;
+      });
     } catch (e) {
       console.error("Could not load advance history:", e);
       advances = [];
@@ -2605,11 +2614,18 @@
       </div>
 
       <div id="advanceTextWrap" style="display:none">
-        <label>Advance description</label>
+        <label>English advance description</label>
 
         <textarea
-          id="advanceText"
+          id="advanceTextEn"
           placeholder="Example: Russian forces captured the eastern part of ..."
+        ></textarea>
+
+        <label>Russian advance description</label>
+
+        <textarea
+          id="advanceTextRu"
+          placeholder="Например: российские силы захватили восточную часть ..."
         ></textarea>
 
         <div class="advance-row">
@@ -2938,7 +2954,7 @@
 
     A("advanceTextWrap").style.display = "block";
     A("advanceFinish").disabled = true;
-    A("advanceText").focus();
+    A("advanceTextEn").focus();
 
     setAdvanceStatus(
       trimNote
@@ -2951,11 +2967,13 @@
   async function saveAdvance() {
     if (!advanceState.active) return;
 
-    const text = A("advanceText").value.trim();
+    const textEn = A("advanceTextEn").value.trim();
+    const textRu = A("advanceTextRu").value.trim();
 
-    if (!text) {
-      alert("Please enter the advance description.");
-      A("advanceText").focus();
+    if (!textEn || !textRu) {
+      alert("Please enter both the English and Russian advance descriptions.");
+      if (!textEn) A("advanceTextEn").focus();
+      else A("advanceTextRu").focus();
       return;
     }
 
@@ -2985,7 +3003,9 @@
         id: id,
         date: now.date,
         time: now.time,
-        text: text,
+        text_en: textEn,
+        text_ru: textRu,
+        text: textEn,
         side: advanceState.side,
         advanceType: advanceState.type,
         areaChange: Number(primaryValue.toFixed(2)),
@@ -3035,7 +3055,8 @@
       A("advanceFinish").disabled = true;
       A("advanceSide").disabled = false;
       A("advanceTextWrap").style.display = "none";
-      A("advanceText").value = "";
+      A("advanceTextEn").value = "";
+      A("advanceTextRu").value = "";
 
       const polygonRow = A("advancePolygonRow");
       if (polygonRow) polygonRow.remove();
@@ -3081,7 +3102,8 @@
     A("advanceTextWrap").style.display =
       "none";
 
-    A("advanceText").value = "";
+    A("advanceTextEn").value = "";
+    A("advanceTextRu").value = "";
 
     const polygonRow =
       A("advancePolygonRow");
@@ -3178,7 +3200,8 @@
         '<div class="advance-history-date">' +
         item.date + " " + item.time + " · " + sideLabel + typeLabel +
         "</div>" +
-        "<div>" + (item.text || "") + "</div>" +
+        "<div><b>EN:</b> " + (item.text_en || item.text || "") + "</div>" +
+        "<div><b>RU:</b> " + (item.text_ru || "") + "</div>" +
         (item.areaDisplay
           ? '<div>Area: <span style="font-weight:700;color:' + color + '">' +
             item.areaDisplay + "</span></div>"
@@ -3192,43 +3215,167 @@
   }
 
   function editAdvance(id) {
-    const item =
-      advances.find(function(a) {
-        return a.id === id;
-      });
+    const item = advances.find(function(a) {
+      return a.id === id;
+    });
 
     if (!item) return;
 
-    const newText =
-      prompt(
-        "Edit advance text:",
-        item.text || ""
-      );
+    // Migrate older single-language entries automatically.
+    if (!item.text_en && item.text) item.text_en = item.text;
+    if (!item.text_ru) item.text_ru = "";
 
-    if (newText === null) return;
+    // Use a real HTML dialog instead of window.prompt(). This makes it
+    // possible to enter Cyrillic/Russian text reliably and edit both
+    // languages at the same time.
+    const old = document.getElementById("polradAdvanceEditDialog");
+    if (old) old.remove();
 
-    const cleanText =
-      newText.trim();
+    const overlay = document.createElement("div");
+    overlay.id = "polradAdvanceEditDialog";
+    overlay.style.cssText = [
+      "position:fixed",
+      "inset:0",
+      "z-index:100000",
+      "background:rgba(0,0,0,.45)",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "padding:20px",
+      "box-sizing:border-box"
+    ].join(";");
 
-    if (cleanText) {
-      item.text = cleanText;
+    const dialog = document.createElement("div");
+    dialog.style.cssText = [
+      "width:min(620px,100%)",
+      "max-height:90vh",
+      "overflow:auto",
+      "background:#fff",
+      "border-radius:10px",
+      "box-shadow:0 12px 40px rgba(0,0,0,.3)",
+      "padding:18px",
+      "box-sizing:border-box",
+      "font-family:Arial,sans-serif"
+    ].join(";");
+
+    const title = document.createElement("h3");
+    title.textContent = "Edit Advance Description";
+    title.style.margin = "0 0 14px 0";
+
+    const enLabel = document.createElement("label");
+    enLabel.textContent = "English advance description";
+    enLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
+
+    const en = document.createElement("textarea");
+    en.value = item.text_en || item.text || "";
+    en.placeholder = "English advance description...";
+    en.style.cssText = [
+      "width:100%",
+      "min-height:100px",
+      "resize:vertical",
+      "box-sizing:border-box",
+      "padding:9px",
+      "margin-bottom:13px",
+      "border:1px solid #ccc",
+      "border-radius:6px",
+      "font:14px Arial,sans-serif"
+    ].join(";");
+
+    const ruLabel = document.createElement("label");
+    ruLabel.textContent = "Russian advance description";
+    ruLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
+
+    const ru = document.createElement("textarea");
+    ru.value = item.text_ru || "";
+    ru.placeholder = "Введите описание продвижения на русском языке...";
+    ru.style.cssText = [
+      "width:100%",
+      "min-height:100px",
+      "resize:vertical",
+      "box-sizing:border-box",
+      "padding:9px",
+      "margin-bottom:15px",
+      "border:1px solid #ccc",
+      "border-radius:6px",
+      "font:14px Arial,sans-serif"
+    ].join(";");
+
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+
+    const cancel = document.createElement("button");
+    cancel.className = "btn";
+    cancel.textContent = "Cancel";
+
+    const save = document.createElement("button");
+    save.className = "btn primary";
+    save.textContent = "Save descriptions";
+
+    buttons.appendChild(cancel);
+    buttons.appendChild(save);
+
+    dialog.appendChild(title);
+    dialog.appendChild(enLabel);
+    dialog.appendChild(en);
+    dialog.appendChild(ruLabel);
+    dialog.appendChild(ru);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    function closeDialog() {
+      overlay.remove();
     }
 
-    const side =
-      prompt(
-        "Side: enter ru or ua",
-        item.side || "ru"
-      );
+    cancel.onclick = closeDialog;
+    overlay.onclick = function(event) {
+      if (event.target === overlay) closeDialog();
+    };
+
+    save.onclick = function() {
+      const cleanEn = en.value.trim();
+      const cleanRu = ru.value.trim();
+
+      if (!cleanEn) {
+        alert("Please enter the English advance description.");
+        en.focus();
+        return;
+      }
+
+      if (!cleanRu) {
+        alert("Please enter the Russian advance description.");
+        ru.focus();
+        return;
+      }
+
+      item.text_en = cleanEn;
+      item.text_ru = cleanRu;
+      item.text = cleanEn;
+
+      closeDialog();
+
+      // Keep the existing metadata-editing workflow after the descriptions
+      // have been saved.
+      editAdvanceMetadata(item);
+    };
+
+    en.focus();
+  }
+
+  function editAdvanceMetadata(item) {
+    const side = prompt(
+      "Side: enter ru or ua",
+      item.side || "ru"
+    );
 
     if (side === "ru" || side === "ua") {
       item.side = side;
     }
 
-    const colorAnswer =
-      prompt(
-        "Area change color: enter red or blue",
-        item.areaColor || (item.side === "ua" ? "blue" : "red")
-      );
+    const colorAnswer = prompt(
+      "Area change color: enter red or blue",
+      item.areaColor || (item.side === "ua" ? "blue" : "red")
+    );
 
     if (colorAnswer) {
       const c = colorAnswer.trim().toLowerCase();
@@ -3237,67 +3384,36 @@
       }
     }
 
-    /*
-      Area values are normally calculated automatically.
-      The manual area edit below is only a correction tool for cases where
-      the editor cannot produce a clean Turf union because of invalid or
-      overlapping geometry.
-    */
-    const areaAnswer =
-      prompt(
-        "Optional manual area correction in km². Leave blank to keep the calculated area:",
-        item.areaChange !== undefined &&
-        item.areaChange !== null
-          ? String(item.areaChange)
-          : ""
-      );
+    const areaAnswer = prompt(
+      "Optional manual area correction in km². Leave blank to keep the calculated area:",
+      item.areaChange !== undefined && item.areaChange !== null
+        ? String(item.areaChange)
+        : ""
+    );
 
-    if (
-      areaAnswer !== null &&
-      areaAnswer.trim() !== ""
-    ) {
-      const n =
-        Number(
-          areaAnswer
-            .replace(",", ".")
-        );
+    if (areaAnswer !== null && areaAnswer.trim() !== "") {
+      const n = Number(areaAnswer.replace(",", "."));
 
       if (Number.isFinite(n)) {
-        item.areaChange =
-          Number(n.toFixed(2));
+        item.areaChange = Number(n.toFixed(2));
 
-        // Gray zone entries store the loss under the OTHER side,
-        // so keep whichever side the effect was originally stored under.
         const effectSide =
           item.areaEffects && item.areaEffects[0]
             ? item.areaEffects[0].side
             : item.side;
 
         item.areaEffects = [{ side: effectSide, value: item.areaChange }];
-
-        item.areaDisplay =
-          (
-            n > 0
-              ? "+"
-              : ""
-          ) +
-          n.toFixed(2) +
-          " km²";
+        item.areaDisplay = (n > 0 ? "+" : "") + n.toFixed(2) + " km²";
       }
     }
 
-    // Select the polygon associated with this advance so the normal
-    // Geoman handles can be used to reshape it.
-    const fids =
-      item.polygonFids || [];
+    const fids = item.polygonFids || [];
 
     if (fids.length) {
-      const polygon =
-        findPolygon(fids[0]);
+      const polygon = findPolygon(fids[0]);
 
       if (polygon) {
         select(polygon);
-
         setStatus(
           "Advance polygon selected. Reshape it with the normal editor handles, then Publish."
         );
@@ -3350,9 +3466,14 @@
           body: JSON.stringify(payload)
         });
       } catch (error) {
+        console.error("Worker network error:", error);
         throw new Error(
-          "Could not reach the publishing server. " +
-          "If this happens again, check that the Cloudflare Worker is deployed."
+          "Could not connect to the Cloudflare Worker.\n\n" +
+          "Worker URL: " + WORKER + "\n\n" +
+          "Browser error: " +
+          (error && error.message ? error.message : String(error)) +
+          "\n\n" +
+          "Make sure the Worker is deployed and that its URL matches the editor."
         );
       }
 
