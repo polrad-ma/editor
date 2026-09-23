@@ -1353,7 +1353,7 @@
     window.polradAdvanceDrawing = false;
 
     function polygonCreated(event) {
-      if (window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) return;
+      if (window.polradAdvanceDrawing) return;
 
       const layer = event.layer;
       const targetId = $("drawLayer").value;
@@ -1779,8 +1779,6 @@
   };
 
   let advances = [];
-  let advanceFocusRectangle = null;
-  window.polradAdvanceFocusDrawing = false;
   let advanceState = {
     active: false,
     side: "ru",
@@ -2044,10 +2042,6 @@
       const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
       advances = Array.isArray(parsed) ? parsed : [];
-      advances.forEach(function(item) {
-        if (!item.text_en && item.text) item.text_en = item.text;
-        if (!item.text_ru) item.text_ru = "";
-      });
     } catch (e) {
       console.error("Could not load advance history:", e);
       advances = [];
@@ -2477,66 +2471,6 @@
     }).join(" ");
   }
 
-  function clearAdvanceFocusRectangle() {
-    if (advanceFocusRectangle && map && map.hasLayer(advanceFocusRectangle)) {
-      map.removeLayer(advanceFocusRectangle);
-    }
-    advanceFocusRectangle = null;
-  }
-
-  function setAdvanceFocus(bounds) {
-    if (!bounds) return;
-    clearAdvanceFocusRectangle();
-
-    advanceFocusRectangle = L.rectangle(bounds, {
-      color: "#7b1fa2",
-      weight: 2,
-      dashArray: "6 4",
-      fillOpacity: 0.08,
-      interactive: false
-    }).addTo(map);
-
-    advanceState.focus = {
-      south: Number(bounds.getSouth()),
-      west: Number(bounds.getWest()),
-      north: Number(bounds.getNorth()),
-      east: Number(bounds.getEast())
-    };
-
-    if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "Focus rectangle selected.";
-    setAdvanceStatus("Public map focus area selected. You can redraw it if needed.", true);
-  }
-
-  function selectAdvanceFocus() {
-    if (!advanceState.active || !map) return;
-
-    clearAdvanceFocusRectangle();
-    window.polradAdvanceFocusDrawing = true;
-    drawing = true;
-
-    map.pm.enableDraw("Rectangle", {
-      snappable: false
-    });
-
-    setAdvanceStatus("Draw a rectangle around the area the public map should zoom to.", true);
-
-    function onCreate(event) {
-      map.off("pm:create", onCreate);
-      if (!window.polradAdvanceFocusDrawing) return;
-
-      window.polradAdvanceFocusDrawing = false;
-      map.pm.disableDraw();
-      drawing = false;
-
-      const layer = event.layer;
-      const bounds = layer.getBounds();
-      map.removeLayer(layer);
-      setAdvanceFocus(bounds);
-    }
-
-    map.on("pm:create", onCreate);
-  }
-
   function currentFocus() {
     if (!map) return null;
 
@@ -2670,21 +2604,13 @@
         </span>
       </div>
 
-      <div id="advanceFocusWrap" style="margin-top:8px">
-        <label>Public map focus area</label>
-        <div class="advance-row">
-          <button class="btn" id="advanceFocusSelect">Select / Redraw Focus Rectangle</button>
-          <button class="btn" id="advanceFocusClear">Clear</button>
-        </div>
-        <div class="small" id="advanceFocusStatus">No focus rectangle selected.</div>
-      </div>
-
       <div id="advanceTextWrap" style="display:none">
-        <label>English advance description</label>
-        <textarea id="advanceTextEn" placeholder="Example: Russian forces captured the eastern part of ..."></textarea>
+        <label>Advance description</label>
 
-        <label>Russian advance description</label>
-        <textarea id="advanceTextRu" placeholder="Например: российские силы захватили восточную часть ..."></textarea>
+        <textarea
+          id="advanceText"
+          placeholder="Example: Russian forces captured the eastern part of ..."
+        ></textarea>
 
         <div class="advance-row">
           <button class="btn primary" id="advanceSave">
@@ -2707,8 +2633,6 @@
     createButton.onclick = startAdvance;
     A("advanceStart").onclick = startAdvance;
     A("advanceFinish").onclick = finishAdvance;
-    A("advanceFocusSelect").onclick = selectAdvanceFocus;
-    A("advanceFocusClear").onclick = function() { clearAdvanceFocusRectangle(); advanceState.focus = null; A("advanceFocusStatus").textContent = "No focus rectangle selected."; };
     A("advanceSave").onclick = saveAdvance;
     A("advanceCancel").onclick = cancelAdvance;
 
@@ -2745,9 +2669,7 @@
     advanceState.side = A("advanceSide").value;
     advanceState.type = "normal";
     advanceState.before = currentControlledAreas();
-    clearAdvanceFocusRectangle();
-    advanceState.focus = null;
-    A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+    advanceState.focus = currentFocus();
     advanceState.createdFids = [];
     advanceState.lastEffects = null;
 
@@ -2994,11 +2916,7 @@
     if (!type) return;               // cancelled: stay in advance mode
 
     advanceState.type = type;
-
-    if (!advanceState.focus) {
-      alert("Please select a public map focus rectangle before finishing the advance.");
-      return;
-    }
+    advanceState.focus = currentFocus();
 
     // Only a normal advance polygon needs trimming against own territory.
     const trimNote = type === "normal" ? trimCreatedAdvances() : "";
@@ -3020,7 +2938,7 @@
 
     A("advanceTextWrap").style.display = "block";
     A("advanceFinish").disabled = true;
-    A("advanceTextEn").focus();
+    A("advanceText").focus();
 
     setAdvanceStatus(
       trimNote
@@ -3033,18 +2951,11 @@
   async function saveAdvance() {
     if (!advanceState.active) return;
 
-    const textEn = A("advanceTextEn").value.trim();
-    const textRu = A("advanceTextRu").value.trim();
+    const text = A("advanceText").value.trim();
 
-    if (!textEn || !textRu) {
-      alert("Please enter both the English and Russian advance descriptions.");
-      if (!textEn) A("advanceTextEn").focus();
-      else A("advanceTextRu").focus();
-      return;
-    }
-
-    if (!advanceState.focus) {
-      alert("Please select the public map focus rectangle.");
+    if (!text) {
+      alert("Please enter the advance description.");
+      A("advanceText").focus();
       return;
     }
 
@@ -3074,9 +2985,7 @@
         id: id,
         date: now.date,
         time: now.time,
-        text_en: textEn,
-        text_ru: textRu,
-        text: textEn,
+        text: text,
         side: advanceState.side,
         advanceType: advanceState.type,
         areaChange: Number(primaryValue.toFixed(2)),
@@ -3119,7 +3028,6 @@
       advanceState.active = false;
       advanceState.type = "normal";
       advanceState.before = null;
-      clearAdvanceFocusRectangle();
       advanceState.focus = null;
       advanceState.createdFids = [];
 
@@ -3127,9 +3035,7 @@
       A("advanceFinish").disabled = true;
       A("advanceSide").disabled = false;
       A("advanceTextWrap").style.display = "none";
-      A("advanceTextEn").value = "";
-      A("advanceTextRu").value = "";
-      if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+      A("advanceText").value = "";
 
       const polygonRow = A("advancePolygonRow");
       if (polygonRow) polygonRow.remove();
@@ -3165,7 +3071,6 @@
     advanceState.active = false;
     advanceState.type = "normal";
     advanceState.before = null;
-    clearAdvanceFocusRectangle();
     advanceState.focus = null;
     advanceState.createdFids = [];
 
@@ -3176,9 +3081,7 @@
     A("advanceTextWrap").style.display =
       "none";
 
-    A("advanceTextEn").value = "";
-    A("advanceTextRu").value = "";
-    if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+    A("advanceText").value = "";
 
     const polygonRow =
       A("advancePolygonRow");
@@ -3202,7 +3105,7 @@
 
     if (!confirm(
       "Delete this advance from the history?\n\n" +
-      item.date + " " + item.time + "\nEN: " + (item.text_en || item.text || "") + "\nRU: " + (item.text_ru || "")
+      item.date + " " + item.time + "\n" + (item.text || "")
     )) return;
 
     const alsoPolygons = confirm(
@@ -3275,8 +3178,7 @@
         '<div class="advance-history-date">' +
         item.date + " " + item.time + " · " + sideLabel + typeLabel +
         "</div>" +
-        "<div><b>EN:</b> " + (item.text_en || item.text || "") + "</div>" +
-        "<div><b>RU:</b> " + (item.text_ru || "") + "</div>" +
+        "<div>" + (item.text || "") + "</div>" +
         (item.areaDisplay
           ? '<div>Area: <span style="font-weight:700;color:' + color + '">' +
             item.areaDisplay + "</span></div>"
@@ -3297,36 +3199,20 @@
 
     if (!item) return;
 
-    if (!item.text_en && item.text) item.text_en = item.text;
-    if (!item.text_ru) item.text_ru = "";
-
-    const newTextEn =
+    const newText =
       prompt(
-        "Edit English advance text:",
-        item.text_en || item.text || ""
+        "Edit advance text:",
+        item.text || ""
       );
 
-    if (newTextEn === null) return;
+    if (newText === null) return;
 
-    const newTextRu =
-      prompt(
-        "Edit Russian advance text:",
-        item.text_ru || ""
-      );
+    const cleanText =
+      newText.trim();
 
-    if (newTextRu === null) return;
-
-    const cleanTextEn = newTextEn.trim();
-    const cleanTextRu = newTextRu.trim();
-
-    if (!cleanTextEn || !cleanTextRu) {
-      alert("Both English and Russian advance texts are required.");
-      return;
+    if (cleanText) {
+      item.text = cleanText;
     }
-
-    item.text_en = cleanTextEn;
-    item.text_ru = cleanTextRu;
-    item.text = cleanTextEn;
 
     const side =
       prompt(
@@ -3431,6 +3317,13 @@
    *
    * The normal map publishing behavior remains the same.
    */
+  /*
+   * Publish map data first, then upload advance snapshots in small batches.
+   *
+   * This avoids sending every large snapshot in one browser request. The
+   * Cloudflare Worker handles the map/metadata publish through "publish"
+   * and individual snapshot batches through "publishSnapshots".
+   */
   function installAdvancePublish() {
     const publish = A("publish");
     if (!publish) return;
@@ -3438,48 +3331,121 @@
 
     publish.dataset.advancePublishInstalled = "1";
 
+    // Keep a generous margin below Cloudflare's request-body limit.
+    // JS strings are UTF-16, so multiplying by 2 deliberately overestimates
+    // the UTF-8 payload size in most cases.
+    const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+
+    function estimatedBytes(value) {
+      return JSON.stringify(value).length * 2;
+    }
+
+    async function postWorker(payload) {
+      let response;
+
+      try {
+        response = await fetch(WORKER, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        throw new Error(
+          "Could not reach the publishing server. " +
+          "If this happens again, check that the Cloudflare Worker is deployed."
+        );
+      }
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (e) {
+        throw new Error(
+          "The publishing server returned an invalid response (HTTP " +
+          response.status + ")."
+        );
+      }
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ||
+          "Publish failed (HTTP " + response.status + ")."
+        );
+      }
+
+      return result;
+    }
+
+    async function loadSnapshotForPublish(item) {
+      let snapshot = item.snapshotData || null;
+
+      if (!snapshot && item.id) {
+        try {
+          snapshot = await getAdvanceSnapshot(item.id);
+        } catch (e) {
+          console.warn(
+            "Could not load snapshot for publish:",
+            item.id,
+            e
+          );
+        }
+      }
+
+      return snapshot;
+    }
+
+    function buildSnapshotBatches(snapshotEntries) {
+      const batches = [];
+      let current = {};
+
+      for (const entry of snapshotEntries) {
+        const candidate = {
+          ...current,
+          [entry.id]: entry.snapshot
+        };
+
+        const candidatePayload = {
+          action: "publishSnapshots",
+          snapshots: candidate
+        };
+
+        // If the current batch already contains something and adding this
+        // snapshot would cross the target size, finish the current batch.
+        if (
+          Object.keys(current).length &&
+          estimatedBytes(candidatePayload) > MAX_BATCH_BYTES
+        ) {
+          batches.push(current);
+          current = {
+            [entry.id]: entry.snapshot
+          };
+        } else {
+          current = candidate;
+        }
+      }
+
+      if (Object.keys(current).length) {
+        batches.push(current);
+      }
+
+      return batches;
+    }
+
     publish.onclick = async function() {
       publish.disabled = true;
-      setStatus("Publishing map and advance history...");
+      setStatus("Publishing map and advance metadata...");
 
       try {
         const currentFiles = getCurrentGeoJSON();
         const publishAdvances = advances.map(stripSnapshotData);
-        const advanceSnapshots = {};
 
-        for (const item of advances) {
-          let snapshot = item.snapshotData || null;
-          if (!snapshot && item.id) {
-            try {
-              snapshot = await getAdvanceSnapshot(item.id);
-            } catch (e) {
-              console.warn("Could not load snapshot for publish:", item.id, e);
-            }
-          }
-          advanceSnapshots[item.id] = snapshot;
-        }
-
-        const response = await fetch(WORKER, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "publish",
-            files: currentFiles,
-            advances: publishAdvances,
-            advanceSnapshots: advanceSnapshots
-          })
+        // STEP 1: publish the live map, daily timeline and advances.json.
+        // No large advance snapshot data is included here.
+        await postWorker({
+          action: "publish",
+          files: currentFiles,
+          advances: publishAdvances
         });
-
-        let result;
-        try {
-          result = await response.json();
-        } catch (e) {
-          throw new Error("The server returned an invalid response.");
-        }
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || "Publish failed.");
-        }
 
         try {
           localStorage.setItem(
@@ -3487,18 +3453,71 @@
             JSON.stringify(currentFiles)
           );
         } catch (e) {
-          console.warn("Could not update editor cache after publish:", e);
+          console.warn(
+            "Could not update editor cache after publish:",
+            e
+          );
+        }
+
+        // STEP 2: load only snapshots that actually exist locally.
+        const snapshotEntries = [];
+
+        for (const item of advances) {
+          if (!item || !item.id) continue;
+
+          const snapshot = await loadSnapshotForPublish(item);
+
+          // Existing remote advances may not have a local IndexedDB copy.
+          // Leave those untouched on GitHub instead of overwriting them with
+          // null or an empty snapshot.
+          if (snapshot) {
+            snapshotEntries.push({
+              id: item.id,
+              snapshot
+            });
+          }
+        }
+
+        const batches = buildSnapshotBatches(snapshotEntries);
+
+        // STEP 3: upload snapshot batches separately.
+        for (let i = 0; i < batches.length; i++) {
+          setStatus(
+            "Uploading advance snapshots " +
+            (i + 1) +
+            " / " +
+            batches.length +
+            "..."
+          );
+
+          await postWorker({
+            action: "publishSnapshots",
+            snapshots: batches[i]
+          });
         }
 
         saveAdvances();
-        setStatus("Published successfully, including advance history.");
+
+        setStatus(
+          "Published successfully" +
+          (batches.length
+            ? " with " + snapshotEntries.length + " advance snapshot(s)."
+            : ".")
+        );
+
         alert("Published successfully!");
       } catch (error) {
         console.error("Publish failed:", error);
-        setStatus(error && error.message ? error.message : "Publish failed.");
+        setStatus(
+          error && error.message
+            ? error.message
+            : "Publish failed."
+        );
         alert(
           "Publish failed.\n\n" +
-          (error && error.message ? error.message : "Unknown error.")
+          (error && error.message
+            ? error.message
+            : "Unknown error.")
         );
       } finally {
         publish.disabled = false;
