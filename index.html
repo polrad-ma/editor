@@ -350,6 +350,7 @@
     <button class="btn" id="download">Download</button>
     <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
     <button class="btn" id="grayZoneRecalc">Recalculate Gray Zone</button>
+    <button class="btn" id="latestAdvance">↻ Latest Advance</button>
     <button class="btn primary" id="publish">Publish</button>
   </div>
 
@@ -3647,6 +3648,87 @@ async function loadAdvanceSnapshotForJump(item) {
   return null;
 }
 
+async function getLatestPublishedAdvance() {
+  const response = await fetch(
+    publishedPath("advances.json") + "?v=" + Date.now(),
+    { cache: "no-store" }
+  );
+
+  if (!response.ok) {
+    throw new Error("Could not load advances.json (HTTP " + response.status + ").");
+  }
+
+  const published = await response.json();
+  const list = Array.isArray(published)
+    ? published.filter(function(item) {
+        return item && item.id && item.snapshot;
+      })
+    : [];
+
+  list.sort(function(a, b) {
+    const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
+    const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
+    const byDate = ak.localeCompare(bk);
+    if (byDate !== 0) return byDate;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+
+  return list.length ? list[list.length - 1] : null;
+}
+
+async function returnToLatestAdvance() {
+  const button = A("latestAdvance");
+  if (button) button.disabled = true;
+
+  setStatus("Loading latest published advance...");
+  setAdvanceStatus("Loading latest published advance...", false);
+
+  try {
+    // Always resolve the latest item from the published advances.json.
+    // This avoids using an older browser copy of the advance list.
+    const latest = await getLatestPublishedAdvance();
+
+    if (!latest) {
+      throw new Error("No published advance snapshot was found.");
+    }
+
+    // Use the exact same snapshot-loading path as an individual
+    // "Jump to this advance" button.
+    const snapshot = await loadAdvanceSnapshotForJump(latest);
+    if (!snapshot) {
+      throw new Error(
+        "The latest published advance snapshot is not available."
+      );
+    }
+
+    saveHistory();
+    restore(snapshot);
+
+    setStatus(
+      "Viewing latest advance: " + latest.date + " " + latest.time + "."
+    );
+    setAdvanceStatus(
+      "Showing the latest published advance (" +
+      latest.date + " " + latest.time + ").",
+      false
+    );
+  } catch (error) {
+    console.error("Could not return to latest advance:", error);
+    setAdvanceStatus(
+      error && error.message
+        ? error.message
+        : "Could not load the latest advance.",
+      true
+    );
+    alert(
+      "Could not load the latest advance.\n\n" +
+      (error && error.message ? error.message : "Unknown error.")
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function jumpToAdvance(id) {
   const item = advances.find(function(a) { return a.id === id; });
   if (!item) return;
@@ -3703,32 +3785,6 @@ if (!advances.length) {
     '<div class="small">No advance history saved in this browser yet.</div>';
   return;
 }
-
-// The editor itself always opens on the latest published map.
-// This button makes it explicit and provides a quick way back after
-// jumping into an older advance.
-const latestButton = document.createElement("button");
-latestButton.type = "button";
-latestButton.className = "btn";
-latestButton.style.cssText = "width:100%;margin-bottom:8px";
-latestButton.textContent = "↻ Return to latest published map";
-latestButton.onclick = async function() {
-  latestButton.disabled = true;
-  setAdvanceStatus("Loading latest published advance...", false);
-  try {
-    await load();
-    setAdvanceStatus("Showing the latest published advance.", false);
-  } catch (error) {
-    console.error("Could not return to latest advance:", error);
-    setAdvanceStatus(
-      error && error.message ? error.message : "Could not load the latest advance.",
-      true
-    );
-  } finally {
-    latestButton.disabled = false;
-  }
-};
-box.appendChild(latestButton);
 
 advances.slice().reverse().forEach(function(item) {
   const row = document.createElement("div");
@@ -4216,6 +4272,13 @@ loadAdvances();
 createAdvanceUI();
 ensureAdvanceColors();
 installAdvancePublish();
+
+const latestAdvanceButton = A("latestAdvance");
+if (latestAdvanceButton && latestAdvanceButton.dataset.installed !== "1") {
+  latestAdvanceButton.dataset.installed = "1";
+  latestAdvanceButton.onclick = returnToLatestAdvance;
+}
+
 renderAdvanceHistory();
 
 // Migrate/load large snapshots only after the UI is already usable.
