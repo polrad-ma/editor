@@ -1693,17 +1693,12 @@
 
     async function load() {
       /*
-       * IMPORTANT: always load the current published files first.
+       * The latest advance snapshot is the editor's source of truth.
        *
-       * The old version preferred localStorage, which meant that a copy saved
-       * in this browser weeks ago could permanently override newer GeoJSON
-       * files from GitHub.  That is why the editor could appear stuck on an
-       * old map even after repeated publishes.
-       *
-       * The repository is now the source of truth.  A cache-busting query
-       * parameter plus cache: "no-store" prevents the browser/CDN from
-       * serving an old GeoJSON response.  localStorage is only used as a
-       * fallback if the repository cannot be reached at all.
+       * Do NOT restore polrad_editor_data on startup: that can be an old
+       * browser copy. First load the current published GeoJSON so the editor
+       * has a valid fallback, then load advances.json and, when available,
+       * restore the newest published advance snapshot.
        */
       let remoteLoaded = false;
       const remoteData = {};
@@ -1717,12 +1712,9 @@
             { cache: "no-store" }
           );
 
-          if (!response.ok) {
-            throw new Error("HTTP " + response.status);
-          }
+          if (!response.ok) throw new Error("HTTP " + response.status);
 
-          const data = await response.json();
-          remoteData[c[1]] = data;
+          remoteData[c[1]] = await response.json();
           remoteLoaded = true;
         } catch (error) {
           console.warn("Could not load current " + c[1] + ":", error);
@@ -1741,7 +1733,8 @@
           });
         });
 
-        // Replace any stale browser copy with the current published map.
+        // Keep the browser cache as a fallback only. It is never the startup
+        // source of truth anymore.
         try {
           localStorage.setItem(
             "polrad_editor_data",
@@ -1751,6 +1744,72 @@
           console.warn("Could not update editor cache:", storageError);
         }
 
+        /*
+         * IMPORTANT: default to the NEWEST ADVANCE SNAPSHOT.
+         *
+         * The live data files can be older than the latest saved advance.
+         * advances.json tells us which snapshot is newest, so load that
+         * snapshot directly instead of assuming the live GeoJSON is latest.
+         */
+        try {
+          const advancesResponse = await fetch(
+            "advances.json?v=" + cacheBust,
+            { cache: "no-store" }
+          );
+
+          if (advancesResponse.ok) {
+            const publishedAdvances = await advancesResponse.json();
+            const list = Array.isArray(publishedAdvances)
+              ? publishedAdvances.filter(function(item) {
+                  return item && item.snapshot;
+                })
+              : [];
+
+            list.sort(function(a, b) {
+              const ak =
+                String(a.date || "") + "T" +
+                String(a.time || "00:00:00");
+              const bk =
+                String(b.date || "") + "T" +
+                String(b.time || "00:00:00");
+
+              const byDate = ak.localeCompare(bk);
+              if (byDate !== 0) return byDate;
+
+              return String(a.id || "").localeCompare(String(b.id || ""));
+            });
+
+            const latest = list.length ? list[list.length - 1] : null;
+
+            if (latest) {
+              const separator = latest.snapshot.indexOf("?") === -1 ? "?" : "&";
+              const snapshotResponse = await fetch(
+                latest.snapshot + separator + "v=" + cacheBust,
+                { cache: "no-store" }
+              );
+
+              if (snapshotResponse.ok) {
+                const latestSnapshot = await snapshotResponse.json();
+                restore(latestSnapshot);
+                saveHistory();
+
+                setStatus(
+                  "Loaded latest advance: " +
+                  latest.date + " " + latest.time + "."
+                );
+                return;
+              }
+            }
+          }
+        } catch (snapshotError) {
+          console.warn(
+            "Could not load the latest published advance snapshot:",
+            snapshotError
+          );
+        }
+
+        // If there is no usable advance snapshot, use the current published
+        // GeoJSON as the fallback.
         saveHistory();
         renderSidebar();
         generateGrayZone();
@@ -1758,9 +1817,8 @@
         return;
       }
 
-      // Only fall back to localStorage when the current published files
-      // could not be loaded. This keeps the editor usable offline without
-      // allowing an old local copy to override a working remote map.
+      // Only use localStorage when the published map files themselves cannot
+      // be reached at all.
       let savedData = null;
       try {
         const saved = localStorage.getItem("polrad_editor_data");
@@ -1784,7 +1842,9 @@
         saveHistory();
         renderSidebar();
         generateGrayZone();
-        setStatus("Could not reach the current map files; loaded the saved browser copy.");
+        setStatus(
+          "Could not reach the published map files; loaded the saved browser copy."
+        );
         return;
       }
 
@@ -3646,8 +3706,21 @@ latestButton.type = "button";
 latestButton.className = "btn";
 latestButton.style.cssText = "width:100%;margin-bottom:8px";
 latestButton.textContent = "↻ Return to latest published map";
-latestButton.onclick = function() {
-  window.location.reload();
+latestButton.onclick = async function() {
+  latestButton.disabled = true;
+  setAdvanceStatus("Loading latest published advance...", false);
+  try {
+    await load();
+    setAdvanceStatus("Showing the latest published advance.", false);
+  } catch (error) {
+    console.error("Could not return to latest advance:", error);
+    setAdvanceStatus(
+      error && error.message ? error.message : "Could not load the latest advance.",
+      true
+    );
+  } finally {
+    latestButton.disabled = false;
+  }
 };
 box.appendChild(latestButton);
 
