@@ -1691,6 +1691,12 @@
       if (!document.getElementById("mapSearchBox").contains(e.target)) hideSearchResults();
     });
 
+    const PUBLISHED_ROOT = "../";
+
+    function publishedPath(path) {
+      return PUBLISHED_ROOT + String(path).replace(/^\.\//, "");
+    }
+
     async function load() {
       /*
        * The latest advance snapshot is the editor's source of truth.
@@ -1708,7 +1714,7 @@
         try {
           const separator = c[2].indexOf("?") === -1 ? "?" : "&";
           const response = await fetch(
-            "data/" + c[2] + separator + "v=" + cacheBust,
+            publishedPath("data/" + c[2]) + separator + "v=" + cacheBust,
             { cache: "no-store" }
           );
 
@@ -1753,7 +1759,7 @@
          */
         try {
           const advancesResponse = await fetch(
-            "advances.json?v=" + cacheBust,
+            publishedPath("advances.json") + "?v=" + cacheBust,
             { cache: "no-store" }
           );
 
@@ -1784,7 +1790,7 @@
             if (latest) {
               const separator = latest.snapshot.indexOf("?") === -1 ? "?" : "&";
               const snapshotResponse = await fetch(
-                latest.snapshot + separator + "v=" + cacheBust,
+                publishedPath(latest.snapshot) + separator + "v=" + cacheBust,
                 { cache: "no-store" }
               );
 
@@ -3614,7 +3620,7 @@ async function loadAdvanceSnapshotForJump(item) {
     try {
       const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
       const response = await fetch(
-        item.snapshot + separator + "v=" + Date.now(),
+        publishedPath(item.snapshot) + separator + "v=" + Date.now(),
         { cache: "no-store" }
       );
 
