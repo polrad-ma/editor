@@ -1692,15 +1692,79 @@
     });
 
     async function load() {
-      // If the user has clicked Save before, restore that edited map first.
-      // Otherwise load the current GeoJSON files from the repository.
-      let savedData = null;
+      /*
+       * IMPORTANT: always load the current published files first.
+       *
+       * The old version preferred localStorage, which meant that a copy saved
+       * in this browser weeks ago could permanently override newer GeoJSON
+       * files from GitHub.  That is why the editor could appear stuck on an
+       * old map even after repeated publishes.
+       *
+       * The repository is now the source of truth.  A cache-busting query
+       * parameter plus cache: "no-store" prevents the browser/CDN from
+       * serving an old GeoJSON response.  localStorage is only used as a
+       * fallback if the repository cannot be reached at all.
+       */
+      let remoteLoaded = false;
+      const remoteData = {};
+      const cacheBust = Date.now();
 
+      for (const c of LAYERS) {
+        try {
+          const separator = c[2].indexOf("?") === -1 ? "?" : "&";
+          const response = await fetch(
+            "data/" + c[2] + separator + "v=" + cacheBust,
+            { cache: "no-store" }
+          );
+
+          if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+          }
+
+          const data = await response.json();
+          remoteData[c[1]] = data;
+          remoteLoaded = true;
+        } catch (error) {
+          console.warn("Could not load current " + c[1] + ":", error);
+        }
+      }
+
+      if (remoteLoaded) {
+        LAYERS.forEach(function(c) {
+          groups[c[0]] = createGroup(c[0]);
+
+          const featureCollection = remoteData[c[1]];
+          if (!featureCollection || !featureCollection.features) return;
+
+          featureCollection.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+        });
+
+        // Replace any stale browser copy with the current published map.
+        try {
+          localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(remoteData)
+          );
+        } catch (storageError) {
+          console.warn("Could not update editor cache:", storageError);
+        }
+
+        saveHistory();
+        renderSidebar();
+        generateGrayZone();
+        setStatus("Loaded the current published map.");
+        return;
+      }
+
+      // Only fall back to localStorage when the current published files
+      // could not be loaded. This keeps the editor usable offline without
+      // allowing an old local copy to override a working remote map.
+      let savedData = null;
       try {
         const saved = localStorage.getItem("polrad_editor_data");
-        if (saved) {
-          savedData = JSON.parse(saved);
-        }
+        if (saved) savedData = JSON.parse(saved);
       } catch (error) {
         savedData = null;
       }
@@ -1720,28 +1784,17 @@
         saveHistory();
         renderSidebar();
         generateGrayZone();
-        setStatus("Loaded your saved changes.");
+        setStatus("Could not reach the current map files; loaded the saved browser copy.");
         return;
       }
 
-      for (const c of LAYERS) {
+      LAYERS.forEach(function(c) {
         groups[c[0]] = createGroup(c[0]);
-
-        try {
-          const response = await fetch("data/" + c[2]);
-          const data = await response.json();
-
-          (data.features || []).forEach(function(feature) {
-            addFeature(feature, c[0]);
-          });
-        } catch (error) {
-          setStatus("Could not load " + c[1]);
-        }
-      }
-
+      });
       saveHistory();
       renderSidebar();
       generateGrayZone();
+      setStatus("Could not load the published map files.");
     }
 
     async function login() {
