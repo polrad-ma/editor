@@ -3684,12 +3684,33 @@ async function returnToLatestAdvance() {
   setAdvanceStatus("Loading latest published advance...", false);
 
   try {
-    // Always resolve the latest item from the published advances.json.
-    // This avoids using an older browser copy of the advance list.
-    const latest = await getLatestPublishedAdvance();
+    // Use the exact same advance list as the Advances tab.  This is
+    // important because the individual "Jump to this advance" buttons
+    // use the local `advances` array and its IndexedDB snapshots.
+    // The main-button action must behave exactly the same way.
+    let latest = null;
+
+    if (Array.isArray(advances) && advances.length) {
+      const sorted = advances.filter(function(item) {
+        return item && item.id;
+      }).slice().sort(function(a, b) {
+        const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
+        const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
+        const byDate = ak.localeCompare(bk);
+        if (byDate !== 0) return byDate;
+        return String(a.id || "").localeCompare(String(b.id || ""));
+      });
+      latest = sorted.length ? sorted[sorted.length - 1] : null;
+    }
+
+    // On a fresh browser where there is no local advance list yet, fall
+    // back to the published list.
+    if (!latest) {
+      latest = await getLatestPublishedAdvance();
+    }
 
     if (!latest) {
-      throw new Error("No published advance snapshot was found.");
+      throw new Error("No latest advance was found.");
     }
 
     // Use the exact same snapshot-loading path as an individual
