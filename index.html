@@ -3531,6 +3531,101 @@ setStatus(
 
 }
 
+async function loadAdvanceSnapshotForJump(item) {
+  if (!item || !item.id) return null;
+
+  // 1. Snapshot already loaded into memory.
+  if (item.snapshotData) return item.snapshotData;
+
+  // 2. Snapshot stored locally in IndexedDB.
+  try {
+    const localSnapshot = await getAdvanceSnapshot(item.id);
+    if (localSnapshot) {
+      item.snapshotData = localSnapshot;
+      return localSnapshot;
+    }
+  } catch (error) {
+    console.warn("Could not read local advance snapshot:", item.id, error);
+  }
+
+  // 3. Fall back to the published snapshot on the same site.
+  // This is important on a new browser/device where IndexedDB is empty.
+  if (item.snapshot) {
+    try {
+      const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
+      const response = await fetch(
+        item.snapshot + separator + "v=" + Date.now(),
+        { cache: "no-store" }
+      );
+
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+
+      const snapshot = await response.json();
+      item.snapshotData = snapshot;
+
+      // Keep a local copy so the next jump is instant.
+      try {
+        await putAdvanceSnapshot(item.id, snapshot);
+      } catch (storageError) {
+        console.warn("Could not cache advance snapshot locally:", storageError);
+      }
+
+      return snapshot;
+    } catch (error) {
+      console.warn("Could not load published advance snapshot:", item.id, error);
+    }
+  }
+
+  return null;
+}
+
+async function jumpToAdvance(id) {
+  const item = advances.find(function(a) { return a.id === id; });
+  if (!item) return;
+
+  const buttons = document.querySelectorAll(".adv-jump");
+  buttons.forEach(function(button) { button.disabled = true; });
+  setAdvanceStatus("Loading map from " + item.date + " " + item.time + "...", false);
+
+  try {
+    const snapshot = await loadAdvanceSnapshotForJump(item);
+
+    if (!snapshot) {
+      throw new Error(
+        "The snapshot for this advance is not available locally or on the published site."
+      );
+    }
+
+    // Put the current map into the normal undo stack before changing the
+    // displayed state, so the historical view can be undone if needed.
+    saveHistory();
+    restore(snapshot);
+
+    setStatus(
+      "Viewing map at advance " + item.date + " " + item.time + ". " +
+      "Reload the editor to return to the latest published map."
+    );
+    setAdvanceStatus(
+      "Viewing " + item.date + " " + item.time + ". The latest published map remains the default on reload.",
+      false
+    );
+  } catch (error) {
+    console.error("Jump to advance failed:", error);
+    setAdvanceStatus(
+      error && error.message ? error.message : "Could not load this advance.",
+      true
+    );
+    alert(
+      "Could not load this advance.\n\n" +
+      (error && error.message ? error.message : "Unknown error.")
+    );
+  } finally {
+    buttons.forEach(function(button) { button.disabled = false; });
+  }
+}
+
 function renderAdvanceHistory() {
 const box = A("advanceHistory");
 if (!box) return;
@@ -3542,6 +3637,19 @@ if (!advances.length) {
     '<div class="small">No advance history saved in this browser yet.</div>';
   return;
 }
+
+// The editor itself always opens on the latest published map.
+// This button makes it explicit and provides a quick way back after
+// jumping into an older advance.
+const latestButton = document.createElement("button");
+latestButton.type = "button";
+latestButton.className = "btn";
+latestButton.style.cssText = "width:100%;margin-bottom:8px";
+latestButton.textContent = "↻ Return to latest published map";
+latestButton.onclick = function() {
+  window.location.reload();
+};
+box.appendChild(latestButton);
 
 advances.slice().reverse().forEach(function(item) {
   const row = document.createElement("div");
@@ -3556,6 +3664,7 @@ advances.slice().reverse().forEach(function(item) {
   row.innerHTML =
     '<button type="button" class="adv-del" style="color:#b3261e;margin-left:4px">Delete</button>' +
     '<button type="button" class="adv-edit">Edit</button>' +
+    '<button type="button" class="adv-jump" style="margin-left:4px">Jump to this advance</button>' +
     '<div class="advance-history-date">' +
     item.date + " " + item.time + " · " + sideLabel + typeLabel +
     "</div>" +
@@ -3568,6 +3677,7 @@ advances.slice().reverse().forEach(function(item) {
 
   row.querySelector(".adv-edit").onclick = function() { editAdvance(item.id); };
   row.querySelector(".adv-del").onclick  = function() { deleteAdvance(item.id); };
+  row.querySelector(".adv-jump").onclick = function() { jumpToAdvance(item.id); };
 
   box.appendChild(row);
 });
