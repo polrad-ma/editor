@@ -1,4 +1,5 @@
 <!doctype html>
+
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -313,6 +314,7 @@
     }
     .mapSearchResult:hover { background: #f1f5f9; }
   </style>
+
 </head>
 
 <body>
@@ -335,71 +337,71 @@
   <div id="side">
     <div class="head">POLRAD map editor 2.0</div>
 
-    <div class="tabs">
-      <button class="tab active" id="tabTools" type="button">Editor tools</button>
-      <button class="tab" id="tabAdvances" type="button">Advances</button>
+<div class="tabs">
+  <button class="tab active" id="tabTools" type="button">Editor tools</button>
+  <button class="tab" id="tabAdvances" type="button">Advances</button>
+</div>
+
+<div class="body" id="paneTools">
+  <div class="actions">
+    <button class="btn" id="undo">↶ Undo</button>
+    <button class="btn" id="redo">↷ Redo</button>
+    <button class="btn" id="save">Save</button>
+    <button class="btn" id="download">Download</button>
+    <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
+    <button class="btn" id="grayZoneRecalc">Recalculate Gray Zone</button>
+    <button class="btn primary" id="publish">Publish</button>
+  </div>
+
+  <input id="search" placeholder="Search polygons...">
+
+  <div class="box">
+    <b style="font-size:13px">Draw polygon</b>
+    <label style="display:block;margin-top:7px">New polygon layer</label>
+    <select id="drawLayer"></select>
+    <button class="btn primary" id="draw">Draw a polygon</button>
+  </div>
+
+  <div class="box">
+    <b style="font-size:13px">Draw curved frontline</b>
+    <label style="display:block;margin-top:7px">Frontline layer</label>
+    <select id="curveDrawLayer">
+      <option value="deepstate_frontline">Claimed DeepState Frontline</option>
+      <option value="ria_frontline">Claimed RIA Frontline</option>
+    </select>
+    <button class="btn primary" id="drawCurve">Draw curved line</button>
+    <div class="advance-row" style="display:flex;gap:5px">
+      <button class="btn" id="finishCurve" style="display:none">Finish curved line</button>
+      <button class="btn" id="cancelCurve" style="display:none">Cancel</button>
     </div>
+    <div class="small" id="curveStatus" style="margin-top:5px">Click points along the frontline. The line will be smoothly curved between them.</div>
+  </div>
 
-    <div class="body" id="paneTools">
-      <div class="actions">
-        <button class="btn" id="undo">↶ Undo</button>
-        <button class="btn" id="redo">↷ Redo</button>
-        <button class="btn" id="save">Save</button>
-        <button class="btn" id="download">Download</button>
-        <button class="btn" id="reloadFromRepo">Reload from repo files</button>
-        <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
-        <button class="btn" id="grayZoneRecalc">Recalculate Gray Zone</button>
-        <button class="btn primary" id="publish">Publish</button>
-      </div>
+  <div class="box" id="selectedBox" style="display:none">
+    <b id="selectedName" style="font-size:13px"></b>
+    <label style="display:block;margin-top:7px">Layer</label>
+    <select id="selectedLayer"></select>
 
-      <input id="search" placeholder="Search polygons...">
+    <button class="btn" id="delete" style="color:#b3261e">Delete polygon</button>
+  </div>
 
-      <div class="box">
-        <b style="font-size:13px">Draw polygon</b>
-        <label style="display:block;margin-top:7px">New polygon layer</label>
-        <select id="drawLayer"></select>
-        <button class="btn primary" id="draw">Draw a polygon</button>
-      </div>
+  <div class="section">
+    <b style="font-size:12px;color:#777">LAYERS</b>
+    <span class="small" style="margin-left:6px">(tick = visible on map)</span>
+  </div>
 
-      <div class="box">
-        <b style="font-size:13px">Draw curved frontline</b>
-        <label style="display:block;margin-top:7px">Frontline layer</label>
-        <select id="curveDrawLayer">
-          <option value="deepstate_frontline">Claimed DeepState Frontline</option>
-          <option value="ria_frontline">Claimed RIA Frontline</option>
-        </select>
-        <button class="btn primary" id="drawCurve">Draw curved line</button>
-        <div class="advance-row" style="display:flex;gap:5px">
-          <button class="btn" id="finishCurve" style="display:none">Finish curved line</button>
-          <button class="btn" id="cancelCurve" style="display:none">Cancel</button>
-        </div>
-        <div class="small" id="curveStatus" style="margin-top:5px">Click points along the frontline. The line will be smoothly curved between them.</div>
-      </div>
+  <div id="layers"></div>
+  <div class="small" id="status">Ready.</div>
+</div>
 
-      <div class="box" id="selectedBox" style="display:none">
-        <b id="selectedName" style="font-size:13px"></b>
-        <label style="display:block;margin-top:7px">Layer</label>
-        <select id="selectedLayer"></select>
+<div class="body" id="paneAdvances" style="display:none">
+  <b style="font-size:13px">Advance updates</b>
+  <div class="small" style="margin-top:3px">
+    Saved advance updates. New advances are created in the Editor tools tab.
+  </div>
+  <div id="advanceHistory"></div>
+</div>
 
-        <button class="btn" id="delete" style="color:#b3261e">Delete polygon</button>
-      </div>
-
-      <div class="section">
-        <b style="font-size:12px;color:#777">LAYERS</b>
-        <span class="small" style="margin-left:6px">(tick = visible on map)</span>
-      </div>
-
-      <div id="layers"></div>
-      <div class="small" id="status">Ready.</div>
-    </div>
-
-    <div class="body" id="paneAdvances" style="display:none">
-      <b style="font-size:13px">Advance updates</b>
-      <div class="small" style="margin-top:3px">
-        Saved advance updates. New advances are created in the Editor tools tab.
-      </div>
-      <div id="advanceHistory"></div>
-    </div>
   </div>
 
   <div id="map"></div>
@@ -412,31 +414,20 @@
 
 
   <script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"></script>
+
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.18.0/dist/leaflet-geoman.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
-    /*
-     * FIXED: "Territories Regained" now points at the actual file in the
-     * editor repo's data/ folder. The old value here
-     * ("Territories%20Regained.geojson") 404'd against the real file, which
-     * silently left groups['regained'] empty on every load — and because
-     * Save/Download/Publish serialize straight from `groups`, that empty
-     * state could get written back out as the "current" data.
-     *
-     * IMPORTANT: double-check this filename against whatever you actually
-     * named the file in the EDITOR repo's data/ folder (this is a separate
-     * repo from the public map, so it does not have to match the public
-     * map's filename — it only has to match this one).
-     */
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
-      ["regained", "Territories Regained", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
+      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
@@ -1700,23 +1691,9 @@
       if (!document.getElementById("mapSearchBox").contains(e.target)) hideSearchResults();
     });
 
-    /*
-     * FIXED load(): the old version checked localStorage FIRST, and if any
-     * cached save existed, it used that entire cache and returned early —
-     * NEVER falling through to fetch("data/" + c[2]) for any layer, even a
-     * layer whose cached copy was empty because a previous Save/Publish ran
-     * while that layer's fetch was 404'ing (e.g. the earlier "Territories
-     * Regained" filename mismatch).
-     *
-     * This version now reconciles PER LAYER: it still prefers your saved
-     * edits when they exist, but for any layer where the cached
-     * FeatureCollection is empty/missing, it falls back to loading that
-     * layer fresh from the repo file instead of trusting a stale empty
-     * cache. This means a bug like the filename mismatch can no longer
-     * "poison" the cache permanently — reloading the page after fixing the
-     * underlying file/filename is now enough on its own.
-     */
     async function load() {
+      // If the user has clicked Save before, restore that edited map first.
+      // Otherwise load the current GeoJSON files from the repository.
       let savedData = null;
 
       try {
@@ -1728,89 +1705,32 @@
         savedData = null;
       }
 
-      let usedAnyCache = false;
-      let refreshedAnyLayer = false;
+      if (savedData) {
+        LAYERS.forEach(function(c) {
+          groups[c[0]] = createGroup(c[0]);
+
+          const featureCollection = savedData[c[1]];
+          if (!featureCollection || !featureCollection.features) return;
+
+          featureCollection.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+        });
+
+        saveHistory();
+        renderSidebar();
+        generateGrayZone();
+        setStatus("Loaded your saved changes.");
+        return;
+      }
 
       for (const c of LAYERS) {
         groups[c[0]] = createGroup(c[0]);
 
-        const cachedFC = savedData && savedData[c[1]];
-        const cachedHasFeatures =
-          cachedFC &&
-          Array.isArray(cachedFC.features) &&
-          cachedFC.features.length > 0;
-
-        let featureCollection = null;
-
-        if (cachedHasFeatures) {
-          featureCollection = cachedFC;
-          usedAnyCache = true;
-        } else {
-          // No cache for this layer, or the cache is empty — load the live
-          // file from the repo instead of trusting an empty cached copy.
-          try {
-            const response = await fetch("data/" + c[2]);
-            const data = await response.json();
-            featureCollection = {
-              type: "FeatureCollection",
-              features: data.features || []
-            };
-            if (savedData) refreshedAnyLayer = true;
-          } catch (error) {
-            setStatus("Could not load " + c[1]);
-            featureCollection = { type: "FeatureCollection", features: [] };
-          }
-        }
-
-        featureCollection.features.forEach(function(feature) {
-          addFeature(feature, c[0]);
-        });
-      }
-
-      saveHistory();
-      renderSidebar();
-      generateGrayZone();
-
-      if (usedAnyCache && refreshedAnyLayer) {
-        setStatus("Loaded your saved changes (one or more empty/missing layers were refreshed from the repo files).");
-      } else if (usedAnyCache) {
-        setStatus("Loaded your saved changes.");
-      } else {
-        setStatus("Loaded from repo files.");
-      }
-    }
-
-    // Manual escape hatch: discard the local cache entirely and reload every
-    // layer straight from the repo files. Use this if you ever suspect the
-    // cached copy is stale/wrong and want a clean reload regardless of the
-    // per-layer reconciliation above.
-    async function reloadFromRepo() {
-      if (!confirm(
-        "This will discard your locally cached edits in this browser and reload every layer fresh from the repo files. " +
-        "Anything not already Published will be lost. Continue?"
-      )) {
-        return;
-      }
-
-      try {
-        localStorage.removeItem("polrad_editor_data");
-      } catch (e) {}
-
-      deselect(false);
-
-      LAYERS.forEach(function(c) {
-        if (groups[c[0]]) {
-          groups[c[0]].clearLayers();
-        }
-      });
-
-      history = [];
-      historyIndex = -1;
-
-      for (const c of LAYERS) {
         try {
           const response = await fetch("data/" + c[2]);
           const data = await response.json();
+
           (data.features || []).forEach(function(feature) {
             addFeature(feature, c[0]);
           });
@@ -1822,7 +1742,6 @@
       saveHistory();
       renderSidebar();
       generateGrayZone();
-      setStatus("Reloaded fresh from repo files.");
     }
 
     async function login() {
@@ -1980,7 +1899,6 @@
     $("redo").onclick = redo;
     $("grayZoneToggle").onclick = toggleGrayZone;
     $("grayZoneRecalc").onclick = recalcGrayZone;
-    $("reloadFromRepo").onclick = reloadFromRepo;
 
     // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
@@ -2980,1082 +2898,1114 @@
           placeholder="Example: Russian forces captured the eastern part of ..."
         ></textarea>
 
-        <label>Russian advance description</label>
+    <label>Russian advance description</label>
 
-        <textarea
-          id="advanceTextRu"
-          placeholder="Например: российские силы захватили восточную часть ..."
-        ></textarea>
+    <textarea
+      id="advanceTextRu"
+      placeholder="Например: российские силы захватили восточную часть ..."
+    ></textarea>
 
-        <div class="advance-row">
-          <button class="btn primary" id="advanceSave">
-            Save Advance
-          </button>
+    <div class="advance-row">
+      <button class="btn primary" id="advanceSave">
+        Save Advance
+      </button>
 
-          <button class="btn" id="advanceCancel">
-            Cancel
-          </button>
-        </div>
-      </div>
+      <button class="btn" id="advanceCancel">
+        Cancel
+      </button>
+    </div>
+  </div>
 
-    `;
+`;
 
-    actions.parentNode.insertBefore(
-      box,
-      A("search")
-    );
+actions.parentNode.insertBefore(
+  box,
+  A("search")
+);
 
-    createButton.onclick = startAdvance;
-    A("advanceStart").onclick = startAdvance;
-    A("advanceFinish").onclick = finishAdvance;
-    A("advanceFocusSelect").onclick = selectAdvanceFocus;
-    A("advanceFocusClear").onclick = function() {
-      clearAdvanceFocusRectangle();
-      advanceState.focus = null;
-      A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-    };
-    A("advanceSave").onclick = saveAdvance;
-    A("advanceCancel").onclick = cancelAdvance;
+createButton.onclick = startAdvance;
+A("advanceStart").onclick = startAdvance;
+A("advanceFinish").onclick = finishAdvance;
+A("advanceFocusSelect").onclick = selectAdvanceFocus;
+A("advanceFocusClear").onclick = function() {
+  clearAdvanceFocusRectangle();
+  advanceState.focus = null;
+  A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+};
+A("advanceSave").onclick = saveAdvance;
+A("advanceCancel").onclick = cancelAdvance;
 
-    // Suggest a matching color when the side changes (you can still override it).
-    A("advanceSide").onchange = function() {
-      A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red";
-    };
+// Suggest a matching color when the side changes (you can still override it).
+A("advanceSide").onchange = function() {
+  A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red";
+};
 
-    // Re-draw the area preview when the color changes.
-    A("advanceColor").onchange = renderAreaPreview;
+// Re-draw the area preview when the color changes.
+A("advanceColor").onchange = renderAreaPreview;
 
-    renderAdvanceHistory();
-  }
+renderAdvanceHistory();
 
-  function setAdvanceStatus(text, active) {
-    const node = A("advanceStatus");
-    if (!node) return;
+}
 
-    node.textContent = text;
-    node.className = active
-      ? "active"
-      : "";
-  }
+function setAdvanceStatus(text, active) {
+const node = A("advanceStatus");
+if (!node) return;
 
-  function startAdvance() {
-    if (advanceState.active) return;
+node.textContent = text;
+node.className = active
+  ? "active"
+  : "";
 
-    if (!map || !groups) {
-      alert("The map has not finished loading yet.");
-      return;
-    }
+}
 
-    advanceState.active = true;
-    advanceState.side = A("advanceSide").value;
-    advanceState.type = "normal";
-    advanceState.before = currentControlledAreas();
-    clearAdvanceFocusRectangle();
-    advanceState.focus = null;
-    A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-    advanceState.createdFids = [];
-    advanceState.lastEffects = null;
+function startAdvance() {
+if (advanceState.active) return;
 
-    A("advanceStart").disabled = true;
-    A("advanceFinish").disabled = false;
-    A("advanceSide").disabled = true;
+if (!map || !groups) {
+  alert("The map has not finished loading yet.");
+  return;
+}
+
+advanceState.active = true;
+advanceState.side = A("advanceSide").value;
+advanceState.type = "normal";
+advanceState.before = currentControlledAreas();
+clearAdvanceFocusRectangle();
+advanceState.focus = null;
+A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+advanceState.createdFids = [];
+advanceState.lastEffects = null;
+
+A("advanceStart").disabled = true;
+A("advanceFinish").disabled = false;
+A("advanceSide").disabled = true;
+
+setAdvanceStatus(
+  "Advance mode active. Now draw the advance polygon below, or edit existing polygons as needed. When finished, click Finish Advance.",
+  true
+);
+
+addDrawAdvanceButton();
+
+}
+
+function addDrawAdvanceButton() {
+if (A("drawAdvancePolygon")) return;
+
+const row = document.createElement("div");
+row.className = "advance-row";
+row.id = "advancePolygonRow";
+
+const sideName =
+  advanceState.side === "ru"
+    ? "Russian"
+    : "Ukrainian";
+
+row.innerHTML =
+  '<button class="btn" id="drawAdvancePolygon">' +
+  "Draw " +
+  sideName +
+  " advance polygon" +
+  "</button>";
+
+A("advanceTextWrap").parentNode.insertBefore(
+  row,
+  A("advanceTextWrap")
+);
+
+A("drawAdvancePolygon").onclick =
+  drawAdvancePolygon;
+
+}
+
+function drawAdvancePolygon() {
+if (!advanceState.active) return;
+
+const layerId =
+  advanceState.side === "ru"
+    ? "ru_advances"
+    : "ua_advances";
+
+if (!groups[layerId]) {
+  alert("The advance layer is not loaded.");
+  return;
+}
+
+// Make sure the target layer is visible so the new polygon can be seen.
+if (typeof setLayerVisible === "function" && layerVisible[layerId] === false) {
+  setLayerVisible(layerId, true);
+}
+
+deselect(false);
+drawing = true;
+window.polradAdvanceDrawing = true;
+
+map.pm.enableDraw("Polygon", {
+  snappable: true,
+  allowSelfIntersection: false
+});
+
+setAdvanceStatus(
+  "Drawing the " +
+  (advanceState.side === "ru"
+    ? "Russian"
+    : "Ukrainian") +
+  " advance polygon...",
+  true
+);
+
+function onCreate(event) {
+  map.off("pm:create", onCreate);
+
+  // If the user switched to the normal Draw tool meanwhile, this polygon
+  // belongs to that tool, not to the advance.
+  if (!window.polradAdvanceDrawing) return;
+  window.polradAdvanceDrawing = false;
+
+  const layer = event.layer;
+
+  map.pm.disableDraw();
+  drawing = false;
+
+  map.removeLayer(layer);
+
+  const feature = layer.toGeoJSON();
+
+  const advanceNumber =
+    advances.length + 1;
+
+  feature.properties = {
+    Name: "Advance " + advanceNumber
+  };
+
+  layer.feature = feature;
+  layer._layer = layerId;
+  layer._fid =
+    "advance-" +
+    Date.now() +
+    "-" +
+    Math.random()
+      .toString(36)
+      .slice(2);
+
+  layer.feature.properties._advanceId = "pending";
+
+  setupPolygon(layer, layerId);
+  groups[layerId].addLayer(layer);
+
+  // Cut away any part that lies inside the side's existing territory.
+  const trimResult = trimAdvanceToTerritory(layer);
+
+  if (trimResult === "removed") {
+    saveHistory();
+    renderSidebar();
 
     setAdvanceStatus(
-      "Advance mode active. Now draw the advance polygon below, or edit existing polygons as needed. When finished, click Finish Advance.",
+      "That polygon lies entirely inside already-controlled territory, so it was discarded. Draw another one, or click Finish Advance.",
       true
     );
 
-    addDrawAdvanceButton();
+    return;
   }
 
-  function addDrawAdvanceButton() {
-    if (A("drawAdvancePolygon")) return;
+  advanceState.createdFids.push(
+    layer._fid
+  );
 
-    const row = document.createElement("div");
-    row.className = "advance-row";
-    row.id = "advancePolygonRow";
+  saveHistory();
+  renderSidebar();
+  ensureAdvanceColors();
+  select(layer);
 
-    const sideName =
-      advanceState.side === "ru"
-        ? "Russian"
-        : "Ukrainian";
+  setAdvanceStatus(
+    trimResult === "trimmed"
+      ? "Advance polygon created and trimmed so it does not overlap existing territory. You can reshape it with the normal editor handles, then click Finish Advance."
+      : "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.",
+    true
+  );
+}
 
-    row.innerHTML =
-      '<button class="btn" id="drawAdvancePolygon">' +
-      "Draw " +
-      sideName +
-      " advance polygon" +
-      "</button>";
+map.on("pm:create", onCreate);
 
-    A("advanceTextWrap").parentNode.insertBefore(
-      row,
-      A("advanceTextWrap")
+}
+
+/* ---------------------------------------------------------
+ADVANCE TYPE POPUP
+--------------------------------------------------------- */
+function chooseAdvanceType() {
+return new Promise(function(resolve) {
+const sideName  = advanceState.side === "ru" ? "Russian" : "Ukrainian";
+const otherName = advanceState.side === "ru" ? "Ukrainian" : "Russian";
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.55);" +
+    "display:flex;align-items:center;justify-content:center;";
+
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:10px;padding:20px;width:380px;max-width:90vw;font-family:Arial,sans-serif">' +
+      '<div style="font-weight:700;font-size:16px;margin-bottom:6px">What kind of advance is this?</div>' +
+      '<div style="font-size:12px;color:#777;margin-bottom:14px">' + sideName + ' advance</div>' +
+      '<button id="advTypeNormal" class="btn primary" style="width:100%;margin-bottom:8px;text-align:left">' +
+        '<b>Normal advance</b><br><span style="font-size:11px;font-weight:400">' +
+        'Area = size of the new ' + sideName + ' advance polygon</span></button>' +
+      '<button id="advTypeGray" class="btn" style="width:100%;margin-bottom:8px;text-align:left">' +
+        '<b>Gray zone expansion</b><br><span style="font-size:11px;font-weight:400">' +
+        'Area = territory taken away from ' + otherName + ' control</span></button>' +
+      '<button id="advTypeCancel" class="btn" style="width:100%">Cancel</button>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  function done(value) {
+    overlay.remove();
+    resolve(value);
+  }
+
+  overlay.querySelector("#advTypeNormal").onclick = function() { done("normal"); };
+  overlay.querySelector("#advTypeGray").onclick   = function() { done("gray"); };
+  overlay.querySelector("#advTypeCancel").onclick = function() { done(null); };
+});
+
+}
+
+// Area (km²) of the advance polygons created during this advance.
+function createdPolygonsAreaKm2() {
+let total = 0;
+
+advanceState.createdFids.forEach(function(fid) {
+  const layer = findPolygon(fid);
+  if (!layer) return;
+  try { total += turf.area(layer.toGeoJSON()); } catch (e) {}
+});
+
+return total / 1000000;
+
+}
+
+// normal: + area of the new polygon(s), for the advancing side
+// gray:   - area lost by the OTHER side (its controlled area shrank)
+function computeAdvanceEffects() {
+if (advanceState.type === "gray") {
+const other = advanceState.side === "ru" ? "ua" : "ru";
+const after = currentControlledAreas();
+const diff = Number((after[other] - advanceState.before[other]).toFixed(2));
+
+  return Math.abs(diff) >= 0.005 ? [{ side: other, value: diff }] : [];
+}
+
+const value = Number(createdPolygonsAreaKm2().toFixed(2));
+return value >= 0.005 ? [{ side: advanceState.side, value: value }] : [];
+
+}
+
+function renderAreaPreview() {
+const effects = advanceState.lastEffects;
+const box = A("advanceAreaPreview");
+
+if (!effects || !box) return;
+
+const label = advanceState.type === "gray"
+  ? "Gray zone expansion – area lost by " +
+    (advanceState.side === "ru" ? "Ukraine" : "Russia")
+  : "Advance polygon area";
+
+box.innerHTML =
+  '<div style="font-size:11px;color:#777;margin-bottom:3px">' + label + "</div>" +
+  formatAreaEffects(effects, A("advanceColor").value) +
+  '<div style="margin-top:5px;color:#777;font-size:11px">' +
+  "This color is used for the area text on the public map." +
+  "</div>";
+
+}
+
+async function finishAdvance() {
+if (!advanceState.active) return;
+
+const type = await chooseAdvanceType();
+if (!type) return;               // cancelled: stay in advance mode
+
+advanceState.type = type;
+
+if (!advanceState.focus) {
+  alert("Please select a public map focus rectangle before finishing the advance.");
+  return;
+}
+
+// Only a normal advance polygon needs trimming against own territory.
+const trimNote = type === "normal" ? trimCreatedAdvances() : "";
+
+generateGrayZone();
+
+advanceState.lastEffects = computeAdvanceEffects();
+
+// Gray zone expansion: text uses the color of the side that LOSES control
+// (Russia advances -> Ukraine loses -> blue; Ukraine advances -> red).
+// Normal advance: color of the advancing side.
+const losingIsBlue = advanceState.side === "ru";
+A("advanceColor").value =
+  type === "gray"
+    ? (losingIsBlue ? "blue" : "red")
+    : (advanceState.side === "ua" ? "blue" : "red");
+
+renderAreaPreview();
+
+A("advanceTextWrap").style.display = "block";
+A("advanceFinish").disabled = true;
+A("advanceTextEn").focus();
+
+setAdvanceStatus(
+  trimNote
+    ? "Area calculated (" + trimNote + "). Write the update text and click Save Advance."
+    : "Area calculated. Write the update text and click Save Advance.",
+  false
+);
+
+}
+
+async function saveAdvance() {
+if (!advanceState.active) return;
+
+const textEn = A("advanceTextEn").value.trim();
+const textRu = A("advanceTextRu").value.trim();
+
+if (!textEn || !textRu) {
+  alert("Please enter both the English and Russian advance descriptions.");
+  if (!textEn) A("advanceTextEn").focus();
+  else A("advanceTextRu").focus();
+  return;
+}
+
+const saveButton = A("advanceSave");
+if (saveButton) {
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+}
+
+try {
+  const now = dateTimeNow();
+  const effects = computeAdvanceEffects();
+  const primaryValue = effects.length ? effects[0].value : 0;
+  const id = "adv-" + Date.now();
+
+  advanceState.createdFids.forEach(function(fid) {
+    const layer = findPolygon(fid);
+    if (layer && layer.feature && layer.feature.properties) {
+      layer.feature.properties._advanceId = id;
+    }
+  });
+
+  generateGrayZone();
+  const snapshot = getCurrentGeoJSON();
+
+  const item = {
+    id: id,
+    date: now.date,
+    time: now.time,
+    text_en: textEn,
+    text_ru: textRu,
+    text: textEn,
+    side: advanceState.side,
+    advanceType: advanceState.type,
+    areaChange: Number(primaryValue.toFixed(2)),
+    areaEffects: effects,
+    areaDisplay: areaDisplay(effects),
+    areaColor: A("advanceColor").value,
+    focus: advanceState.focus,
+    polygonFids: advanceState.createdFids.slice(),
+    snapshot: "history/advances/" + id + ".json",
+    beforeAreas: advanceState.before
+  };
+
+  // Save the large snapshot first.
+  await putAdvanceSnapshot(id, snapshot);
+
+  advances.push(item);
+
+  if (!saveAdvances()) {
+    advances = advances.filter(function(a) { return a.id !== id; });
+    try { await deleteAdvanceSnapshot(id); } catch (e) {}
+    throw new Error("The advance could not be saved to browser storage.");
+  }
+
+  // Keep the snapshot in memory for this session.
+  item.snapshotData = snapshot;
+
+  // The normal editor cache is optional; don't let quota errors undo a
+  // successfully saved advance.
+  try {
+    localStorage.setItem(
+      "polrad_editor_data",
+      JSON.stringify(getCurrentGeoJSON())
     );
-
-    A("drawAdvancePolygon").onclick =
-      drawAdvancePolygon;
+  } catch (storageError) {
+    console.warn("Could not update editor cache:", storageError);
   }
 
-  function drawAdvancePolygon() {
-    if (!advanceState.active) return;
+  renderAdvanceHistory();
 
-    const layerId =
-      advanceState.side === "ru"
-        ? "ru_advances"
-        : "ua_advances";
+  advanceState.active = false;
+  advanceState.type = "normal";
+  advanceState.before = null;
+  clearAdvanceFocusRectangle();
+  advanceState.focus = null;
+  advanceState.createdFids = [];
 
-    if (!groups[layerId]) {
-      alert("The advance layer is not loaded.");
-      return;
-    }
+  A("advanceStart").disabled = false;
+  A("advanceFinish").disabled = true;
+  A("advanceSide").disabled = false;
+  A("advanceTextWrap").style.display = "none";
+  A("advanceTextEn").value = "";
+  A("advanceTextRu").value = "";
+  if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
 
-    // Make sure the target layer is visible so the new polygon can be seen.
-    if (typeof setLayerVisible === "function" && layerVisible[layerId] === false) {
-      setLayerVisible(layerId, true);
-    }
+  const polygonRow = A("advancePolygonRow");
+  if (polygonRow) polygonRow.remove();
 
-    deselect(false);
-    drawing = true;
-    window.polradAdvanceDrawing = true;
+  setAdvanceStatus(
+    "Advance saved. Click the normal Publish button to send the map and advance history to GitHub.",
+    false
+  );
 
-    map.pm.enableDraw("Polygon", {
-      snappable: true,
-      allowSelfIntersection: false
+  renderSidebar();
+} catch (error) {
+  console.error("Save Advance failed:", error);
+  setAdvanceStatus(
+    error && error.message ? error.message : "Save Advance failed.",
+    true
+  );
+  alert(
+    "Save Advance failed.\n\n" +
+    (error && error.message ? error.message : "Unknown error.")
+  );
+} finally {
+  if (saveButton) {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save Advance";
+  }
+}
+
+}
+
+function cancelAdvance() {
+window.polradAdvanceDrawing = false;
+if (!advanceState.active) return;
+
+advanceState.active = false;
+advanceState.type = "normal";
+advanceState.before = null;
+clearAdvanceFocusRectangle();
+advanceState.focus = null;
+advanceState.createdFids = [];
+
+A("advanceStart").disabled = false;
+A("advanceFinish").disabled = true;
+A("advanceSide").disabled = false;
+
+A("advanceTextWrap").style.display =
+  "none";
+
+A("advanceTextEn").value = "";
+A("advanceTextRu").value = "";
+if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
+
+const polygonRow =
+  A("advancePolygonRow");
+
+if (polygonRow) {
+  polygonRow.remove();
+}
+
+setAdvanceStatus(
+  "Advance cancelled. Any map geometry you changed remains changed; use Undo if necessary.",
+  false
+);
+
+}
+
+/* ---------------------------------------------------------
+DELETE ADVANCE
+--------------------------------------------------------- */
+function deleteAdvance(id) {
+const item = advances.find(function(a) { return a.id === id; });
+if (!item) return;
+
+if (!confirm(
+  "Delete this advance from the history?\n\n" +
+  item.date + " " + item.time + "\n" + (item.text || "")
+)) return;
+
+const alsoPolygons = confirm(
+  "Also remove this advance's polygon(s) from the map?\n\n" +
+  "OK = remove polygons too\nCancel = keep polygons, delete only the history entry"
+);
+
+let removed = 0;
+
+if (alsoPolygons) {
+  ADVANCE_LAYER_IDS.forEach(function(layerId) {
+    if (!groups[layerId]) return;
+
+    groups[layerId].getLayers().slice().forEach(function(layer) {
+      const p = layer.feature && layer.feature.properties;
+      const byId  = p && p._advanceId === id;
+      const byFid = (item.polygonFids || []).indexOf(layer._fid) !== -1;
+
+      if (byId || byFid) {
+        if (layer === selected) deselect(false);
+        groups[layerId].removeLayer(layer);
+        removed++;
+      }
     });
+  });
+}
 
-    setAdvanceStatus(
-      "Drawing the " +
-      (advanceState.side === "ru"
-        ? "Russian"
-        : "Ukrainian") +
-      " advance polygon...",
-      true
+advances = advances.filter(function(a) { return a.id !== id; });
+saveAdvances();
+
+if (alsoPolygons) {
+  saveHistory();
+  renderSidebar();
+  generateGrayZone();
+}
+
+renderAdvanceHistory();
+setStatus(
+  "Advance deleted" +
+  (alsoPolygons ? " (" + removed + " polygon(s) removed)" : "") +
+  ". Click Publish to update the public map."
+);
+
+}
+
+function renderAdvanceHistory() {
+const box = A("advanceHistory");
+if (!box) return;
+
+box.innerHTML = "";
+
+if (!advances.length) {
+  box.innerHTML =
+    '<div class="small">No advance history saved in this browser yet.</div>';
+  return;
+}
+
+advances.slice().reverse().forEach(function(item) {
+  const row = document.createElement("div");
+  row.className = "advance-history-item";
+
+  const sideLabel = item.side === "ru" ? "🔴 Russia" : "🔵 Ukraine";
+  const typeLabel = item.advanceType === "gray" ? " · Gray zone expansion" : "";
+  const color =
+    (item.areaColor || (item.side === "ua" ? "blue" : "red")) === "blue"
+      ? "#1e88e5" : "#e53935";
+
+  row.innerHTML =
+    '<button type="button" class="adv-del" style="color:#b3261e;margin-left:4px">Delete</button>' +
+    '<button type="button" class="adv-edit">Edit</button>' +
+    '<div class="advance-history-date">' +
+    item.date + " " + item.time + " · " + sideLabel + typeLabel +
+    "</div>" +
+    "<div><b>EN:</b> " + (item.text_en || item.text || "") + "</div>" +
+    "<div><b>RU:</b> " + (item.text_ru || "") + "</div>" +
+    (item.areaDisplay
+      ? '<div>Area: <span style="font-weight:700;color:' + color + '">' +
+        item.areaDisplay + "</span></div>"
+      : "");
+
+  row.querySelector(".adv-edit").onclick = function() { editAdvance(item.id); };
+  row.querySelector(".adv-del").onclick  = function() { deleteAdvance(item.id); };
+
+  box.appendChild(row);
+});
+
+}
+
+function editAdvance(id) {
+const item = advances.find(function(a) {
+return a.id === id;
+});
+
+if (!item) return;
+
+// Migrate older single-language entries automatically.
+if (!item.text_en && item.text) item.text_en = item.text;
+if (!item.text_ru) item.text_ru = "";
+
+// Use a real HTML dialog instead of window.prompt(). This makes it
+// possible to enter Cyrillic/Russian text reliably and edit both
+// languages at the same time.
+const old = document.getElementById("polradAdvanceEditDialog");
+if (old) old.remove();
+
+const overlay = document.createElement("div");
+overlay.id = "polradAdvanceEditDialog";
+overlay.style.cssText = [
+  "position:fixed",
+  "inset:0",
+  "z-index:100000",
+  "background:rgba(0,0,0,.45)",
+  "display:flex",
+  "align-items:center",
+  "justify-content:center",
+  "padding:20px",
+  "box-sizing:border-box"
+].join(";");
+
+const dialog = document.createElement("div");
+dialog.style.cssText = [
+  "width:min(620px,100%)",
+  "max-height:90vh",
+  "overflow:auto",
+  "background:#fff",
+  "border-radius:10px",
+  "box-shadow:0 12px 40px rgba(0,0,0,.3)",
+  "padding:18px",
+  "box-sizing:border-box",
+  "font-family:Arial,sans-serif"
+].join(";");
+
+const title = document.createElement("h3");
+title.textContent = "Edit Advance Description";
+title.style.margin = "0 0 14px 0";
+
+const enLabel = document.createElement("label");
+enLabel.textContent = "English advance description";
+enLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
+
+const en = document.createElement("textarea");
+en.value = item.text_en || item.text || "";
+en.placeholder = "English advance description...";
+en.style.cssText = [
+  "width:100%",
+  "min-height:100px",
+  "resize:vertical",
+  "box-sizing:border-box",
+  "padding:9px",
+  "margin-bottom:13px",
+  "border:1px solid #ccc",
+  "border-radius:6px",
+  "font:14px Arial,sans-serif"
+].join(";");
+
+const ruLabel = document.createElement("label");
+ruLabel.textContent = "Russian advance description";
+ruLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
+
+const ru = document.createElement("textarea");
+ru.value = item.text_ru || "";
+ru.placeholder = "Введите описание продвижения на русском языке...";
+ru.style.cssText = [
+  "width:100%",
+  "min-height:100px",
+  "resize:vertical",
+  "box-sizing:border-box",
+  "padding:9px",
+  "margin-bottom:15px",
+  "border:1px solid #ccc",
+  "border-radius:6px",
+  "font:14px Arial,sans-serif"
+].join(";");
+
+const buttons = document.createElement("div");
+buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+
+const cancel = document.createElement("button");
+cancel.className = "btn";
+cancel.textContent = "Cancel";
+
+const save = document.createElement("button");
+save.className = "btn primary";
+save.textContent = "Save descriptions";
+
+buttons.appendChild(cancel);
+buttons.appendChild(save);
+
+dialog.appendChild(title);
+dialog.appendChild(enLabel);
+dialog.appendChild(en);
+dialog.appendChild(ruLabel);
+dialog.appendChild(ru);
+dialog.appendChild(buttons);
+overlay.appendChild(dialog);
+document.body.appendChild(overlay);
+
+function closeDialog() {
+  overlay.remove();
+}
+
+cancel.onclick = closeDialog;
+overlay.onclick = function(event) {
+  if (event.target === overlay) closeDialog();
+};
+
+save.onclick = function() {
+  const cleanEn = en.value.trim();
+  const cleanRu = ru.value.trim();
+
+  if (!cleanEn) {
+    alert("Please enter the English advance description.");
+    en.focus();
+    return;
+  }
+
+  if (!cleanRu) {
+    alert("Please enter the Russian advance description.");
+    ru.focus();
+    return;
+  }
+
+  item.text_en = cleanEn;
+  item.text_ru = cleanRu;
+  item.text = cleanEn;
+
+  closeDialog();
+
+  // Keep the existing metadata-editing workflow after the descriptions
+  // have been saved.
+  editAdvanceMetadata(item);
+};
+
+en.focus();
+
+}
+
+function editAdvanceMetadata(item) {
+const side = prompt(
+"Side: enter ru or ua",
+item.side || "ru"
+);
+
+if (side === "ru" || side === "ua") {
+  item.side = side;
+}
+
+const colorAnswer = prompt(
+  "Area change color: enter red or blue",
+  item.areaColor || (item.side === "ua" ? "blue" : "red")
+);
+
+if (colorAnswer) {
+  const c = colorAnswer.trim().toLowerCase();
+  if (c === "red" || c === "blue") {
+    item.areaColor = c;
+  }
+}
+
+const areaAnswer = prompt(
+  "Optional manual area correction in km². Leave blank to keep the calculated area:",
+  item.areaChange !== undefined && item.areaChange !== null
+    ? String(item.areaChange)
+    : ""
+);
+
+if (areaAnswer !== null && areaAnswer.trim() !== "") {
+  const n = Number(areaAnswer.replace(",", "."));
+
+  if (Number.isFinite(n)) {
+    item.areaChange = Number(n.toFixed(2));
+
+    const effectSide =
+      item.areaEffects && item.areaEffects[0]
+        ? item.areaEffects[0].side
+        : item.side;
+
+    item.areaEffects = [{ side: effectSide, value: item.areaChange }];
+    item.areaDisplay = (n > 0 ? "+" : "") + n.toFixed(2) + " km²";
+  }
+}
+
+const fids = item.polygonFids || [];
+
+if (fids.length) {
+  const polygon = findPolygon(fids[0]);
+
+  if (polygon) {
+    select(polygon);
+    setStatus(
+      "Advance polygon selected. Reshape it with the normal editor handles, then Publish."
     );
+  }
+}
 
-    function onCreate(event) {
-      map.off("pm:create", onCreate);
+saveAdvances();
+renderAdvanceHistory();
 
-      // If the user switched to the normal Draw tool meanwhile, this polygon
-      // belongs to that tool, not to the advance.
-      if (!window.polradAdvanceDrawing) return;
-      window.polradAdvanceDrawing = false;
+}
 
-      const layer = event.layer;
+/*
 
-      map.pm.disableDraw();
-      drawing = false;
+Replace the normal Publish button with a version that sends:
 
-      map.removeLayer(layer);
 
-      const feature = layer.toGeoJSON();
 
-      const advanceNumber =
-        advances.length + 1;
+files
 
-      feature.properties = {
-        Name: "Advance " + advanceNumber
+advances
+
+advanceSnapshots
+
+
+
+The normal map publishing behavior remains the same.
+/
+/
+
+Publish map data first, then upload advance snapshots in small batches.
+
+
+
+This avoids sending every large snapshot in one browser request. The
+
+Cloudflare Worker handles the map/metadata publish through "publish"
+
+and individual snapshot batches through "publishSnapshots".
+*/
+function installAdvancePublish() {
+const publish = A("publish");
+if (!publish) return;
+if (publish.dataset.advancePublishInstalled === "1") return;
+
+publish.dataset.advancePublishInstalled = "1";
+
+// Keep a generous margin below Cloudflare's request-body limit.
+// JS strings are UTF-16, so multiplying by 2 deliberately overestimates
+// the UTF-8 payload size in most cases.
+const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+
+function estimatedBytes(value) {
+  return JSON.stringify(value).length * 2;
+}
+
+async function postWorker(payload) {
+  let response;
+
+  try {
+    response = await fetch(WORKER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.error("Worker network error:", error);
+    throw new Error(
+      "Could not connect to the Cloudflare Worker.\n\n" +
+      "Worker URL: " + WORKER + "\n\n" +
+      "Browser error: " +
+      (error && error.message ? error.message : String(error)) +
+      "\n\n" +
+      "Make sure the Worker is deployed and that its URL matches the editor."
+    );
+  }
+
+  let result;
+  try {
+    result = await response.json();
+  } catch (e) {
+    throw new Error(
+      "The publishing server returned an invalid response (HTTP " +
+      response.status + ")."
+    );
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+      "Publish failed (HTTP " + response.status + ")."
+    );
+  }
+
+  return result;
+}
+
+async function loadSnapshotForPublish(item) {
+  let snapshot = item.snapshotData || null;
+
+  if (!snapshot && item.id) {
+    try {
+      snapshot = await getAdvanceSnapshot(item.id);
+    } catch (e) {
+      console.warn(
+        "Could not load snapshot for publish:",
+        item.id,
+        e
+      );
+    }
+  }
+
+  return snapshot;
+}
+
+function buildSnapshotBatches(snapshotEntries) {
+  const batches = [];
+  let current = {};
+
+  for (const entry of snapshotEntries) {
+    const candidate = {
+      ...current,
+      [entry.id]: entry.snapshot
+    };
+
+    const candidatePayload = {
+      action: "publishSnapshots",
+      snapshots: candidate
+    };
+
+    // If the current batch already contains something and adding this
+    // snapshot would cross the target size, finish the current batch.
+    if (
+      Object.keys(current).length &&
+      estimatedBytes(candidatePayload) > MAX_BATCH_BYTES
+    ) {
+      batches.push(current);
+      current = {
+        [entry.id]: entry.snapshot
       };
-
-      layer.feature = feature;
-      layer._layer = layerId;
-      layer._fid =
-        "advance-" +
-        Date.now() +
-        "-" +
-        Math.random()
-          .toString(36)
-          .slice(2);
-
-      layer.feature.properties._advanceId = "pending";
-
-      setupPolygon(layer, layerId);
-      groups[layerId].addLayer(layer);
-
-      // Cut away any part that lies inside the side's existing territory.
-      const trimResult = trimAdvanceToTerritory(layer);
-
-      if (trimResult === "removed") {
-        saveHistory();
-        renderSidebar();
-
-        setAdvanceStatus(
-          "That polygon lies entirely inside already-controlled territory, so it was discarded. Draw another one, or click Finish Advance.",
-          true
-        );
-
-        return;
-      }
-
-      advanceState.createdFids.push(
-        layer._fid
-      );
-
-      saveHistory();
-      renderSidebar();
-      ensureAdvanceColors();
-      select(layer);
-
-      setAdvanceStatus(
-        trimResult === "trimmed"
-          ? "Advance polygon created and trimmed so it does not overlap existing territory. You can reshape it with the normal editor handles, then click Finish Advance."
-          : "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.",
-        true
-      );
+    } else {
+      current = candidate;
     }
-
-    map.on("pm:create", onCreate);
   }
 
-  /* ---------------------------------------------------------
-     ADVANCE TYPE POPUP
-     --------------------------------------------------------- */
-  function chooseAdvanceType() {
-    return new Promise(function(resolve) {
-      const sideName  = advanceState.side === "ru" ? "Russian" : "Ukrainian";
-      const otherName = advanceState.side === "ru" ? "Ukrainian" : "Russian";
+  if (Object.keys(current).length) {
+    batches.push(current);
+  }
 
-      const overlay = document.createElement("div");
-      overlay.style.cssText =
-        "position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.55);" +
-        "display:flex;align-items:center;justify-content:center;";
+  return batches;
+}
 
-      overlay.innerHTML =
-        '<div style="background:#fff;border-radius:10px;padding:20px;width:380px;max-width:90vw;font-family:Arial,sans-serif">' +
-          '<div style="font-weight:700;font-size:16px;margin-bottom:6px">What kind of advance is this?</div>' +
-          '<div style="font-size:12px;color:#777;margin-bottom:14px">' + sideName + ' advance</div>' +
-          '<button id="advTypeNormal" class="btn primary" style="width:100%;margin-bottom:8px;text-align:left">' +
-            '<b>Normal advance</b><br><span style="font-size:11px;font-weight:400">' +
-            'Area = size of the new ' + sideName + ' advance polygon</span></button>' +
-          '<button id="advTypeGray" class="btn" style="width:100%;margin-bottom:8px;text-align:left">' +
-            '<b>Gray zone expansion</b><br><span style="font-size:11px;font-weight:400">' +
-            'Area = territory taken away from ' + otherName + ' control</span></button>' +
-          '<button id="advTypeCancel" class="btn" style="width:100%">Cancel</button>' +
-        '</div>';
+publish.onclick = async function() {
+  publish.disabled = true;
+  setStatus("Publishing map and advance metadata...");
 
-      document.body.appendChild(overlay);
+  try {
+    const currentFiles = getCurrentGeoJSON();
+    const publishAdvances = advances.map(stripSnapshotData);
 
-      function done(value) {
-        overlay.remove();
-        resolve(value);
-      }
-
-      overlay.querySelector("#advTypeNormal").onclick = function() { done("normal"); };
-      overlay.querySelector("#advTypeGray").onclick   = function() { done("gray"); };
-      overlay.querySelector("#advTypeCancel").onclick = function() { done(null); };
+    // STEP 1: publish the live map, daily timeline and advances.json.
+    // No large advance snapshot data is included here.
+    await postWorker({
+      action: "publish",
+      files: currentFiles,
+      advances: publishAdvances
     });
-  }
-
-  // Area (km²) of the advance polygons created during this advance.
-  function createdPolygonsAreaKm2() {
-    let total = 0;
-
-    advanceState.createdFids.forEach(function(fid) {
-      const layer = findPolygon(fid);
-      if (!layer) return;
-      try { total += turf.area(layer.toGeoJSON()); } catch (e) {}
-    });
-
-    return total / 1000000;
-  }
-
-  // normal: + area of the new polygon(s), for the advancing side
-  // gray:   - area lost by the OTHER side (its controlled area shrank)
-  function computeAdvanceEffects() {
-    if (advanceState.type === "gray") {
-      const other = advanceState.side === "ru" ? "ua" : "ru";
-      const after = currentControlledAreas();
-      const diff = Number((after[other] - advanceState.before[other]).toFixed(2));
-
-      return Math.abs(diff) >= 0.005 ? [{ side: other, value: diff }] : [];
-    }
-
-    const value = Number(createdPolygonsAreaKm2().toFixed(2));
-    return value >= 0.005 ? [{ side: advanceState.side, value: value }] : [];
-  }
-
-  function renderAreaPreview() {
-    const effects = advanceState.lastEffects;
-    const box = A("advanceAreaPreview");
-
-    if (!effects || !box) return;
-
-    const label = advanceState.type === "gray"
-      ? "Gray zone expansion – area lost by " +
-        (advanceState.side === "ru" ? "Ukraine" : "Russia")
-      : "Advance polygon area";
-
-    box.innerHTML =
-      '<div style="font-size:11px;color:#777;margin-bottom:3px">' + label + "</div>" +
-      formatAreaEffects(effects, A("advanceColor").value) +
-      '<div style="margin-top:5px;color:#777;font-size:11px">' +
-      "This color is used for the area text on the public map." +
-      "</div>";
-  }
-
-  async function finishAdvance() {
-    if (!advanceState.active) return;
-
-    const type = await chooseAdvanceType();
-    if (!type) return;               // cancelled: stay in advance mode
-
-    advanceState.type = type;
-
-    if (!advanceState.focus) {
-      alert("Please select a public map focus rectangle before finishing the advance.");
-      return;
-    }
-
-    // Only a normal advance polygon needs trimming against own territory.
-    const trimNote = type === "normal" ? trimCreatedAdvances() : "";
-
-    generateGrayZone();
-
-    advanceState.lastEffects = computeAdvanceEffects();
-
-    // Gray zone expansion: text uses the color of the side that LOSES control
-    // (Russia advances -> Ukraine loses -> blue; Ukraine advances -> red).
-    // Normal advance: color of the advancing side.
-    const losingIsBlue = advanceState.side === "ru";
-    A("advanceColor").value =
-      type === "gray"
-        ? (losingIsBlue ? "blue" : "red")
-        : (advanceState.side === "ua" ? "blue" : "red");
-
-    renderAreaPreview();
-
-    A("advanceTextWrap").style.display = "block";
-    A("advanceFinish").disabled = true;
-    A("advanceTextEn").focus();
-
-    setAdvanceStatus(
-      trimNote
-        ? "Area calculated (" + trimNote + "). Write the update text and click Save Advance."
-        : "Area calculated. Write the update text and click Save Advance.",
-      false
-    );
-  }
-
-  async function saveAdvance() {
-    if (!advanceState.active) return;
-
-    const textEn = A("advanceTextEn").value.trim();
-    const textRu = A("advanceTextRu").value.trim();
-
-    if (!textEn || !textRu) {
-      alert("Please enter both the English and Russian advance descriptions.");
-      if (!textEn) A("advanceTextEn").focus();
-      else A("advanceTextRu").focus();
-      return;
-    }
-
-    const saveButton = A("advanceSave");
-    if (saveButton) {
-      saveButton.disabled = true;
-      saveButton.textContent = "Saving...";
-    }
 
     try {
-      const now = dateTimeNow();
-      const effects = computeAdvanceEffects();
-      const primaryValue = effects.length ? effects[0].value : 0;
-      const id = "adv-" + Date.now();
-
-      advanceState.createdFids.forEach(function(fid) {
-        const layer = findPolygon(fid);
-        if (layer && layer.feature && layer.feature.properties) {
-          layer.feature.properties._advanceId = id;
-        }
-      });
-
-      generateGrayZone();
-      const snapshot = getCurrentGeoJSON();
-
-      const item = {
-        id: id,
-        date: now.date,
-        time: now.time,
-        text_en: textEn,
-        text_ru: textRu,
-        text: textEn,
-        side: advanceState.side,
-        advanceType: advanceState.type,
-        areaChange: Number(primaryValue.toFixed(2)),
-        areaEffects: effects,
-        areaDisplay: areaDisplay(effects),
-        areaColor: A("advanceColor").value,
-        focus: advanceState.focus,
-        polygonFids: advanceState.createdFids.slice(),
-        snapshot: "history/advances/" + id + ".json",
-        beforeAreas: advanceState.before
-      };
-
-      // Save the large snapshot first.
-      await putAdvanceSnapshot(id, snapshot);
-
-      advances.push(item);
-
-      if (!saveAdvances()) {
-        advances = advances.filter(function(a) { return a.id !== id; });
-        try { await deleteAdvanceSnapshot(id); } catch (e) {}
-        throw new Error("The advance could not be saved to browser storage.");
-      }
-
-      // Keep the snapshot in memory for this session.
-      item.snapshotData = snapshot;
-
-      // The normal editor cache is optional; don't let quota errors undo a
-      // successfully saved advance.
-      try {
-        localStorage.setItem(
-          "polrad_editor_data",
-          JSON.stringify(getCurrentGeoJSON())
-        );
-      } catch (storageError) {
-        console.warn("Could not update editor cache:", storageError);
-      }
-
-      renderAdvanceHistory();
-
-      advanceState.active = false;
-      advanceState.type = "normal";
-      advanceState.before = null;
-      clearAdvanceFocusRectangle();
-      advanceState.focus = null;
-      advanceState.createdFids = [];
-
-      A("advanceStart").disabled = false;
-      A("advanceFinish").disabled = true;
-      A("advanceSide").disabled = false;
-      A("advanceTextWrap").style.display = "none";
-      A("advanceTextEn").value = "";
-      A("advanceTextRu").value = "";
-      if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-
-      const polygonRow = A("advancePolygonRow");
-      if (polygonRow) polygonRow.remove();
-
-      setAdvanceStatus(
-        "Advance saved. Click the normal Publish button to send the map and advance history to GitHub.",
-        false
+      localStorage.setItem(
+        "polrad_editor_data",
+        JSON.stringify(currentFiles)
       );
-
-      renderSidebar();
-    } catch (error) {
-      console.error("Save Advance failed:", error);
-      setAdvanceStatus(
-        error && error.message ? error.message : "Save Advance failed.",
-        true
+    } catch (e) {
+      console.warn(
+        "Could not update editor cache after publish:",
+        e
       );
-      alert(
-        "Save Advance failed.\n\n" +
-        (error && error.message ? error.message : "Unknown error.")
-      );
-    } finally {
-      if (saveButton) {
-        saveButton.disabled = false;
-        saveButton.textContent = "Save Advance";
-      }
-    }
-  }
-
-  function cancelAdvance() {
-    window.polradAdvanceDrawing = false;
-    if (!advanceState.active) return;
-
-    advanceState.active = false;
-    advanceState.type = "normal";
-    advanceState.before = null;
-    clearAdvanceFocusRectangle();
-    advanceState.focus = null;
-    advanceState.createdFids = [];
-
-    A("advanceStart").disabled = false;
-    A("advanceFinish").disabled = true;
-    A("advanceSide").disabled = false;
-
-    A("advanceTextWrap").style.display =
-      "none";
-
-    A("advanceTextEn").value = "";
-    A("advanceTextRu").value = "";
-    if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-
-    const polygonRow =
-      A("advancePolygonRow");
-
-    if (polygonRow) {
-      polygonRow.remove();
     }
 
-    setAdvanceStatus(
-      "Advance cancelled. Any map geometry you changed remains changed; use Undo if necessary.",
-      false
-    );
-  }
+    // STEP 2: load only snapshots that actually exist locally.
+    const snapshotEntries = [];
 
-  /* ---------------------------------------------------------
-     DELETE ADVANCE
-     --------------------------------------------------------- */
-  function deleteAdvance(id) {
-    const item = advances.find(function(a) { return a.id === id; });
-    if (!item) return;
+    for (const item of advances) {
+      if (!item || !item.id) continue;
 
-    if (!confirm(
-      "Delete this advance from the history?\n\n" +
-      item.date + " " + item.time + "\n" + (item.text || "")
-    )) return;
+      const snapshot = await loadSnapshotForPublish(item);
 
-    const alsoPolygons = confirm(
-      "Also remove this advance's polygon(s) from the map?\n\n" +
-      "OK = remove polygons too\nCancel = keep polygons, delete only the history entry"
-    );
-
-    let removed = 0;
-
-    if (alsoPolygons) {
-      ADVANCE_LAYER_IDS.forEach(function(layerId) {
-        if (!groups[layerId]) return;
-
-        groups[layerId].getLayers().slice().forEach(function(layer) {
-          const p = layer.feature && layer.feature.properties;
-          const byId  = p && p._advanceId === id;
-          const byFid = (item.polygonFids || []).indexOf(layer._fid) !== -1;
-
-          if (byId || byFid) {
-            if (layer === selected) deselect(false);
-            groups[layerId].removeLayer(layer);
-            removed++;
-          }
+      // Existing remote advances may not have a local IndexedDB copy.
+      // Leave those untouched on GitHub instead of overwriting them with
+      // null or an empty snapshot.
+      if (snapshot) {
+        snapshotEntries.push({
+          id: item.id,
+          snapshot
         });
+      }
+    }
+
+    const batches = buildSnapshotBatches(snapshotEntries);
+
+    // STEP 3: upload snapshot batches separately.
+    for (let i = 0; i < batches.length; i++) {
+      setStatus(
+        "Uploading advance snapshots " +
+        (i + 1) +
+        " / " +
+        batches.length +
+        "..."
+      );
+
+      await postWorker({
+        action: "publishSnapshots",
+        snapshots: batches[i]
       });
     }
 
-    advances = advances.filter(function(a) { return a.id !== id; });
     saveAdvances();
 
-    if (alsoPolygons) {
-      saveHistory();
-      renderSidebar();
-      generateGrayZone();
-    }
-
-    renderAdvanceHistory();
     setStatus(
-      "Advance deleted" +
-      (alsoPolygons ? " (" + removed + " polygon(s) removed)" : "") +
-      ". Click Publish to update the public map."
-    );
-  }
-
-  function renderAdvanceHistory() {
-    const box = A("advanceHistory");
-    if (!box) return;
-
-    box.innerHTML = "";
-
-    if (!advances.length) {
-      box.innerHTML =
-        '<div class="small">No advance history saved in this browser yet.</div>';
-      return;
-    }
-
-    advances.slice().reverse().forEach(function(item) {
-      const row = document.createElement("div");
-      row.className = "advance-history-item";
-
-      const sideLabel = item.side === "ru" ? "🔴 Russia" : "🔵 Ukraine";
-      const typeLabel = item.advanceType === "gray" ? " · Gray zone expansion" : "";
-      const color =
-        (item.areaColor || (item.side === "ua" ? "blue" : "red")) === "blue"
-          ? "#1e88e5" : "#e53935";
-
-      row.innerHTML =
-        '<button type="button" class="adv-del" style="color:#b3261e;margin-left:4px">Delete</button>' +
-        '<button type="button" class="adv-edit">Edit</button>' +
-        '<div class="advance-history-date">' +
-        item.date + " " + item.time + " · " + sideLabel + typeLabel +
-        "</div>" +
-        "<div><b>EN:</b> " + (item.text_en || item.text || "") + "</div>" +
-        "<div><b>RU:</b> " + (item.text_ru || "") + "</div>" +
-        (item.areaDisplay
-          ? '<div>Area: <span style="font-weight:700;color:' + color + '">' +
-            item.areaDisplay + "</span></div>"
-          : "");
-
-      row.querySelector(".adv-edit").onclick = function() { editAdvance(item.id); };
-      row.querySelector(".adv-del").onclick  = function() { deleteAdvance(item.id); };
-
-      box.appendChild(row);
-    });
-  }
-
-  function editAdvance(id) {
-    const item = advances.find(function(a) {
-      return a.id === id;
-    });
-
-    if (!item) return;
-
-    // Migrate older single-language entries automatically.
-    if (!item.text_en && item.text) item.text_en = item.text;
-    if (!item.text_ru) item.text_ru = "";
-
-    // Use a real HTML dialog instead of window.prompt(). This makes it
-    // possible to enter Cyrillic/Russian text reliably and edit both
-    // languages at the same time.
-    const old = document.getElementById("polradAdvanceEditDialog");
-    if (old) old.remove();
-
-    const overlay = document.createElement("div");
-    overlay.id = "polradAdvanceEditDialog";
-    overlay.style.cssText = [
-      "position:fixed",
-      "inset:0",
-      "z-index:100000",
-      "background:rgba(0,0,0,.45)",
-      "display:flex",
-      "align-items:center",
-      "justify-content:center",
-      "padding:20px",
-      "box-sizing:border-box"
-    ].join(";");
-
-    const dialog = document.createElement("div");
-    dialog.style.cssText = [
-      "width:min(620px,100%)",
-      "max-height:90vh",
-      "overflow:auto",
-      "background:#fff",
-      "border-radius:10px",
-      "box-shadow:0 12px 40px rgba(0,0,0,.3)",
-      "padding:18px",
-      "box-sizing:border-box",
-      "font-family:Arial,sans-serif"
-    ].join(";");
-
-    const title = document.createElement("h3");
-    title.textContent = "Edit Advance Description";
-    title.style.margin = "0 0 14px 0";
-
-    const enLabel = document.createElement("label");
-    enLabel.textContent = "English advance description";
-    enLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
-
-    const en = document.createElement("textarea");
-    en.value = item.text_en || item.text || "";
-    en.placeholder = "English advance description...";
-    en.style.cssText = [
-      "width:100%",
-      "min-height:100px",
-      "resize:vertical",
-      "box-sizing:border-box",
-      "padding:9px",
-      "margin-bottom:13px",
-      "border:1px solid #ccc",
-      "border-radius:6px",
-      "font:14px Arial,sans-serif"
-    ].join(";");
-
-    const ruLabel = document.createElement("label");
-    ruLabel.textContent = "Russian advance description";
-    ruLabel.style.cssText = "display:block;font-weight:600;margin-bottom:5px";
-
-    const ru = document.createElement("textarea");
-    ru.value = item.text_ru || "";
-    ru.placeholder = "Введите описание продвижения на русском языке...";
-    ru.style.cssText = [
-      "width:100%",
-      "min-height:100px",
-      "resize:vertical",
-      "box-sizing:border-box",
-      "padding:9px",
-      "margin-bottom:15px",
-      "border:1px solid #ccc",
-      "border-radius:6px",
-      "font:14px Arial,sans-serif"
-    ].join(";");
-
-    const buttons = document.createElement("div");
-    buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
-
-    const cancel = document.createElement("button");
-    cancel.className = "btn";
-    cancel.textContent = "Cancel";
-
-    const save = document.createElement("button");
-    save.className = "btn primary";
-    save.textContent = "Save descriptions";
-
-    buttons.appendChild(cancel);
-    buttons.appendChild(save);
-
-    dialog.appendChild(title);
-    dialog.appendChild(enLabel);
-    dialog.appendChild(en);
-    dialog.appendChild(ruLabel);
-    dialog.appendChild(ru);
-    dialog.appendChild(buttons);
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    function closeDialog() {
-      overlay.remove();
-    }
-
-    cancel.onclick = closeDialog;
-    overlay.onclick = function(event) {
-      if (event.target === overlay) closeDialog();
-    };
-
-    save.onclick = function() {
-      const cleanEn = en.value.trim();
-      const cleanRu = ru.value.trim();
-
-      if (!cleanEn) {
-        alert("Please enter the English advance description.");
-        en.focus();
-        return;
-      }
-
-      if (!cleanRu) {
-        alert("Please enter the Russian advance description.");
-        ru.focus();
-        return;
-      }
-
-      item.text_en = cleanEn;
-      item.text_ru = cleanRu;
-      item.text = cleanEn;
-
-      closeDialog();
-
-      // Keep the existing metadata-editing workflow after the descriptions
-      // have been saved.
-      editAdvanceMetadata(item);
-    };
-
-    en.focus();
-  }
-
-  function editAdvanceMetadata(item) {
-    const side = prompt(
-      "Side: enter ru or ua",
-      item.side || "ru"
+      "Published successfully" +
+      (batches.length
+        ? " with " + snapshotEntries.length + " advance snapshot(s)."
+        : ".")
     );
 
-    if (side === "ru" || side === "ua") {
-      item.side = side;
-    }
-
-    const colorAnswer = prompt(
-      "Area change color: enter red or blue",
-      item.areaColor || (item.side === "ua" ? "blue" : "red")
+    alert("Published successfully!");
+  } catch (error) {
+    console.error("Publish failed:", error);
+    setStatus(
+      error && error.message
+        ? error.message
+        : "Publish failed."
     );
-
-    if (colorAnswer) {
-      const c = colorAnswer.trim().toLowerCase();
-      if (c === "red" || c === "blue") {
-        item.areaColor = c;
-      }
-    }
-
-    const areaAnswer = prompt(
-      "Optional manual area correction in km². Leave blank to keep the calculated area:",
-      item.areaChange !== undefined && item.areaChange !== null
-        ? String(item.areaChange)
-        : ""
+    alert(
+      "Publish failed.\n\n" +
+      (error && error.message
+        ? error.message
+        : "Unknown error.")
     );
-
-    if (areaAnswer !== null && areaAnswer.trim() !== "") {
-      const n = Number(areaAnswer.replace(",", "."));
-
-      if (Number.isFinite(n)) {
-        item.areaChange = Number(n.toFixed(2));
-
-        const effectSide =
-          item.areaEffects && item.areaEffects[0]
-            ? item.areaEffects[0].side
-            : item.side;
-
-        item.areaEffects = [{ side: effectSide, value: item.areaChange }];
-        item.areaDisplay = (n > 0 ? "+" : "") + n.toFixed(2) + " km²";
-      }
-    }
-
-    const fids = item.polygonFids || [];
-
-    if (fids.length) {
-      const polygon = findPolygon(fids[0]);
-
-      if (polygon) {
-        select(polygon);
-        setStatus(
-          "Advance polygon selected. Reshape it with the normal editor handles, then Publish."
-        );
-      }
-    }
-
-    saveAdvances();
-    renderAdvanceHistory();
+  } finally {
+    publish.disabled = false;
   }
+};
 
-  /*
-   * Replace the normal Publish button with a version that sends:
-   *
-   * files
-   * advances
-   * advanceSnapshots
-   *
-   * The normal map publishing behavior remains the same.
-   */
-  /*
-   * Publish map data first, then upload advance snapshots in small batches.
-   *
-   * This avoids sending every large snapshot in one browser request. The
-   * Cloudflare Worker handles the map/metadata publish through "publish"
-   * and individual snapshot batches through "publishSnapshots".
-   */
-  function installAdvancePublish() {
-    const publish = A("publish");
-    if (!publish) return;
-    if (publish.dataset.advancePublishInstalled === "1") return;
+}
 
-    publish.dataset.advancePublishInstalled = "1";
+function initAdvanceEditor() {
+addAdvanceCSS();
+loadAdvances();
+createAdvanceUI();
+ensureAdvanceColors();
+installAdvancePublish();
+renderAdvanceHistory();
 
-    // Keep a generous margin below Cloudflare's request-body limit.
-    // JS strings are UTF-16, so multiplying by 2 deliberately overestimates
-    // the UTF-8 payload size in most cases.
-    const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+// Migrate/load large snapshots only after the UI is already usable.
+migrateAdvanceSnapshots();
 
-    function estimatedBytes(value) {
-      return JSON.stringify(value).length * 2;
-    }
+}
 
-    async function postWorker(payload) {
-      let response;
+/*
 
-      try {
-        response = await fetch(WORKER, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-      } catch (error) {
-        console.error("Worker network error:", error);
-        throw new Error(
-          "Could not connect to the Cloudflare Worker.\n\n" +
-          "Worker URL: " + WORKER + "\n\n" +
-          "Browser error: " +
-          (error && error.message ? error.message : String(error)) +
-          "\n\n" +
-          "Make sure the Worker is deployed and that its URL matches the editor."
-        );
-      }
+The original editor defines all of its functions in the global script.
 
-      let result;
-      try {
-        result = await response.json();
-      } catch (e) {
-        throw new Error(
-          "The publishing server returned an invalid response (HTTP " +
-          response.status + ")."
-        );
-      }
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ||
-          "Publish failed (HTTP " + response.status + ")."
-        );
-      }
-
-      return result;
-    }
-
-    async function loadSnapshotForPublish(item) {
-      let snapshot = item.snapshotData || null;
-
-      if (!snapshot && item.id) {
-        try {
-          snapshot = await getAdvanceSnapshot(item.id);
-        } catch (e) {
-          console.warn(
-            "Could not load snapshot for publish:",
-            item.id,
-            e
-          );
-        }
-      }
-
-      return snapshot;
-    }
-
-    function buildSnapshotBatches(snapshotEntries) {
-      const batches = [];
-      let current = {};
-
-      for (const entry of snapshotEntries) {
-        const candidate = {
-          ...current,
-          [entry.id]: entry.snapshot
-        };
-
-        const candidatePayload = {
-          action: "publishSnapshots",
-          snapshots: candidate
-        };
-
-        // If the current batch already contains something and adding this
-        // snapshot would cross the target size, finish the current batch.
-        if (
-          Object.keys(current).length &&
-          estimatedBytes(candidatePayload) > MAX_BATCH_BYTES
-        ) {
-          batches.push(current);
-          current = {
-            [entry.id]: entry.snapshot
-          };
-        } else {
-          current = candidate;
-        }
-      }
-
-      if (Object.keys(current).length) {
-        batches.push(current);
-      }
-
-      return batches;
-    }
-
-    publish.onclick = async function() {
-      publish.disabled = true;
-      setStatus("Publishing map and advance metadata...");
-
-      try {
-        const currentFiles = getCurrentGeoJSON();
-        const publishAdvances = advances.map(stripSnapshotData);
-
-        // STEP 1: publish the live map, daily timeline and advances.json.
-        // No large advance snapshot data is included here.
-        await postWorker({
-          action: "publish",
-          files: currentFiles,
-          advances: publishAdvances
-        });
-
-        try {
-          localStorage.setItem(
-            "polrad_editor_data",
-            JSON.stringify(currentFiles)
-          );
-        } catch (e) {
-          console.warn(
-            "Could not update editor cache after publish:",
-            e
-          );
-        }
-
-        // STEP 2: load only snapshots that actually exist locally.
-        const snapshotEntries = [];
-
-        for (const item of advances) {
-          if (!item || !item.id) continue;
-
-          const snapshot = await loadSnapshotForPublish(item);
-
-          // Existing remote advances may not have a local IndexedDB copy.
-          // Leave those untouched on GitHub instead of overwriting them with
-          // null or an empty snapshot.
-          if (snapshot) {
-            snapshotEntries.push({
-              id: item.id,
-              snapshot
-            });
-          }
-        }
-
-        const batches = buildSnapshotBatches(snapshotEntries);
-
-        // STEP 3: upload snapshot batches separately.
-        for (let i = 0; i < batches.length; i++) {
-          setStatus(
-            "Uploading advance snapshots " +
-            (i + 1) +
-            " / " +
-            batches.length +
-            "..."
-          );
-
-          await postWorker({
-            action: "publishSnapshots",
-            snapshots: batches[i]
-          });
-        }
-
-        saveAdvances();
-
-        setStatus(
-          "Published successfully" +
-          (batches.length
-            ? " with " + snapshotEntries.length + " advance snapshot(s)."
-            : ".")
-        );
-
-        alert("Published successfully!");
-      } catch (error) {
-        console.error("Publish failed:", error);
-        setStatus(
-          error && error.message
-            ? error.message
-            : "Publish failed."
-        );
-        alert(
-          "Publish failed.\n\n" +
-          (error && error.message
-            ? error.message
-            : "Unknown error.")
-        );
-      } finally {
-        publish.disabled = false;
-      }
-    };
-  }
-
-  function initAdvanceEditor() {
-    addAdvanceCSS();
-    loadAdvances();
-    createAdvanceUI();
-    ensureAdvanceColors();
-    installAdvancePublish();
-    renderAdvanceHistory();
-
-    // Migrate/load large snapshots only after the UI is already usable.
-    migrateAdvanceSnapshots();
-  }
-
-  /*
-   * The original editor defines all of its functions in the global script.
-   * Wait a little so those definitions and the login UI exist.
-   */
-  if (
-    document.readyState ===
-    "loading"
-  ) {
-    document.addEventListener(
-      "DOMContentLoaded",
-      function() {
-        setTimeout(
-          initAdvanceEditor,
-          150
-        );
-      }
-    );
-  } else {
-    setTimeout(
-      initAdvanceEditor,
-      150
-    );
-  }
+Wait a little so those definitions and the login UI exist.
+*/
+if (
+document.readyState ===
+"loading"
+) {
+document.addEventListener(
+"DOMContentLoaded",
+function() {
+setTimeout(
+initAdvanceEditor,
+150
+);
+}
+);
+} else {
+setTimeout(
+initAdvanceEditor,
+150
+);
+}
 
 })();
 </script>
