@@ -346,6 +346,7 @@
         <button class="btn" id="redo">↷ Redo</button>
         <button class="btn" id="save">Save</button>
         <button class="btn" id="download">Download</button>
+        <button class="btn" id="reloadFromRepo">Reload from repo files</button>
         <button class="btn" id="grayZoneToggle">Show Gray Zone</button>
         <button class="btn" id="grayZoneRecalc">Recalculate Gray Zone</button>
         <button class="btn primary" id="publish">Publish</button>
@@ -417,12 +418,25 @@
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
 
+    /*
+     * FIXED: "Territories Regained" now points at the actual file in the
+     * editor repo's data/ folder. The old value here
+     * ("Territories%20Regained.geojson") 404'd against the real file, which
+     * silently left groups['regained'] empty on every load — and because
+     * Save/Download/Publish serialize straight from `groups`, that empty
+     * state could get written back out as the "current" data.
+     *
+     * IMPORTANT: double-check this filename against whatever you actually
+     * named the file in the EDITOR repo's data/ folder (this is a separate
+     * repo from the public map, so it does not have to match the public
+     * map's filename — it only has to match this one).
+     */
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
-      ["regained", "Territories Regained", "Territories%20Regained.geojson", "#0f9d58"],
+      ["regained", "Territories Regained", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
@@ -1686,9 +1700,23 @@
       if (!document.getElementById("mapSearchBox").contains(e.target)) hideSearchResults();
     });
 
+    /*
+     * FIXED load(): the old version checked localStorage FIRST, and if any
+     * cached save existed, it used that entire cache and returned early —
+     * NEVER falling through to fetch("data/" + c[2]) for any layer, even a
+     * layer whose cached copy was empty because a previous Save/Publish ran
+     * while that layer's fetch was 404'ing (e.g. the earlier "Territories
+     * Regained" filename mismatch).
+     *
+     * This version now reconciles PER LAYER: it still prefers your saved
+     * edits when they exist, but for any layer where the cached
+     * FeatureCollection is empty/missing, it falls back to loading that
+     * layer fresh from the repo file instead of trusting a stale empty
+     * cache. This means a bug like the filename mismatch can no longer
+     * "poison" the cache permanently — reloading the page after fixing the
+     * underlying file/filename is now enough on its own.
+     */
     async function load() {
-      // If the user has clicked Save before, restore that edited map first.
-      // Otherwise load the current GeoJSON files from the repository.
       let savedData = null;
 
       try {
@@ -1700,32 +1728,89 @@
         savedData = null;
       }
 
-      if (savedData) {
-        LAYERS.forEach(function(c) {
-          groups[c[0]] = createGroup(c[0]);
-
-          const featureCollection = savedData[c[1]];
-          if (!featureCollection || !featureCollection.features) return;
-
-          featureCollection.features.forEach(function(feature) {
-            addFeature(feature, c[0]);
-          });
-        });
-
-        saveHistory();
-        renderSidebar();
-        generateGrayZone();
-        setStatus("Loaded your saved changes.");
-        return;
-      }
+      let usedAnyCache = false;
+      let refreshedAnyLayer = false;
 
       for (const c of LAYERS) {
         groups[c[0]] = createGroup(c[0]);
 
+        const cachedFC = savedData && savedData[c[1]];
+        const cachedHasFeatures =
+          cachedFC &&
+          Array.isArray(cachedFC.features) &&
+          cachedFC.features.length > 0;
+
+        let featureCollection = null;
+
+        if (cachedHasFeatures) {
+          featureCollection = cachedFC;
+          usedAnyCache = true;
+        } else {
+          // No cache for this layer, or the cache is empty — load the live
+          // file from the repo instead of trusting an empty cached copy.
+          try {
+            const response = await fetch("data/" + c[2]);
+            const data = await response.json();
+            featureCollection = {
+              type: "FeatureCollection",
+              features: data.features || []
+            };
+            if (savedData) refreshedAnyLayer = true;
+          } catch (error) {
+            setStatus("Could not load " + c[1]);
+            featureCollection = { type: "FeatureCollection", features: [] };
+          }
+        }
+
+        featureCollection.features.forEach(function(feature) {
+          addFeature(feature, c[0]);
+        });
+      }
+
+      saveHistory();
+      renderSidebar();
+      generateGrayZone();
+
+      if (usedAnyCache && refreshedAnyLayer) {
+        setStatus("Loaded your saved changes (one or more empty/missing layers were refreshed from the repo files).");
+      } else if (usedAnyCache) {
+        setStatus("Loaded your saved changes.");
+      } else {
+        setStatus("Loaded from repo files.");
+      }
+    }
+
+    // Manual escape hatch: discard the local cache entirely and reload every
+    // layer straight from the repo files. Use this if you ever suspect the
+    // cached copy is stale/wrong and want a clean reload regardless of the
+    // per-layer reconciliation above.
+    async function reloadFromRepo() {
+      if (!confirm(
+        "This will discard your locally cached edits in this browser and reload every layer fresh from the repo files. " +
+        "Anything not already Published will be lost. Continue?"
+      )) {
+        return;
+      }
+
+      try {
+        localStorage.removeItem("polrad_editor_data");
+      } catch (e) {}
+
+      deselect(false);
+
+      LAYERS.forEach(function(c) {
+        if (groups[c[0]]) {
+          groups[c[0]].clearLayers();
+        }
+      });
+
+      history = [];
+      historyIndex = -1;
+
+      for (const c of LAYERS) {
         try {
           const response = await fetch("data/" + c[2]);
           const data = await response.json();
-
           (data.features || []).forEach(function(feature) {
             addFeature(feature, c[0]);
           });
@@ -1737,6 +1822,7 @@
       saveHistory();
       renderSidebar();
       generateGrayZone();
+      setStatus("Reloaded fresh from repo files.");
     }
 
     async function login() {
@@ -1894,6 +1980,7 @@
     $("redo").onclick = redo;
     $("grayZoneToggle").onclick = toggleGrayZone;
     $("grayZoneRecalc").onclick = recalcGrayZone;
+    $("reloadFromRepo").onclick = reloadFromRepo;
 
     // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
