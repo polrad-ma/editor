@@ -340,6 +340,7 @@
 <div class="tabs">
   <button class="tab active" id="tabTools" type="button">Editor tools</button>
   <button class="tab" id="tabAdvances" type="button">Advances</button>
+  <button class="tab" id="tabTowns" type="button">Towns &amp; Cities</button>
 </div>
 
 <div class="body" id="paneTools">
@@ -403,6 +404,29 @@
   <div id="advanceHistory"></div>
 </div>
 
+<div class="body" id="paneTowns" style="display:none">
+  <b style="font-size:13px">Towns, villages and cities</b>
+  <div class="small" style="margin-top:4px">
+    Edit the PWM towns/cities line layer here. Existing lines are loaded from the published layer.
+  </div>
+
+  <div class="box" style="margin-top:10px">
+    <b style="font-size:13px">Create a line</b>
+    <button class="btn primary" id="drawTownLine">Draw town/city line</button>
+    <div class="advance-row" style="display:flex;gap:5px">
+      <button class="btn" id="finishTownLine" style="display:none">Finish line</button>
+      <button class="btn" id="cancelTownLine" style="display:none">Cancel</button>
+    </div>
+    <div class="small" id="townLineStatus" style="margin-top:5px">Click points along the line, then click Finish line.</div>
+  </div>
+
+  <div class="box">
+    <b style="font-size:13px">Layer</b>
+    <div class="small" style="margin-top:5px">The Towns, villages and cities (credit to PWM) layer is white on the editor and public map.</div>
+    <button class="btn" id="toggleTownLayer">Hide town/city lines</button>
+  </div>
+</div>
+
   </div>
 
   <div id="map"></div>
@@ -429,6 +453,7 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
+      ["towns_pwm", "Towns, villages and cities (credit to PWM)", "neatogeo_Frontline%20towns%20%28from%20PWM%29.geojson", "#ffffff", "line"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
@@ -440,12 +465,16 @@
     let curveDrawing = false;
     let curvePoints = [];
     let curvePreview = null;
+    let townLineDrawing = false;
+    let townLinePoints = [];
+    let townLinePreview = null;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
     const layerOpenState = {};
     // Per-layer visibility on the map (true unless explicitly switched off).
     const layerVisible = {
+      towns_pwm: true,
       deepstate_frontline: false,
       ria_frontline: false
     };
@@ -805,14 +834,17 @@
       if (!c) return;
 
       const isLine = c[4] === "line";
+      const isTownLine = layer._layer === "towns_pwm";
 
       const fillOpacity = isLine ? 0 : 0.4;
+      const normalWeight = isTownLine ? 2.5 : (isLine ? 3 : 2);
+      const selectedWeight = isTownLine ? 4 : (isLine ? 5 : 4);
 
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
         fillOpacity: fillOpacity,
-        weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
+        weight: isSelected ? selectedWeight : normalWeight
       });
     }
 
@@ -1316,7 +1348,142 @@
       layer.redraw();
     }
 
+    function createTownLineLayer(feature, layerId) {
+      const geometry = feature && feature.geometry;
+      if (!geometry || geometry.type !== "LineString" || !Array.isArray(geometry.coordinates)) {
+        return null;
+      }
+
+      const points = geometry.coordinates.map(function(p) {
+        return [Number(p[1]), Number(p[0])];
+      }).filter(function(p) {
+        return Number.isFinite(p[0]) && Number.isFinite(p[1]);
+      });
+
+      if (points.length < 2) return null;
+
+      return L.polyline(points, {
+        color: "#ffffff",
+        weight: 2.5
+      });
+    }
+
+    function updateTownLinePreview() {
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      if (townLinePoints.length < 1) return;
+
+      townLinePreview = L.polyline(
+        townLinePoints.map(function(p) { return [p.lat, p.lng]; }),
+        {
+          color: "#ffffff",
+          weight: 2.5,
+          dashArray: "7 5",
+          interactive: false
+        }
+      ).addTo(map);
+    }
+
+    function startTownLineDrawing() {
+      if (townLineDrawing) return;
+
+      if (layerVisible.towns_pwm === false) {
+        setLayerVisible("towns_pwm", true);
+      }
+
+      deselect(false);
+      drawing = true;
+      townLineDrawing = true;
+      townLinePoints = [];
+
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      $("drawTownLine").style.display = "none";
+      $("finishTownLine").style.display = "inline-block";
+      $("cancelTownLine").style.display = "inline-block";
+      $("townLineStatus").textContent = "Click at least 2 points along the town/city line, then click Finish line.";
+      setStatus("Drawing town/city line...");
+    }
+
+    function finishTownLineDrawing() {
+      if (!townLineDrawing) return;
+
+      if (townLinePoints.length < 2) {
+        alert("A town/city line needs at least 2 points.");
+        return;
+      }
+
+      const points = townLinePoints.map(function(p) {
+        return [p.lat, p.lng];
+      });
+
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      const layer = L.polyline(points, {
+        color: "#ffffff",
+        weight: 2.5
+      });
+
+      layer._layer = "towns_pwm";
+      layer._fid = "town-line-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      layer.feature = {
+        type: "Feature",
+        properties: {
+          Name: "Town/city line " + (groups.towns_pwm.getLayers().length + 1)
+        },
+        geometry: {
+          type: "LineString",
+          coordinates: points.map(function(p) { return [p[1], p[0]]; })
+        }
+      };
+
+      setupPolygon(layer, "towns_pwm");
+      groups.towns_pwm.addLayer(layer);
+
+      saveHistory();
+      renderSidebar();
+      select(layer);
+
+      cancelTownLineDrawing(true);
+      setStatus("Town/city line added.");
+    }
+
+    function cancelTownLineDrawing(finished) {
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      townLinePoints = [];
+      townLineDrawing = false;
+      drawing = false;
+
+      $("drawTownLine").style.display = "block";
+      $("finishTownLine").style.display = "none";
+      $("cancelTownLine").style.display = "none";
+      $("townLineStatus").textContent = finished
+        ? "Town/city line added. Draw another one whenever you want."
+        : "Click points along the line, then click Finish line.";
+    }
+
+    function addTownLineMapPoint(e) {
+      if (!townLineDrawing) return false;
+      townLinePoints.push(e.latlng);
+      updateTownLinePreview();
+      return true;
+    }
+
     function startCurveDrawing() {
+      if (townLineDrawing) cancelTownLineDrawing(false);
       if (curveDrawing) return;
 
       const targetId = $("curveDrawLayer").value;
@@ -1439,7 +1606,9 @@
     function addFeature(feature, layerId) {
       let layer = null;
 
-      if (isLineLayer(layerId)) {
+      if (layerId === "towns_pwm") {
+        layer = createTownLineLayer(feature, layerId);
+      } else if (isLineLayer(layerId)) {
         layer = createCurvedFrontlineLayer(feature, layerId);
       } else {
         layer = L.geoJSON(feature).getLayers()[0];
@@ -1551,6 +1720,13 @@
     function restore(state) {
       deselect(false);
 
+      const preserved = {};
+      const townsLayer = groups.towns_pwm;
+
+      if (townsLayer) {
+        preserved.towns_pwm = getFeatureCollection("towns_pwm");
+      }
+
       LAYERS.forEach(function(c) {
         groups[c[0]].clearLayers();
       });
@@ -1558,11 +1734,18 @@
       LAYERS.forEach(function(c) {
         const featureCollection = state[c[1]];
 
-        if (!featureCollection || !featureCollection.features) return;
+        if (featureCollection && featureCollection.features) {
+          featureCollection.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+          return;
+        }
 
-        featureCollection.features.forEach(function(feature) {
-          addFeature(feature, c[0]);
-        });
+        if (c[0] === "towns_pwm" && preserved.towns_pwm) {
+          preserved.towns_pwm.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+        }
       });
 
       renderSidebar();
@@ -1570,6 +1753,7 @@
     }
 
     function startDrawing() {
+      if (townLineDrawing) cancelTownLineDrawing(false);
       window.polradAdvanceDrawing = false;
       deselect(false);
       drawing = true;
@@ -1931,6 +2115,10 @@
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
         map.on("click", function(event) {
+          if (townLineDrawing) {
+            addTownLineMapPoint(event);
+            return;
+          }
           if (curveDrawing) {
             addCurveMapPoint(event);
             return;
@@ -2001,17 +2189,33 @@
     $("finishCurve").onclick = finishCurveDrawing;
     $("cancelCurve").onclick = function() { cancelCurveDrawing(false); };
 
+    $("drawTownLine").onclick = startTownLineDrawing;
+    $("finishTownLine").onclick = finishTownLineDrawing;
+    $("cancelTownLine").onclick = function() { cancelTownLineDrawing(false); };
+    $("toggleTownLayer").onclick = function() {
+      const visible = layerVisible.towns_pwm !== false;
+      setLayerVisible("towns_pwm", !visible);
+      $("toggleTownLayer").textContent = !visible
+        ? "Hide town/city lines"
+        : "Show town/city lines";
+    };
+
     function showEditorTab(name) {
       const tools = name === "tools";
+      const advances = name === "advances";
+      const towns = name === "towns";
 
       $("paneTools").style.display = tools ? "block" : "none";
-      $("paneAdvances").style.display = tools ? "none" : "block";
+      $("paneAdvances").style.display = advances ? "block" : "none";
+      $("paneTowns").style.display = towns ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
-      $("tabAdvances").classList.toggle("active", !tools);
+      $("tabAdvances").classList.toggle("active", advances);
+      $("tabTowns").classList.toggle("active", towns);
     }
 
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
+    $("tabTowns").onclick = function() { showEditorTab("towns"); };
 
     $("search").oninput = renderSidebar;
 
@@ -4338,3 +4542,4 @@ initAdvanceEditor,
 
 </body>
 </html>
+ ill give the cloudflare on elater
