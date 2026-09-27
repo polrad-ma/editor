@@ -446,6 +446,7 @@
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
+    let editorPassword = "";
 
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
@@ -2105,6 +2106,8 @@
         if (!response.ok || !result.success) {
           throw new Error("Incorrect password.");
         }
+
+        editorPassword = $("password").value;
 
         $("login").style.display = "none";
         $("side").style.display = "block";
@@ -4353,7 +4356,10 @@ async function postWorker(payload) {
     response = await fetch(WORKER, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        password: editorPassword
+      })
     });
   } catch (error) {
     console.error("Worker network error:", error);
