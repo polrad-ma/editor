@@ -1755,8 +1755,9 @@
       setStatus("Redid change.");
     }
 
-    function restore(state) {
+    function restore(state, preserveTowns) {
       deselect(false);
+      preserveTowns = preserveTowns === true;
 
       const preserved = {};
       const townsLayer = groups.towns_pwm;
@@ -1779,7 +1780,7 @@
           return;
         }
 
-        if (c[0] === "towns_pwm" && preserved.towns_pwm) {
+        if (preserveTowns && c[0] === "towns_pwm" && preserved.towns_pwm) {
           preserved.towns_pwm.features.forEach(function(feature) {
             addFeature(feature, c[0]);
           });
@@ -2019,7 +2020,7 @@
 
               if (snapshotResponse.ok) {
                 const latestSnapshot = await snapshotResponse.json();
-                restore(latestSnapshot);
+                restore(latestSnapshot, true);
                 saveHistory();
 
                 setStatus(
@@ -3972,7 +3973,7 @@ async function returnToLatestAdvance() {
     }
 
     saveHistory();
-    restore(snapshot);
+    restore(snapshot, true);
 
     setStatus(
       "Viewing latest advance: " + latest.date + " " + latest.time + "."
@@ -4019,7 +4020,7 @@ async function jumpToAdvance(id) {
     // Put the current map into the normal undo stack before changing the
     // displayed state, so the historical view can be undone if needed.
     saveHistory();
-    restore(snapshot);
+    restore(snapshot, true);
 
     setStatus(
       "Viewing map at advance " + item.date + " " + item.time + ". " +
