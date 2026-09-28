@@ -445,13 +445,12 @@
     <label style="display:block;margin-top:9px">Custom color</label>
     <input id="suriyakColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
     <label style="display:block;margin-top:9px">Circle size</label>
-    <input id="suriyakRadius" type="range" min="2" max="10" step="1" value="3">
-    <span id="suriyakRadiusValue" class="small">3 px</span>
+    <input id="suriyakRadius" type="range" min="2" max="10" step="1" value="5">
+    <span id="suriyakRadiusValue" class="small">5 px</span>
   </div>
 
   <div class="box">
     <button class="btn primary" id="addSuriyakMarker" type="button">Place marker</button>
-    <button class="btn" id="finishSuriyakPlacement" type="button" style="display:none">Finish placement</button>
     <button class="btn" id="toggleSuriyakLayer" type="button">Show marker layer</button>
     <div class="small" id="suriyakStatus" style="margin-top:6px">Choose a color, then click Place marker and click the map.</div>
   </div>
@@ -461,8 +460,8 @@
     <label style="display:block;margin-top:8px">Color</label>
     <input id="suriyakSelectedColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
     <label style="display:block;margin-top:8px">Circle size</label>
-    <input id="suriyakSelectedRadius" type="range" min="2" max="10" step="1" value="3">
-    <span id="suriyakSelectedRadiusValue" class="small">3 px</span>
+    <input id="suriyakSelectedRadius" type="range" min="2" max="10" step="1" value="5">
+    <span id="suriyakSelectedRadiusValue" class="small">5 px</span>
     <button class="btn" id="deleteSuriyakMarker" type="button" style="color:#b3261e">Delete marker</button>
   </div>
 </div>
@@ -513,7 +512,7 @@
     let townLinePreview = null;
     let suriyakDrawing = false;
     let suriyakColor = "#ff0000";
-    let suriyakMarkerRadius = 3;
+    let suriyakMarkerRadius = 5;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
@@ -2330,13 +2329,8 @@
           if (event.target && event.target.closest &&
               event.target.closest(".leaflet-control, #mapSearchBox")) return;
 
-          // Handle placement in the capture phase so clicks on polygons,
-          // towns or other Leaflet layers cannot swallow the placement click.
-          // Stop propagation afterwards so the same click cannot place a
-          // second marker through a layer's own click handler.
           const latlng = map.mouseEventToLatLng(event);
           addSuriyakMarker(latlng);
-          event.stopPropagation();
         }, true);
 
         // Empty map click = deselect.
@@ -2479,20 +2473,15 @@
       if (layerVisible.suriyak_markers === false) setLayerVisible("suriyak_markers", true);
       suriyakDrawing = true;
       drawing = true;
-      $("addSuriyakMarker").textContent = "Placing markers…";
-      $("finishSuriyakPlacement").style.display = "inline-block";
-      $("suriyakStatus").textContent = "Click the map to place multiple markers. Click Finish placement when done.";
+      $("addSuriyakMarker").textContent = "Click the map…";
+      $("suriyakStatus").textContent = "Click the map where the marker should go.";
     }
 
-    function finishSuriyakPlacement() {
+    function cancelSuriyakPlacement() {
       suriyakDrawing = false;
       drawing = false;
       $("addSuriyakMarker").textContent = "Place marker";
-      $("finishSuriyakPlacement").style.display = "none";
-      $("suriyakStatus").textContent = "Choose a color, then click Place marker to place multiple markers.";
-      saveHistory();
-      renderSidebar();
-      setStatus("Finished placing Suriyak town markers.");
+      $("suriyakStatus").textContent = "Choose a color, then click Place marker and click the map.";
     }
 
     function addSuriyakMarker(latlng) {
@@ -2510,9 +2499,11 @@
       };
       addFeature(feature, "suriyak_markers");
       const layer = groups.suriyak_markers.getLayers()[groups.suriyak_markers.getLayers().length - 1];
+      cancelSuriyakPlacement();
+      saveHistory();
       selectSuriyakMarker(layer);
       renderSidebar();
-      setStatus("Suriyak town marker added. Click again to place another, or Finish placement when done.");
+      setStatus("Suriyak town marker added.");
     }
 
 
@@ -2525,7 +2516,6 @@
     $("suriyakSelectedColor").oninput = function() { setSuriyakColor(this.value); };
     $("suriyakSelectedRadius").oninput = function() { updateSuriyakRadius(this.value, true); };
     $("addSuriyakMarker").onclick = startSuriyakMarkerPlacement;
-    $("finishSuriyakPlacement").onclick = finishSuriyakPlacement;
     $("toggleSuriyakLayer").onclick = function() {
       const visible = layerVisible.suriyak_markers !== false;
       setLayerVisible("suriyak_markers", !visible);
