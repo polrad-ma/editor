@@ -341,6 +341,7 @@
   <button class="tab active" id="tabTools" type="button">Editor tools</button>
   <button class="tab" id="tabAdvances" type="button">Advances</button>
   <button class="tab" id="tabTowns" type="button">Towns &amp; Cities</button>
+  <button class="tab" id="tabSuriyak" type="button">Suriyak Markers</button>
 </div>
 
 <div class="body" id="paneTools">
@@ -427,6 +428,45 @@
   </div>
 </div>
 
+<div class="body" id="paneSuriyak" style="display:none">
+  <b style="font-size:13px">Suriyak town markers</b>
+  <div class="small" style="margin-top:4px">
+    Place small colored circles on the map. They are stored in a separate GeoJSON layer and can be edited later.
+  </div>
+
+  <div class="box" style="margin-top:10px">
+    <b style="font-size:13px">Marker color</b>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn" id="suriyakRed" type="button">Red</button>
+      <button class="btn" id="suriyakOrange" type="button">Orange</button>
+      <button class="btn" id="suriyakBlue" type="button">Blue</button>
+      <button class="btn" id="suriyakGreen" type="button">Green</button>
+    </div>
+    <label style="display:block;margin-top:9px">Custom color</label>
+    <input id="suriyakColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
+    <label style="display:block;margin-top:9px">Circle size</label>
+    <input id="suriyakRadius" type="range" min="2" max="10" step="1" value="5">
+    <span id="suriyakRadiusValue" class="small">5 px</span>
+  </div>
+
+  <div class="box">
+    <button class="btn primary" id="addSuriyakMarker" type="button">Place marker</button>
+    <button class="btn" id="toggleSuriyakLayer" type="button">Show marker layer</button>
+    <div class="small" id="suriyakStatus" style="margin-top:6px">Choose a color, then click Place marker and click the map.</div>
+  </div>
+
+  <div class="box" id="suriyakSelectedBox" style="display:none">
+    <b style="font-size:13px">Selected marker</b>
+    <label style="display:block;margin-top:8px">Color</label>
+    <input id="suriyakSelectedColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
+    <label style="display:block;margin-top:8px">Circle size</label>
+    <input id="suriyakSelectedRadius" type="range" min="2" max="10" step="1" value="5">
+    <span id="suriyakSelectedRadiusValue" class="small">5 px</span>
+    <button class="btn" id="deleteSuriyakMarker" type="button" style="color:#b3261e">Delete marker</button>
+  </div>
+</div>
+
+
   </div>
 
   <div id="map"></div>
@@ -455,6 +495,7 @@
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
       ["towns_pwm", "Towns, villages and cities (credit to PWM)", "neatogeo_Frontline%20towns%20%28from%20PWM%29.geojson", "#ffffff"],
+      ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
@@ -469,6 +510,9 @@
     let townLineDrawing = false;
     let townLinePoints = [];
     let townLinePreview = null;
+    let suriyakDrawing = false;
+    let suriyakColor = "#ff0000";
+    let suriyakMarkerRadius = 5;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
@@ -476,6 +520,7 @@
     // Per-layer visibility on the map (true unless explicitly switched off).
     const layerVisible = {
       towns_pwm: false,
+      suriyak_markers: false,
       deepstate_frontline: false,
       ria_frontline: false
     };
@@ -835,11 +880,27 @@
       if (!c) return;
 
       const isLine = c[4] === "line";
+      const isMarkerLayer = c[4] === "marker";
       const isTownLayer = layer._layer === "towns_pwm";
       const geometryType = layer.toGeoJSON().geometry && layer.toGeoJSON().geometry.type;
       const isTownPolygon =
         isTownLayer &&
         (geometryType === "Polygon" || geometryType === "MultiPolygon");
+
+      if (isMarkerLayer) {
+        const markerColor =
+          layer.feature && layer.feature.properties && layer.feature.properties.color
+            ? layer.feature.properties.color
+            : c[3];
+        layer.setStyle({
+          radius: isSelected ? suriyakMarkerRadius + 2 : suriyakMarkerRadius,
+          color: markerColor,
+          fillColor: markerColor,
+          fillOpacity: 1,
+          weight: isSelected ? 2.5 : 1.2
+        });
+        return;
+      }
 
       const fillOpacity = isTownPolygon ? 0 : (isLine ? 0 : 0.4);
       const normalWeight = isTownLayer ? 2.5 : (isLine ? 3 : 2);
@@ -916,17 +977,20 @@
       }
 
       selected = layer;
-      // Curved frontlines are generated from control points rather than
-      // being edited as hundreds of individual generated vertices.
-      // Redraw the curve with the curved-frontline tool instead.
-      if (!layer._curve) {
+      const isSuriyakMarker = layer._layer === "suriyak_markers";
+
+      // Suriyak markers are edited through their dedicated tab, not Geoman.
+      if (!layer._curve && !isSuriyakMarker) {
         layer.pm.enable();
       }
       applyStyle(layer, true);
 
-      $("selectedBox").style.display = "block";
-      $("selectedName").textContent = polygonName(layer);
-      $("selectedLayer").value = layer._layer;
+      $("selectedBox").style.display = isSuriyakMarker ? "none" : "block";
+      $("suriyakSelectedBox").style.display = isSuriyakMarker ? "block" : "none";
+      if (!isSuriyakMarker) {
+        $("selectedName").textContent = polygonName(layer);
+        $("selectedLayer").value = layer._layer;
+      }
       updatePointCount();
 
       renderSidebar();
@@ -944,6 +1008,13 @@
       };
 
       layer.feature.properties = layer.feature.properties || {};
+
+      if (layerId === "suriyak_markers") {
+        layer.on("click", function(event) {
+          L.DomEvent.stopPropagation(event);
+          if (!drawing) selectSuriyakMarker(layer);
+        });
+      }
 
       if (!layer.feature.properties.Name) {
         layer.feature.properties.Name = "New polygon " + polygonCounter++;
@@ -1091,8 +1162,8 @@
       LAYERS.forEach(function(c) {
         const id = c[0];
 
-        // Towns/cities have their own dedicated tab and visibility control.
-        if (id === "towns_pwm") return;
+        // Towns/cities and Suriyak markers have dedicated tabs and controls.
+        if (id === "towns_pwm" || id === "suriyak_markers") return;
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
         const isVisible = layerVisible[id] !== false;
@@ -1245,7 +1316,7 @@
           // The Draw a polygon tool should only target polygon layers.
           // The line layers remain available in Selected Layer so their
           // existing frontline geometry can still be moved between layers.
-          if (selectId === "drawLayer" && c[4] === "line") return;
+          if (selectId === "drawLayer" && (c[4] === "line" || c[4] === "marker" || c[0] === "towns_pwm")) return;
 
           const option = document.createElement("option");
           option.value = c[0];
@@ -1627,6 +1698,31 @@
     }
 
     function addFeature(feature, layerId) {
+      if (layerId === "suriyak_markers") {
+        if (!feature || !feature.geometry || feature.geometry.type !== "Point") return;
+        const coords = feature.geometry.coordinates || [];
+        if (coords.length < 2) return;
+        const props = feature.properties || {};
+        const color = props.color || "#ff0000";
+        const layer = L.circleMarker([Number(coords[1]), Number(coords[0])], {
+          radius: Number(props.radius) || suriyakMarkerRadius,
+          color: color,
+          fillColor: color,
+          fillOpacity: 1,
+          weight: 1.2
+        });
+        layer._layer = layerId;
+        layer._fid = props._fid || ("suriyak-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+        layer.feature = {
+          type: "Feature",
+          properties: Object.assign({}, props, { color: color, radius: Number(props.radius) || suriyakMarkerRadius }),
+          geometry: { type: "Point", coordinates: [Number(coords[0]), Number(coords[1])] }
+        };
+        setupPolygon(layer, layerId);
+        groups[layerId].addLayer(layer);
+        return;
+      }
+
       // The PWM source contains more than simple LineStrings. For that layer,
       // add every child geometry so existing lines AND polygons remain visible.
       if (layerId === "towns_pwm") {
@@ -1943,6 +2039,33 @@
       return PUBLISHED_ROOT + String(path).replace(/^\.\//, "");
     }
 
+
+    async function reloadPublishedPwmTowns(mergeCurrent) {
+      const id = "towns_pwm";
+      if (!groups[id]) groups[id] = createGroup(id);
+      const existing = mergeCurrent ? getFeatureCollection(id).features : [];
+      try {
+        const c = LAYERS.find(function(layer) { return layer[0] === id; });
+        const response = await fetch(publishedPath(c[2]) + "?v=" + Date.now(), { cache: "no-store" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        const merged = [];
+        const seen = new Set();
+        function pushFeature(feature) {
+          const key = JSON.stringify(feature.geometry || feature);
+          if (!seen.has(key)) { seen.add(key); merged.push(feature); }
+        }
+        if (data && Array.isArray(data.features)) data.features.forEach(pushFeature);
+        existing.forEach(pushFeature);
+        groups[id].clearLayers();
+        merged.forEach(function(feature) { addFeature(feature, id); });
+        return merged.length;
+      } catch (error) {
+        console.warn("Could not reload PWM towns layer:", error);
+        return groups[id].getLayers().length;
+      }
+    }
+
     async function load() {
       /*
        * The latest advance snapshot is the editor's source of truth.
@@ -1987,6 +2110,11 @@
 
         // Keep the browser cache as a fallback only. It is never the startup
         // source of truth anymore.
+        // Always re-read the complete PWM source directly. This prevents an old
+        // advance snapshot or browser cache from collapsing the towns layer to
+        // only the one town that was drawn in that snapshot.
+        await reloadPublishedPwmTowns(false);
+
         try {
           localStorage.setItem(
             "polrad_editor_data",
@@ -2043,11 +2171,12 @@
               if (snapshotResponse.ok) {
                 const latestSnapshot = await snapshotResponse.json();
                 restore(latestSnapshot, true);
+                const townCount = await reloadPublishedPwmTowns(true);
                 saveHistory();
 
                 setStatus(
                   "Loaded latest advance: " +
-                  latest.date + " " + latest.time + "."
+                  latest.date + " " + latest.time + ". PWM towns loaded: " + townCount + "."
                 );
                 return;
               }
@@ -2178,6 +2307,10 @@
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
         map.on("click", function(event) {
+          if (suriyakDrawing) {
+            addSuriyakMarker(event.latlng);
+            return;
+          }
           if (townLineDrawing) {
             addTownLineMapPoint(event);
             return;
@@ -2234,6 +2367,9 @@
       if (!selected) return;
 
       groups[selected._layer].removeLayer(selected);
+      if (selected._layer === "suriyak_markers") {
+        $("suriyakSelectedBox").style.display = "none";
+      }
       selected = null;
       $("selectedBox").style.display = "none";
 
@@ -2269,23 +2405,127 @@
     };
 
     updateTownLayerButton();
+    $("toggleSuriyakLayer").textContent = "Show marker layer";
+
+    function setSuriyakColor(color) {
+      suriyakColor = color;
+      $("suriyakColor").value = color;
+      if (selected && selected._layer === "suriyak_markers") {
+        selected.feature.properties.color = color;
+        applyStyle(selected, true);
+        saveHistory();
+        setStatus("Marker color changed.");
+      }
+    }
+
+    function updateSuriyakRadius(value, forSelected) {
+      const radius = Math.max(2, Math.min(10, Number(value) || 5));
+      if (forSelected && selected && selected._layer === "suriyak_markers") {
+        selected.feature.properties.radius = radius;
+        applyStyle(selected, true);
+        $("suriyakSelectedRadiusValue").textContent = radius + " px";
+        saveHistory();
+        setStatus("Marker size changed.");
+      } else {
+        suriyakMarkerRadius = radius;
+        $("suriyakRadiusValue").textContent = radius + " px";
+      }
+    }
+
+    function selectSuriyakMarker(layer) {
+      select(layer);
+      const props = layer.feature.properties || {};
+      const color = props.color || "#ff0000";
+      const radius = Number(props.radius) || 5;
+      $("suriyakSelectedBox").style.display = "block";
+      $("suriyakSelectedColor").value = color;
+      $("suriyakSelectedRadius").value = radius;
+      $("suriyakSelectedRadiusValue").textContent = radius + " px";
+    }
+
+    function startSuriyakMarkerPlacement() {
+      if (suriyakDrawing) return;
+      if (layerVisible.suriyak_markers === false) setLayerVisible("suriyak_markers", true);
+      suriyakDrawing = true;
+      drawing = true;
+      $("addSuriyakMarker").textContent = "Click the map…";
+      $("suriyakStatus").textContent = "Click the map where the marker should go.";
+    }
+
+    function cancelSuriyakPlacement() {
+      suriyakDrawing = false;
+      drawing = false;
+      $("addSuriyakMarker").textContent = "Place marker";
+      $("suriyakStatus").textContent = "Choose a color, then click Place marker and click the map.";
+    }
+
+    function addSuriyakMarker(latlng) {
+      const feature = {
+        type: "Feature",
+        properties: {
+          Name: "Suriyak town marker " + (groups.suriyak_markers.getLayers().length + 1),
+          color: suriyakColor,
+          radius: suriyakMarkerRadius
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [latlng.lng, latlng.lat]
+        }
+      };
+      addFeature(feature, "suriyak_markers");
+      const layer = groups.suriyak_markers.getLayers()[groups.suriyak_markers.getLayers().length - 1];
+      cancelSuriyakPlacement();
+      saveHistory();
+      selectSuriyakMarker(layer);
+      renderSidebar();
+      setStatus("Suriyak town marker added.");
+    }
+
+
+    $("suriyakRed").onclick = function() { setSuriyakColor("#ff0000"); };
+    $("suriyakOrange").onclick = function() { setSuriyakColor("#ff7a00"); };
+    $("suriyakBlue").onclick = function() { setSuriyakColor("#0066ff"); };
+    $("suriyakGreen").onclick = function() { setSuriyakColor("#00a83b"); };
+    $("suriyakColor").oninput = function() { setSuriyakColor(this.value); };
+    $("suriyakRadius").oninput = function() { updateSuriyakRadius(this.value, false); };
+    $("suriyakSelectedColor").oninput = function() { setSuriyakColor(this.value); };
+    $("suriyakSelectedRadius").oninput = function() { updateSuriyakRadius(this.value, true); };
+    $("addSuriyakMarker").onclick = startSuriyakMarkerPlacement;
+    $("toggleSuriyakLayer").onclick = function() {
+      const visible = layerVisible.suriyak_markers !== false;
+      setLayerVisible("suriyak_markers", !visible);
+      $("toggleSuriyakLayer").textContent = visible ? "Show marker layer" : "Hide marker layer";
+    };
+    $("deleteSuriyakMarker").onclick = function() {
+      if (!selected || selected._layer !== "suriyak_markers") return;
+      groups.suriyak_markers.removeLayer(selected);
+      selected = null;
+      $("selectedBox").style.display = "none";
+      $("suriyakSelectedBox").style.display = "none";
+      saveHistory();
+      setStatus("Suriyak town marker deleted.");
+    };
 
     function showEditorTab(name) {
       const tools = name === "tools";
       const advances = name === "advances";
       const towns = name === "towns";
+      const suriyak = name === "suriyak";
 
       $("paneTools").style.display = tools ? "block" : "none";
       $("paneAdvances").style.display = advances ? "block" : "none";
       $("paneTowns").style.display = towns ? "block" : "none";
+      $("paneSuriyak").style.display = suriyak ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
       $("tabAdvances").classList.toggle("active", advances);
       $("tabTowns").classList.toggle("active", towns);
+      $("tabSuriyak").classList.toggle("active", suriyak);
     }
 
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
     $("tabTowns").onclick = function() { showEditorTab("towns"); };
+    $("tabSuriyak").onclick = function() { showEditorTab("suriyak"); };
 
     $("search").oninput = renderSidebar;
 
