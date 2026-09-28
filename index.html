@@ -475,7 +475,7 @@
     const layerOpenState = {};
     // Per-layer visibility on the map (true unless explicitly switched off).
     const layerVisible = {
-      towns_pwm: true,
+      towns_pwm: false,
       deepstate_frontline: false,
       ria_frontline: false
     };
@@ -1774,15 +1774,36 @@
       LAYERS.forEach(function(c) {
         const featureCollection = state[c[1]];
 
-        if (featureCollection && featureCollection.features) {
-          featureCollection.features.forEach(function(feature) {
+        // PWM towns/cities are a base layer. Historical advance snapshots may
+        // contain only the town(s) that existed in that snapshot, so never let
+        // restoring an advance replace the complete current PWM layer.
+        if (c[0] === "towns_pwm") {
+          const base = preserved.towns_pwm && preserved.towns_pwm.features
+            ? preserved.towns_pwm.features
+            : [];
+          const snapshotFeatures = preserveTowns && featureCollection && featureCollection.features
+            ? featureCollection.features
+            : [];
+          const seen = new Set();
+
+          base.forEach(function(feature) {
+            const key = JSON.stringify(feature.geometry || feature);
+            seen.add(key);
             addFeature(feature, c[0]);
+          });
+
+          snapshotFeatures.forEach(function(feature) {
+            const key = JSON.stringify(feature.geometry || feature);
+            if (!seen.has(key)) {
+              seen.add(key);
+              addFeature(feature, c[0]);
+            }
           });
           return;
         }
 
-        if (preserveTowns && c[0] === "towns_pwm" && preserved.towns_pwm) {
-          preserved.towns_pwm.features.forEach(function(feature) {
+        if (featureCollection && featureCollection.features) {
+          featureCollection.features.forEach(function(feature) {
             addFeature(feature, c[0]);
           });
         }
