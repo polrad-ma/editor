@@ -340,6 +340,7 @@
 <div class="tabs">
   <button class="tab active" id="tabTools" type="button">Editor tools</button>
   <button class="tab" id="tabAdvances" type="button">Advances</button>
+  <button class="tab" id="tabTowns" type="button">Towns &amp; Cities</button>
 </div>
 
 <div class="body" id="paneTools">
@@ -403,6 +404,29 @@
   <div id="advanceHistory"></div>
 </div>
 
+<div class="body" id="paneTowns" style="display:none">
+  <b style="font-size:13px">Towns, villages and cities</b>
+  <div class="small" style="margin-top:4px">
+    Edit the PWM towns/cities layer here. Existing lines and polygons are loaded from the published layer.
+  </div>
+
+  <div class="box" style="margin-top:10px">
+    <b style="font-size:13px">Create a line</b>
+    <button class="btn primary" id="drawTownLine">Draw town/city line</button>
+    <div class="advance-row" style="display:flex;gap:5px">
+      <button class="btn" id="finishTownLine" style="display:none">Finish line</button>
+      <button class="btn" id="cancelTownLine" style="display:none">Cancel</button>
+    </div>
+    <div class="small" id="townLineStatus" style="margin-top:5px">Click points along the line, then click Finish line.</div>
+  </div>
+
+  <div class="box">
+    <b style="font-size:13px">Layer</b>
+    <div class="small" style="margin-top:5px">The Towns, villages and cities (credit to PWM) layer is white on the editor and public map.</div>
+    <button class="btn" id="toggleTownLayer">Show town/city layer</button>
+  </div>
+</div>
+
   </div>
 
   <div id="map"></div>
@@ -422,6 +446,7 @@
 
   <script>
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
+    let editorPassword = "";
 
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
@@ -429,7 +454,7 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["towns", "Towns, villages and cities (credit to PWM)", "neatogeo_Frontline%20towns%20(from%20PWM).geojson", "#ffffff"],
+      ["towns_pwm", "Towns, villages and cities (credit to PWM)", "neatogeo_Frontline%20towns%20%28from%20PWM%29.geojson", "#ffffff"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
@@ -441,12 +466,16 @@
     let curveDrawing = false;
     let curvePoints = [];
     let curvePreview = null;
+    let townLineDrawing = false;
+    let townLinePoints = [];
+    let townLinePreview = null;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
     const layerOpenState = {};
     // Per-layer visibility on the map (true unless explicitly switched off).
     const layerVisible = {
+      towns_pwm: true,
       deepstate_frontline: false,
       ria_frontline: false
     };
@@ -806,14 +835,21 @@
       if (!c) return;
 
       const isLine = c[4] === "line";
+      const isTownLayer = layer._layer === "towns_pwm";
+      const geometryType = layer.toGeoJSON().geometry && layer.toGeoJSON().geometry.type;
+      const isTownPolygon =
+        isTownLayer &&
+        (geometryType === "Polygon" || geometryType === "MultiPolygon");
 
-      const fillOpacity = isLine ? 0 : 0.4;
+      const fillOpacity = isTownPolygon ? 0 : (isLine ? 0 : 0.4);
+      const normalWeight = isTownLayer ? 2.5 : (isLine ? 3 : 2);
+      const selectedWeight = isTownLayer ? 4 : (isLine ? 5 : 4);
 
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
         fillOpacity: fillOpacity,
-        weight: isSelected ? (isLine ? 5 : 4) : (isLine ? 3 : 2)
+        weight: isSelected ? selectedWeight : normalWeight
       });
     }
 
@@ -1054,6 +1090,9 @@
 
       LAYERS.forEach(function(c) {
         const id = c[0];
+
+        // Towns/cities have their own dedicated tab and visibility control.
+        if (id === "towns_pwm") return;
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
         const isVisible = layerVisible[id] !== false;
@@ -1317,7 +1356,157 @@
       layer.redraw();
     }
 
+    // PWM's town/city source is not necessarily made only of LineStrings.
+    // It can contain polygons, MultiLineStrings, MultiPolygons, points, etc.
+    // Return every Leaflet child so no geometry from the source layer is lost.
+    function createTownLayers(feature, layerId) {
+      if (!feature || !feature.geometry) return [];
+
+      const geometryType = feature.geometry.type;
+      const polygonLike =
+        geometryType === "Polygon" ||
+        geometryType === "MultiPolygon";
+
+      const geoJsonLayer = L.geoJSON(feature, {
+        style: function() {
+          return {
+            color: "#ffffff",
+            fillColor: "#ffffff",
+            fillOpacity: polygonLike ? 0 : 0,
+            weight: 2.5
+          };
+        },
+        pointToLayer: function(_feature, latlng) {
+          return L.circleMarker(latlng, {
+            radius: 4,
+            color: "#ffffff",
+            fillColor: "#ffffff",
+            fillOpacity: 1,
+            weight: 1.5
+          });
+        }
+      });
+
+      const children = geoJsonLayer.getLayers();
+      return children.length ? children : [];
+    }
+
+    function updateTownLinePreview() {
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      if (townLinePoints.length < 1) return;
+
+      townLinePreview = L.polyline(
+        townLinePoints.map(function(p) { return [p.lat, p.lng]; }),
+        {
+          color: "#ffffff",
+          weight: 2.5,
+          dashArray: "7 5",
+          interactive: false
+        }
+      ).addTo(map);
+    }
+
+    function startTownLineDrawing() {
+      if (townLineDrawing) return;
+
+      if (layerVisible.towns_pwm === false) {
+        setLayerVisible("towns_pwm", true);
+      }
+
+      deselect(false);
+      drawing = true;
+      townLineDrawing = true;
+      townLinePoints = [];
+
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      $("drawTownLine").style.display = "none";
+      $("finishTownLine").style.display = "inline-block";
+      $("cancelTownLine").style.display = "inline-block";
+      $("townLineStatus").textContent = "Click at least 2 points, then click Finish line.";
+      setStatus("Drawing town/city line...");
+    }
+
+    function finishTownLineDrawing() {
+      if (!townLineDrawing) return;
+
+      if (townLinePoints.length < 2) {
+        alert("A town/city line needs at least 2 points.");
+        return;
+      }
+
+      const points = townLinePoints.map(function(p) {
+        return [p.lat, p.lng];
+      });
+
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      const layer = L.polyline(points, {
+        color: "#ffffff",
+        weight: 2.5
+      });
+
+      layer._layer = "towns_pwm";
+      layer._fid = "town-line-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      layer.feature = {
+        type: "Feature",
+        properties: {
+          Name: "Town/city line " + (groups.towns_pwm.getLayers().length + 1)
+        },
+        geometry: {
+          type: "LineString",
+          coordinates: points.map(function(p) { return [p[1], p[0]]; })
+        }
+      };
+
+      setupPolygon(layer, "towns_pwm");
+      groups.towns_pwm.addLayer(layer);
+
+      saveHistory();
+      renderSidebar();
+      select(layer);
+
+      cancelTownLineDrawing(true);
+      setStatus("Town/city line added.");
+    }
+
+    function cancelTownLineDrawing(finished) {
+      if (townLinePreview) {
+        map.removeLayer(townLinePreview);
+        townLinePreview = null;
+      }
+
+      townLinePoints = [];
+      townLineDrawing = false;
+      drawing = false;
+
+      $("drawTownLine").style.display = "block";
+      $("finishTownLine").style.display = "none";
+      $("cancelTownLine").style.display = "none";
+      $("townLineStatus").textContent = finished
+        ? "Town/city line added. Draw another one whenever you want."
+        : "Click points along the line, then click Finish line.";
+    }
+
+    function addTownLineMapPoint(e) {
+      if (!townLineDrawing) return false;
+      townLinePoints.push(e.latlng);
+      updateTownLinePreview();
+      return true;
+    }
+
     function startCurveDrawing() {
+      if (townLineDrawing) cancelTownLineDrawing(false);
       if (curveDrawing) return;
 
       const targetId = $("curveDrawLayer").value;
@@ -1438,6 +1627,24 @@
     }
 
     function addFeature(feature, layerId) {
+      // The PWM source contains more than simple LineStrings. For that layer,
+      // add every child geometry so existing lines AND polygons remain visible.
+      if (layerId === "towns_pwm") {
+        const townLayers = createTownLayers(feature, layerId);
+
+        townLayers.forEach(function(layer) {
+          layer._layer = layerId;
+          layer._fid =
+            "town-" + Date.now() + "-" +
+            Math.random().toString(36).slice(2);
+          layer.feature = feature;
+          setupPolygon(layer, layerId);
+          groups[layerId].addLayer(layer);
+        });
+
+        return;
+      }
+
       let layer = null;
 
       if (isLineLayer(layerId)) {
@@ -1549,38 +1756,16 @@
       setStatus("Redid change.");
     }
 
-    function restore(state, options) {
+    function restore(state, preserveTowns) {
       deselect(false);
+      preserveTowns = preserveTowns === true;
 
-      const preserveLayerIds =
-        options && Array.isArray(options.preserveLayerIds)
-          ? options.preserveLayerIds
-          : [];
-
-      // Some layers are live/reference layers rather than timeline state.
-      // Keep their current contents when jumping to an advance snapshot.
       const preserved = {};
+      const townsLayer = groups.towns_pwm;
 
-      preserveLayerIds.forEach(function(layerId) {
-        const c = config(layerId);
-        const group = groups[layerId];
-
-        if (!c || !group) return;
-
-        preserved[layerId] = {
-          type: "FeatureCollection",
-          features: group.getLayers().map(function(layer) {
-            const feature = layer.toGeoJSON();
-            feature.properties = Object.assign(
-              {},
-              layer.feature && layer.feature.properties
-                ? layer.feature.properties
-                : {}
-            );
-            return feature;
-          })
-        };
-      });
+      if (townsLayer) {
+        preserved.towns_pwm = getFeatureCollection("towns_pwm");
+      }
 
       LAYERS.forEach(function(c) {
         groups[c[0]].clearLayers();
@@ -1589,24 +1774,18 @@
       LAYERS.forEach(function(c) {
         const featureCollection = state[c[1]];
 
-        if (!featureCollection || !featureCollection.features) return;
+        if (featureCollection && featureCollection.features) {
+          featureCollection.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+          return;
+        }
 
-        featureCollection.features.forEach(function(feature) {
-          addFeature(feature, c[0]);
-        });
-      });
-
-      // Restore live/reference layers after the historical snapshot.
-      preserveLayerIds.forEach(function(layerId) {
-        const c = config(layerId);
-        const featureCollection = preserved[layerId];
-
-        if (!c || !featureCollection) return;
-
-        groups[layerId].clearLayers();
-        featureCollection.features.forEach(function(feature) {
-          addFeature(feature, layerId);
-        });
+        if (preserveTowns && c[0] === "towns_pwm" && preserved.towns_pwm) {
+          preserved.towns_pwm.features.forEach(function(feature) {
+            addFeature(feature, c[0]);
+          });
+        }
       });
 
       renderSidebar();
@@ -1614,6 +1793,7 @@
     }
 
     function startDrawing() {
+      if (townLineDrawing) cancelTownLineDrawing(false);
       window.polradAdvanceDrawing = false;
       deselect(false);
       drawing = true;
@@ -1841,7 +2021,7 @@
 
               if (snapshotResponse.ok) {
                 const latestSnapshot = await snapshotResponse.json();
-                restore(latestSnapshot, { preserveLayerIds: ["towns"] });
+                restore(latestSnapshot, true);
                 saveHistory();
 
                 setStatus(
@@ -1927,6 +2107,8 @@
           throw new Error("Incorrect password.");
         }
 
+        editorPassword = $("password").value;
+
         $("login").style.display = "none";
         $("side").style.display = "block";
 
@@ -1975,6 +2157,10 @@
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
         map.on("click", function(event) {
+          if (townLineDrawing) {
+            addTownLineMapPoint(event);
+            return;
+          }
           if (curveDrawing) {
             addCurveMapPoint(event);
             return;
@@ -2045,17 +2231,40 @@
     $("finishCurve").onclick = finishCurveDrawing;
     $("cancelCurve").onclick = function() { cancelCurveDrawing(false); };
 
+    $("drawTownLine").onclick = startTownLineDrawing;
+    $("finishTownLine").onclick = finishTownLineDrawing;
+    $("cancelTownLine").onclick = function() { cancelTownLineDrawing(false); };
+    function updateTownLayerButton() {
+      $("toggleTownLayer").textContent =
+        layerVisible.towns_pwm !== false
+          ? "Hide town/city layer"
+          : "Show town/city layer";
+    }
+
+    $("toggleTownLayer").onclick = function() {
+      const visible = layerVisible.towns_pwm !== false;
+      setLayerVisible("towns_pwm", !visible);
+      updateTownLayerButton();
+    };
+
+    updateTownLayerButton();
+
     function showEditorTab(name) {
       const tools = name === "tools";
+      const advances = name === "advances";
+      const towns = name === "towns";
 
       $("paneTools").style.display = tools ? "block" : "none";
-      $("paneAdvances").style.display = tools ? "none" : "block";
+      $("paneAdvances").style.display = advances ? "block" : "none";
+      $("paneTowns").style.display = towns ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
-      $("tabAdvances").classList.toggle("active", !tools);
+      $("tabAdvances").classList.toggle("active", advances);
+      $("tabTowns").classList.toggle("active", towns);
     }
 
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
+    $("tabTowns").onclick = function() { showEditorTab("towns"); };
 
     $("search").oninput = renderSidebar;
 
@@ -3767,7 +3976,7 @@ async function returnToLatestAdvance() {
     }
 
     saveHistory();
-    restore(snapshot, { preserveLayerIds: ["towns"] });
+    restore(snapshot, true);
 
     setStatus(
       "Viewing latest advance: " + latest.date + " " + latest.time + "."
@@ -3814,7 +4023,7 @@ async function jumpToAdvance(id) {
     // Put the current map into the normal undo stack before changing the
     // displayed state, so the historical view can be undone if needed.
     saveHistory();
-    restore(snapshot, { preserveLayerIds: ["towns"] });
+    restore(snapshot, true);
 
     setStatus(
       "Viewing map at advance " + item.date + " " + item.time + ". " +
@@ -4147,7 +4356,10 @@ async function postWorker(payload) {
     response = await fetch(WORKER, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        password: editorPassword
+      })
     });
   } catch (error) {
     console.error("Worker network error:", error);
@@ -4382,3 +4594,4 @@ initAdvanceEditor,
 
 </body>
 </html>
+ ill give the cloudflare on elater
