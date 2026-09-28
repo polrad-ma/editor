@@ -894,10 +894,10 @@
             : c[3];
         layer.setStyle({
           radius: isSelected ? suriyakMarkerRadius + 2 : suriyakMarkerRadius,
-          color: markerColor,
+          color: "#ffffff",
           fillColor: markerColor,
           fillOpacity: 1,
-          weight: isSelected ? 2.5 : 1.2
+          weight: isSelected ? 2.5 : 1.5
         });
         return;
       }
@@ -1023,6 +1023,15 @@
       applyStyle(layer);
 
       layer.on("click", function(event) {
+        // A polygon/line can consume the click before it reaches the map.
+        // While placing a Suriyak marker, use that click as the placement
+        // point as well. This makes placement work over every map layer.
+        if (suriyakDrawing) {
+          L.DomEvent.stopPropagation(event);
+          addSuriyakMarker(event.latlng);
+          return;
+        }
+
         L.DomEvent.stopPropagation(event);
 
         if (!drawing) {
@@ -1706,10 +1715,11 @@
         const color = props.color || "#ff0000";
         const layer = L.circleMarker([Number(coords[1]), Number(coords[0])], {
           radius: Number(props.radius) || suriyakMarkerRadius,
-          color: color,
+          color: "#ffffff",
           fillColor: color,
           fillOpacity: 1,
-          weight: 1.2
+          weight: 1.5,
+          pane: "suriyakMarkersPane"
         });
         layer._layer = layerId;
         layer._fid = props._fid || ("suriyak-" + Date.now() + "-" + Math.random().toString(36).slice(2));
@@ -2267,6 +2277,11 @@
           zoom: 7
         });
 
+        // Keep Suriyak markers above the territory/town polygons, matching
+        // the small coloured dots used on the public map.
+        map.createPane("suriyakMarkersPane");
+        map.getPane("suriyakMarkersPane").style.zIndex = 650;
+
         const satellite = L.tileLayer(
           "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
           { attribution: "Tiles © Esri" }
@@ -2304,13 +2319,23 @@
           "OpenTopoMap": topo
         }).addTo(map);
 
+        // Suriyak placement must also work when the user clicks directly on
+        // top of an existing territory/town polygon. Leaflet normally sends
+        // that click to the polygon first, which can stop propagation before
+        // the map's click handler receives it. Capture the DOM click first so
+        // placement works anywhere on the map.
+        map.getContainer().addEventListener("click", function(event) {
+          if (!suriyakDrawing) return;
+          if (event.target && event.target.closest &&
+              event.target.closest(".leaflet-control, #mapSearchBox")) return;
+
+          const latlng = map.mouseEventToLatLng(event);
+          addSuriyakMarker(latlng);
+        }, true);
+
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
         map.on("click", function(event) {
-          if (suriyakDrawing) {
-            addSuriyakMarker(event.latlng);
-            return;
-          }
           if (townLineDrawing) {
             addTownLineMapPoint(event);
             return;
