@@ -340,7 +340,6 @@
 <div class="tabs">
   <button class="tab active" id="tabTools" type="button">Editor tools</button>
   <button class="tab" id="tabAdvances" type="button">Advances</button>
-  <button class="tab" id="tabTowns" type="button">Towns &amp; Cities</button>
   <button class="tab" id="tabSuriyak" type="button">Suriyak Markers</button>
 </div>
 
@@ -403,29 +402,6 @@
     Saved advance updates. New advances are created in the Editor tools tab.
   </div>
   <div id="advanceHistory"></div>
-</div>
-
-<div class="body" id="paneTowns" style="display:none">
-  <b style="font-size:13px">Towns, villages and cities</b>
-  <div class="small" style="margin-top:4px">
-    Edit the PWM towns/cities layer here. Existing lines and polygons are loaded from the published layer.
-  </div>
-
-  <div class="box" style="margin-top:10px">
-    <b style="font-size:13px">Create a line</b>
-    <button class="btn primary" id="drawTownLine">Draw town/city line</button>
-    <div class="advance-row" style="display:flex;gap:5px">
-      <button class="btn" id="finishTownLine" style="display:none">Finish line</button>
-      <button class="btn" id="cancelTownLine" style="display:none">Cancel</button>
-    </div>
-    <div class="small" id="townLineStatus" style="margin-top:5px">Click points along the line, then click Finish line.</div>
-  </div>
-
-  <div class="box">
-    <b style="font-size:13px">Layer</b>
-    <div class="small" style="margin-top:5px">The Towns, villages and cities (credit to PWM) layer is white on the editor and public map.</div>
-    <button class="btn" id="toggleTownLayer">Show town/city layer</button>
-  </div>
 </div>
 
 <div class="body" id="paneSuriyak" style="display:none">
@@ -495,7 +471,6 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["towns_pwm", "Towns, villages and cities (credit to PWM)", "neatogeo_Frontline%20towns%20%28from%20PWM%29.geojson", "#ffffff"],
       ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"],
       ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
@@ -508,9 +483,6 @@
     let curveDrawing = false;
     let curvePoints = [];
     let curvePreview = null;
-    let townLineDrawing = false;
-    let townLinePoints = [];
-    let townLinePreview = null;
     let suriyakDrawing = false;
     let suriyakColor = "#ff0000";
     let suriyakMarkerRadius = 5;
@@ -520,7 +492,6 @@
     const layerOpenState = {};
     // Per-layer visibility on the map (true unless explicitly switched off).
     const layerVisible = {
-      towns_pwm: false,
       suriyak_markers: false,
       deepstate_frontline: false,
       ria_frontline: false
@@ -882,12 +853,6 @@
 
       const isLine = c[4] === "line";
       const isMarkerLayer = c[4] === "marker";
-      const isTownLayer = layer._layer === "towns_pwm";
-      const geometryType = layer.toGeoJSON().geometry && layer.toGeoJSON().geometry.type;
-      const isTownPolygon =
-        isTownLayer &&
-        (geometryType === "Polygon" || geometryType === "MultiPolygon");
-
       if (isMarkerLayer) {
         const markerColor =
           layer.feature && layer.feature.properties && layer.feature.properties.color
@@ -903,9 +868,9 @@
         return;
       }
 
-      const fillOpacity = isTownPolygon ? 0 : (isLine ? 0 : 0.4);
-      const normalWeight = isTownLayer ? 2.5 : (isLine ? 3 : 2);
-      const selectedWeight = isTownLayer ? 4 : (isLine ? 5 : 4);
+      const fillOpacity = isLine ? 0 : 0.4;
+      const normalWeight = isLine ? 3 : 2;
+      const selectedWeight = isLine ? 5 : 4;
 
       layer.setStyle({
         color: c[3],
@@ -1024,9 +989,8 @@
       applyStyle(layer);
 
       layer.on("click", function(event) {
-        // A polygon/line can consume the click before it reaches the map.
-        // While placing a Suriyak marker, use that click as the placement
-        // point as well. This makes placement work over every map layer.
+        // During Suriyak placement, polygons/lines are never selectable.
+        // Their click is used only as the marker placement point.
         if (suriyakDrawing) {
           L.DomEvent.stopPropagation(event);
           addSuriyakMarker(event.latlng);
@@ -1172,8 +1136,8 @@
       LAYERS.forEach(function(c) {
         const id = c[0];
 
-        // Towns/cities and Suriyak markers have dedicated tabs and controls.
-        if (id === "towns_pwm" || id === "suriyak_markers") return;
+        // Suriyak markers have a dedicated tab and controls.
+        if (id === "suriyak_markers") return;
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
         const isVisible = layerVisible[id] !== false;
@@ -1326,7 +1290,7 @@
           // The Draw a polygon tool should only target polygon layers.
           // The line layers remain available in Selected Layer so their
           // existing frontline geometry can still be moved between layers.
-          if (selectId === "drawLayer" && (c[4] === "line" || c[4] === "marker" || c[0] === "towns_pwm")) return;
+          if (selectId === "drawLayer" && (c[4] === "line" || c[4] === "marker")) return;
 
           const option = document.createElement("option");
           option.value = c[0];
@@ -1437,157 +1401,7 @@
       layer.redraw();
     }
 
-    // PWM's town/city source is not necessarily made only of LineStrings.
-    // It can contain polygons, MultiLineStrings, MultiPolygons, points, etc.
-    // Return every Leaflet child so no geometry from the source layer is lost.
-    function createTownLayers(feature, layerId) {
-      if (!feature || !feature.geometry) return [];
-
-      const geometryType = feature.geometry.type;
-      const polygonLike =
-        geometryType === "Polygon" ||
-        geometryType === "MultiPolygon";
-
-      const geoJsonLayer = L.geoJSON(feature, {
-        style: function() {
-          return {
-            color: "#ffffff",
-            fillColor: "#ffffff",
-            fillOpacity: polygonLike ? 0 : 0,
-            weight: 2.5
-          };
-        },
-        pointToLayer: function(_feature, latlng) {
-          return L.circleMarker(latlng, {
-            radius: 4,
-            color: "#ffffff",
-            fillColor: "#ffffff",
-            fillOpacity: 1,
-            weight: 1.5
-          });
-        }
-      });
-
-      const children = geoJsonLayer.getLayers();
-      return children.length ? children : [];
-    }
-
-    function updateTownLinePreview() {
-      if (townLinePreview) {
-        map.removeLayer(townLinePreview);
-        townLinePreview = null;
-      }
-
-      if (townLinePoints.length < 1) return;
-
-      townLinePreview = L.polyline(
-        townLinePoints.map(function(p) { return [p.lat, p.lng]; }),
-        {
-          color: "#ffffff",
-          weight: 2.5,
-          dashArray: "7 5",
-          interactive: false
-        }
-      ).addTo(map);
-    }
-
-    function startTownLineDrawing() {
-      if (townLineDrawing) return;
-
-      if (layerVisible.towns_pwm === false) {
-        setLayerVisible("towns_pwm", true);
-      }
-
-      deselect(false);
-      drawing = true;
-      townLineDrawing = true;
-      townLinePoints = [];
-
-      if (townLinePreview) {
-        map.removeLayer(townLinePreview);
-        townLinePreview = null;
-      }
-
-      $("drawTownLine").style.display = "none";
-      $("finishTownLine").style.display = "inline-block";
-      $("cancelTownLine").style.display = "inline-block";
-      $("townLineStatus").textContent = "Click at least 2 points, then click Finish line.";
-      setStatus("Drawing town/city line...");
-    }
-
-    function finishTownLineDrawing() {
-      if (!townLineDrawing) return;
-
-      if (townLinePoints.length < 2) {
-        alert("A town/city line needs at least 2 points.");
-        return;
-      }
-
-      const points = townLinePoints.map(function(p) {
-        return [p.lat, p.lng];
-      });
-
-      if (townLinePreview) {
-        map.removeLayer(townLinePreview);
-        townLinePreview = null;
-      }
-
-      const layer = L.polyline(points, {
-        color: "#ffffff",
-        weight: 2.5
-      });
-
-      layer._layer = "towns_pwm";
-      layer._fid = "town-line-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-      layer.feature = {
-        type: "Feature",
-        properties: {
-          Name: "Town/city line " + (groups.towns_pwm.getLayers().length + 1)
-        },
-        geometry: {
-          type: "LineString",
-          coordinates: points.map(function(p) { return [p[1], p[0]]; })
-        }
-      };
-
-      setupPolygon(layer, "towns_pwm");
-      groups.towns_pwm.addLayer(layer);
-
-      saveHistory();
-      renderSidebar();
-      select(layer);
-
-      cancelTownLineDrawing(true);
-      setStatus("Town/city line added.");
-    }
-
-    function cancelTownLineDrawing(finished) {
-      if (townLinePreview) {
-        map.removeLayer(townLinePreview);
-        townLinePreview = null;
-      }
-
-      townLinePoints = [];
-      townLineDrawing = false;
-      drawing = false;
-
-      $("drawTownLine").style.display = "block";
-      $("finishTownLine").style.display = "none";
-      $("cancelTownLine").style.display = "none";
-      $("townLineStatus").textContent = finished
-        ? "Town/city line added. Draw another one whenever you want."
-        : "Click points along the line, then click Finish line.";
-    }
-
-    function addTownLineMapPoint(e) {
-      if (!townLineDrawing) return false;
-      townLinePoints.push(e.latlng);
-      updateTownLinePreview();
-      return true;
-    }
-
     function startCurveDrawing() {
-      if (townLineDrawing) cancelTownLineDrawing(false);
       if (curveDrawing) return;
 
       const targetId = $("curveDrawLayer").value;
@@ -1734,24 +1548,6 @@
         return;
       }
 
-      // The PWM source contains more than simple LineStrings. For that layer,
-      // add every child geometry so existing lines AND polygons remain visible.
-      if (layerId === "towns_pwm") {
-        const townLayers = createTownLayers(feature, layerId);
-
-        townLayers.forEach(function(layer) {
-          layer._layer = layerId;
-          layer._fid =
-            "town-" + Date.now() + "-" +
-            Math.random().toString(36).slice(2);
-          layer.feature = feature;
-          setupPolygon(layer, layerId);
-          groups[layerId].addLayer(layer);
-        });
-
-        return;
-      }
-
       let layer = null;
 
       if (isLineLayer(layerId)) {
@@ -1867,47 +1663,12 @@
       deselect(false);
       preserveTowns = preserveTowns === true;
 
-      const preserved = {};
-      const townsLayer = groups.towns_pwm;
-
-      if (townsLayer) {
-        preserved.towns_pwm = getFeatureCollection("towns_pwm");
-      }
-
       LAYERS.forEach(function(c) {
         groups[c[0]].clearLayers();
       });
 
       LAYERS.forEach(function(c) {
         const featureCollection = state[c[1]];
-
-        // PWM towns/cities are a base layer. Historical advance snapshots may
-        // contain only the town(s) that existed in that snapshot, so never let
-        // restoring an advance replace the complete current PWM layer.
-        if (c[0] === "towns_pwm") {
-          const base = preserved.towns_pwm && preserved.towns_pwm.features
-            ? preserved.towns_pwm.features
-            : [];
-          const snapshotFeatures = preserveTowns && featureCollection && featureCollection.features
-            ? featureCollection.features
-            : [];
-          const seen = new Set();
-
-          base.forEach(function(feature) {
-            const key = JSON.stringify(feature.geometry || feature);
-            seen.add(key);
-            addFeature(feature, c[0]);
-          });
-
-          snapshotFeatures.forEach(function(feature) {
-            const key = JSON.stringify(feature.geometry || feature);
-            if (!seen.has(key)) {
-              seen.add(key);
-              addFeature(feature, c[0]);
-            }
-          });
-          return;
-        }
 
         if (featureCollection && featureCollection.features) {
           featureCollection.features.forEach(function(feature) {
@@ -1921,7 +1682,6 @@
     }
 
     function startDrawing() {
-      if (townLineDrawing) cancelTownLineDrawing(false);
       window.polradAdvanceDrawing = false;
       deselect(false);
       drawing = true;
@@ -2051,32 +1811,6 @@
     }
 
 
-    async function reloadPublishedPwmTowns(mergeCurrent) {
-      const id = "towns_pwm";
-      if (!groups[id]) groups[id] = createGroup(id);
-      const existing = mergeCurrent ? getFeatureCollection(id).features : [];
-      try {
-        const c = LAYERS.find(function(layer) { return layer[0] === id; });
-        const response = await fetch(publishedPath(c[2]) + "?v=" + Date.now(), { cache: "no-store" });
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        const data = await response.json();
-        const merged = [];
-        const seen = new Set();
-        function pushFeature(feature) {
-          const key = JSON.stringify(feature.geometry || feature);
-          if (!seen.has(key)) { seen.add(key); merged.push(feature); }
-        }
-        if (data && Array.isArray(data.features)) data.features.forEach(pushFeature);
-        existing.forEach(pushFeature);
-        groups[id].clearLayers();
-        merged.forEach(function(feature) { addFeature(feature, id); });
-        return merged.length;
-      } catch (error) {
-        console.warn("Could not reload PWM towns layer:", error);
-        return groups[id].getLayers().length;
-      }
-    }
-
     async function load() {
       /*
        * The latest advance snapshot is the editor's source of truth.
@@ -2121,11 +1855,6 @@
 
         // Keep the browser cache as a fallback only. It is never the startup
         // source of truth anymore.
-        // Always re-read the complete PWM source directly. This prevents an old
-        // advance snapshot or browser cache from collapsing the towns layer to
-        // only the one town that was drawn in that snapshot.
-        await reloadPublishedPwmTowns(false);
-
         try {
           localStorage.setItem(
             "polrad_editor_data",
@@ -2182,12 +1911,11 @@
               if (snapshotResponse.ok) {
                 const latestSnapshot = await snapshotResponse.json();
                 restore(latestSnapshot, true);
-                const townCount = await reloadPublishedPwmTowns(true);
                 saveHistory();
 
                 setStatus(
                   "Loaded latest advance: " +
-                  latest.date + " " + latest.time + ". PWM towns loaded: " + townCount + "."
+                  latest.date + " " + latest.time + "."
                 );
                 return;
               }
@@ -2288,17 +2016,18 @@
           { attribution: "Tiles © Esri" }
         );
 
-        // CARTO label-only layer over Esri satellite imagery.
-        const cartoLabels = L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+        // Esri's own reference/labels layer over Esri satellite imagery.
+        // This is the default editor basemap.
+        const esriLabels = L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
           {
-            subdomains: "abcd",
-            attribution: "© CARTO © OpenStreetMap contributors",
-            pane: "overlayPane"
+            attribution: "Labels © Esri",
+            pane: "overlayPane",
+            opacity: 1
           }
         );
 
-        const esriCartoHybrid = L.layerGroup([satellite, cartoLabels]);
+        const esriSatelliteLabels = L.layerGroup([satellite, esriLabels]);
 
         const osm = L.tileLayer(
           "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -2310,11 +2039,11 @@
           { attribution: "© OpenTopoMap" }
         );
 
-        // Esri satellite + CARTO labels is the default basemap.
-        esriCartoHybrid.addTo(map);
+        // Esri satellite + Esri labels is the default basemap.
+        esriSatelliteLabels.addTo(map);
 
         L.control.layers({
-          "Esri + CARTO Labels": esriCartoHybrid,
+          "Esri Satellite + Esri Labels": esriSatelliteLabels,
           "Esri Satellite": satellite,
           "OpenStreetMap": osm,
           "OpenTopoMap": topo
@@ -2383,10 +2112,6 @@
         // Empty map click = deselect.
         // Editing vertex interactions are temporarily ignored above.
         map.on("click", function(event) {
-          if (townLineDrawing) {
-            addTownLineMapPoint(event);
-            return;
-          }
           if (curveDrawing) {
             addCurveMapPoint(event);
             return;
@@ -2460,25 +2185,6 @@
     $("finishCurve").onclick = finishCurveDrawing;
     $("cancelCurve").onclick = function() { cancelCurveDrawing(false); };
 
-    $("drawTownLine").onclick = startTownLineDrawing;
-    $("finishTownLine").onclick = finishTownLineDrawing;
-    $("cancelTownLine").onclick = function() { cancelTownLineDrawing(false); };
-    function updateTownLayerButton() {
-      $("toggleTownLayer").textContent =
-        layerVisible.towns_pwm !== false
-          ? "Hide town/city layer"
-          : "Show town/city layer";
-    }
-
-    $("toggleTownLayer").onclick = function() {
-      const visible = layerVisible.towns_pwm !== false;
-      setLayerVisible("towns_pwm", !visible);
-      updateTownLayerButton();
-    };
-
-    updateTownLayerButton();
-    $("toggleSuriyakLayer").textContent = "Show marker layer";
-
     function setSuriyakColor(color) {
       suriyakColor = color;
       $("suriyakColor").value = color;
@@ -2550,10 +2256,11 @@
         }
       };
       addFeature(feature, "suriyak_markers");
-      const layer = groups.suriyak_markers.getLayers()[groups.suriyak_markers.getLayers().length - 1];
-      selectSuriyakMarker(layer);
+      // Stay in continuous placement mode. Newly placed markers are not
+      // selected, so clicking repeatedly only places markers until Finish
+      // placement is pressed.
       renderSidebar();
-      setStatus("Suriyak town marker added. Click again to place another, or Finish placement when done.");
+      setStatus("Suriyak town marker added. Keep clicking to place more, or Finish placement when done.");
     }
 
 
@@ -2585,22 +2292,18 @@
     function showEditorTab(name) {
       const tools = name === "tools";
       const advances = name === "advances";
-      const towns = name === "towns";
       const suriyak = name === "suriyak";
 
       $("paneTools").style.display = tools ? "block" : "none";
       $("paneAdvances").style.display = advances ? "block" : "none";
-      $("paneTowns").style.display = towns ? "block" : "none";
       $("paneSuriyak").style.display = suriyak ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
       $("tabAdvances").classList.toggle("active", advances);
-      $("tabTowns").classList.toggle("active", towns);
       $("tabSuriyak").classList.toggle("active", suriyak);
     }
 
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
-    $("tabTowns").onclick = function() { showEditorTab("towns"); };
     $("tabSuriyak").onclick = function() { showEditorTab("suriyak"); };
 
     $("search").oninput = renderSidebar;
