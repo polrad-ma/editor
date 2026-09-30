@@ -4380,10 +4380,9 @@ if (publish.dataset.advancePublishInstalled === "1") return;
 
 publish.dataset.advancePublishInstalled = "1";
 
-// Keep a generous margin below Cloudflare's request-body limit.
-// JS strings are UTF-16, so multiplying by 2 deliberately overestimates
-// the UTF-8 payload size in most cases.
-const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+// Keep a generous margin below request limits. The estimate deliberately
+// overestimates UTF-8 size because JavaScript strings use UTF-16 internally.
+const MAX_BATCH_BYTES = 3 * 1024 * 1024;
 
 function estimatedBytes(value) {
   return JSON.stringify(value).length * 2;
@@ -4396,10 +4395,9 @@ async function postWorker(payload) {
     response = await fetch(WORKER, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload,
+      body: JSON.stringify(Object.assign({}, payload, {
         password: editorPassword
-      })
+      }))
     });
   } catch (error) {
     console.error("Worker network error:", error);
@@ -4407,19 +4405,20 @@ async function postWorker(payload) {
       "Could not connect to the Cloudflare Worker.\n\n" +
       "Worker URL: " + WORKER + "\n\n" +
       "Browser error: " +
-      (error && error.message ? error.message : String(error)) +
-      "\n\n" +
-      "Make sure the Worker is deployed and that its URL matches the editor."
+      (error && error.message ? error.message : String(error))
     );
   }
 
   let result;
+  const responseText = await response.text();
+
   try {
-    result = await response.json();
+    result = JSON.parse(responseText);
   } catch (e) {
     throw new Error(
-      "The publishing server returned an invalid response (HTTP " +
-      response.status + ")."
+      "The publishing server returned invalid JSON (HTTP " +
+      response.status + ").\n\n" +
+      responseText.slice(0, 500)
     );
   }
 
@@ -4434,21 +4433,22 @@ async function postWorker(payload) {
 }
 
 async function loadSnapshotForPublish(item) {
-  let snapshot = item.snapshotData || null;
+  if (!item || !item.id) return null;
 
-  if (!snapshot && item.id) {
-    try {
-      snapshot = await getAdvanceSnapshot(item.id);
-    } catch (e) {
-      console.warn(
-        "Could not load snapshot for publish:",
-        item.id,
-        e
-      );
+  // Newly-created/edited advances keep their snapshot in memory first.
+  if (item.snapshotData) return item.snapshotData;
+
+  try {
+    const local = await getAdvanceSnapshot(item.id);
+    if (local) {
+      item.snapshotData = local;
+      return local;
     }
+  } catch (error) {
+    console.warn("Could not load local snapshot for publish:", item.id, error);
   }
 
-  return snapshot;
+  return null;
 }
 
 function buildSnapshotBatches(snapshotEntries) {
@@ -4456,53 +4456,103 @@ function buildSnapshotBatches(snapshotEntries) {
   let current = {};
 
   for (const entry of snapshotEntries) {
-    const candidate = {
-      ...current,
-      [entry.id]: entry.snapshot
+    const single = {
+      action: "publishSnapshots",
+      snapshots: { [entry.id]: entry.snapshot }
     };
+
+    // A single snapshot larger than the normal batch target must still be
+    // sent by itself. The Worker will handle it normally.
+    if (!Object.keys(current).length && estimatedBytes(single) > MAX_BATCH_BYTES) {
+      batches.push({ [entry.id]: entry.snapshot });
+      continue;
+    }
+
+    const candidate = Object.assign({}, current, {
+      [entry.id]: entry.snapshot
+    });
 
     const candidatePayload = {
       action: "publishSnapshots",
       snapshots: candidate
     };
 
-    // If the current batch already contains something and adding this
-    // snapshot would cross the target size, finish the current batch.
     if (
       Object.keys(current).length &&
       estimatedBytes(candidatePayload) > MAX_BATCH_BYTES
     ) {
       batches.push(current);
-      current = {
-        [entry.id]: entry.snapshot
-      };
+      current = { [entry.id]: entry.snapshot };
     } else {
       current = candidate;
     }
   }
 
-  if (Object.keys(current).length) {
-    batches.push(current);
-  }
-
+  if (Object.keys(current).length) batches.push(current);
   return batches;
 }
 
 publish.onclick = async function() {
   publish.disabled = true;
-  setStatus("Publishing map and advance metadata...");
 
   try {
     const currentFiles = getCurrentGeoJSON();
+
+    // Load every locally available snapshot before touching advances.json.
+    // This is intentional: metadata is published LAST, so the public map
+    // never points at a brand-new advance whose snapshot was not uploaded.
+    const snapshotEntries = [];
+
+    for (const item of advances) {
+      if (!item || !item.id) continue;
+
+      const snapshot = await loadSnapshotForPublish(item);
+      if (snapshot) {
+        snapshotEntries.push({
+          id: item.id,
+          snapshot: snapshot
+        });
+      }
+    }
+
+    const batches = buildSnapshotBatches(snapshotEntries);
+
+    // STEP 1: publish all advance snapshots first.
+    for (let i = 0; i < batches.length; i++) {
+      setStatus(
+        "Uploading advance snapshots " +
+        (i + 1) + " / " + batches.length + "..."
+      );
+
+      const result = await postWorker({
+        action: "publishSnapshots",
+        snapshots: batches[i]
+      });
+
+      if (!result.files || !result.files.length) {
+        throw new Error(
+          "The Worker reported a successful snapshot upload but returned no files."
+        );
+      }
+    }
+
+    // STEP 2: publish the live map AND advances.json only after every local
+    // snapshot upload succeeded.
+    setStatus("Publishing map and advance metadata...");
+
     const publishAdvances = advances.map(stripSnapshotData);
 
-    // STEP 1: publish the live map, daily timeline and advances.json.
-    // No large advance snapshot data is included here.
-    await postWorker({
+    const publishResult = await postWorker({
       action: "publish",
       files: currentFiles,
       advances: publishAdvances
     });
+
+    if (!publishResult.files || publishResult.files.indexOf("advances.json") === -1) {
+      throw new Error(
+        "The Worker did not confirm that advances.json was published."
+      );
+    }
 
     try {
       localStorage.setItem(
@@ -4510,59 +4560,23 @@ publish.onclick = async function() {
         JSON.stringify(currentFiles)
       );
     } catch (e) {
-      console.warn(
-        "Could not update editor cache after publish:",
-        e
-      );
-    }
-
-    // STEP 2: load only snapshots that actually exist locally.
-    const snapshotEntries = [];
-
-    for (const item of advances) {
-      if (!item || !item.id) continue;
-
-      const snapshot = await loadSnapshotForPublish(item);
-
-      // Existing remote advances may not have a local IndexedDB copy.
-      // Leave those untouched on GitHub instead of overwriting them with
-      // null or an empty snapshot.
-      if (snapshot) {
-        snapshotEntries.push({
-          id: item.id,
-          snapshot
-        });
-      }
-    }
-
-    const batches = buildSnapshotBatches(snapshotEntries);
-
-    // STEP 3: upload snapshot batches separately.
-    for (let i = 0; i < batches.length; i++) {
-      setStatus(
-        "Uploading advance snapshots " +
-        (i + 1) +
-        " / " +
-        batches.length +
-        "..."
-      );
-
-      await postWorker({
-        action: "publishSnapshots",
-        snapshots: batches[i]
-      });
+      console.warn("Could not update editor cache after publish:", e);
     }
 
     saveAdvances();
 
     setStatus(
-      "Published successfully" +
-      (batches.length
-        ? " with " + snapshotEntries.length + " advance snapshot(s)."
-        : ".")
+      "Published successfully. " +
+      snapshotEntries.length +
+      " advance snapshot(s) uploaded and advances.json updated."
     );
 
-    alert("Published successfully!");
+    alert(
+      "Published successfully!\n\n" +
+      snapshotEntries.length +
+      " advance snapshot(s) uploaded.\n" +
+      "advances.json updated."
+    );
   } catch (error) {
     console.error("Publish failed:", error);
     setStatus(
@@ -4582,7 +4596,6 @@ publish.onclick = async function() {
 };
 
 }
-
 function initAdvanceEditor() {
 addAdvanceCSS();
 loadAdvances();
