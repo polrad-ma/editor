@@ -490,14 +490,13 @@
     let history = [];
     let historyIndex = -1;
     const layerOpenState = {};
-    // Per-layer visibility on the map (true unless explicitly switched off).
+
     const layerVisible = {
       suriyak_markers: false,
       deepstate_frontline: false,
       ria_frontline: false
     };
 
-    // Create a layer group; it is only added to the map if its layer is visible.
     function createGroup(id) {
       const group = L.featureGroup();
       if (layerVisible[id] !== false) group.addTo(map);
@@ -505,9 +504,8 @@
     }
     let hoveredSidebarLayer = null;
 
-    // Gray Zone is generated automatically from the current Russian-controlled
-    // and Ukrainian-controlled/regained geometry. It is kept separate from
-    // the editable polygon layers so it can be toggled on/off for checking.
+
+
     let grayZoneLayer = null;
     let grayZoneVisible = false;
     let grayZoneData = null;
@@ -568,7 +566,7 @@
             result = turf.union(turf.featureCollection([result, feature]));
           }
         } catch (e) {
-          // Skip an invalid/problematic feature rather than breaking the editor.
+
         }
       });
 
@@ -584,7 +582,7 @@
         try {
           result = turf.union(turf.featureCollection([result, parts[i]]));
         } catch (e) {
-          // Keep the previous result if a union fails on one part.
+
         }
       }
 
@@ -604,19 +602,18 @@
             turf.featureCollection([result, cutter])
           );
         } catch (e) {
-          // Keep the previous result if a boolean operation fails.
+
         }
       });
 
       return result;
     }
 
-    // Buffer with few arc steps, then simplify. Buffering a big polygon with
-    // the default settings adds a rounded arc of many points at every corner,
-    // which is what made the gray zone's curved edges consist of thousands of
-    // points. The buffers only define the OUTER limit of the corridor, so a
-    // small simplification tolerance (~300 m) is harmless here; the exact
-    // territory edges are subtracted afterwards and are never simplified.
+
+
+
+
+
     function lightBuffer(feature, km) {
       const buffered = turf.buffer(feature, km, { units: "kilometers", steps: 4 });
       if (!buffered) return null;
@@ -629,19 +626,19 @@
     }
 
     function generateGrayZone() {
-      // The gray zone is the free space between the current Russian-controlled
-      // and Ukrainian-controlled/regained polygons.
-      //
-      // We calculate it locally from the actual edited geometries. Because there
-      // is no meaningful "gray zone" outside the mapped front area, the result
-      // is restricted to a narrow corridor around the contact area.
-      //
-      // Both sides' "advances" layers are treated as claimed/contested ground
-      // too, so they are folded into each side's controlled area. That keeps
-      // the generated gray zone from overlapping the advance arrows/polygons.
-      //
-      // IMPORTANT: This is a derived/display layer only. It is never added to
-      // LAYERS and therefore cannot overwrite your editable GeoJSON layers.
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       grayZoneData = null;
 
@@ -692,11 +689,10 @@
           return null;
         }
 
-        // Build a corridor around both sides. The exact free space is then
-        // obtained by subtracting the controlled areas (territory + advances)
-        // from that corridor. 15 km gives enough room for normal front-line
-        // gaps without creating a huge gray area across unrelated parts of
-        // Ukraine.
+
+
+
+
         const ruBuffer = lightBuffer(ruUnion, 15);
         const uaBuffer = lightBuffer(uaUnion, 15);
 
@@ -705,8 +701,7 @@
           return null;
         }
 
-        // Keep only the overlap of the two 15 km influence zones. This means
-        // the result exists only where the two sides are actually close.
+
         const corridor = turf.intersect(
           turf.featureCollection([ruBuffer, uaBuffer])
         );
@@ -716,8 +711,7 @@
           return null;
         }
 
-        // Subtract BOTH sides' controlled area, which now includes their
-        // advances, so the gray zone never overlaps an advance polygon.
+
         let gray = differenceFeatures(corridor, [ruUnion, uaUnion]);
 
         if (gray) {
@@ -755,7 +749,6 @@
         interactive: false
       }).addTo(map);
 
-      // Keep the gray zone underneath the editable territory polygons.
       grayZoneLayer.eachLayer(function(layer) {
         if (layer.bringToBack) layer.bringToBack();
       });
@@ -780,10 +773,9 @@
       }
     }
 
-    // Manual recalculation, since the automatic recompute-on-every-edit-event
-    // path can lag behind or misfire during multi-step edits (dragging several
-    // vertices, moving polygons between layers, etc). Clicking this always
-    // regenerates from whatever is on the map right now.
+
+
+
     function recalcGrayZone() {
       generateGrayZone();
 
@@ -794,8 +786,7 @@
       }
     }
 
-    // Prevent a Geoman vertex interaction from immediately triggering
-    // the map's empty-space deselection handler.
+
     let ignoreNextMapClick = false;
     let ignoreMapClickTimer = null;
 
@@ -819,7 +810,6 @@
       $("status").textContent = text;
     }
 
-    // Number of vertices in a layer's geometry.
     function countPoints(layer) {
       let n = 0;
 
@@ -889,9 +879,8 @@
       }, 300);
     }
 
-    // NOTE: the parameter used to be called "renderSidebar", which shadowed the
-    // renderSidebar() function and made it crash ("renderSidebar is not a
-    // function") whenever deselect() was called with the default value.
+
+
     function deselect(shouldRender = true) {
       if (selected) {
         selected.pm.disable();
@@ -906,7 +895,6 @@
       }
     }
 
-    // Show/hide a whole layer on the map.
     function setLayerVisible(id, visible) {
       layerVisible[id] = visible;
 
@@ -916,7 +904,7 @@
         if (visible) {
           if (!map.hasLayer(group)) map.addLayer(group);
         } else {
-          // Can't keep editing a polygon that is being hidden.
+
           if (selected && selected._layer === id) {
             deselect(false);
           }
@@ -931,8 +919,7 @@
     function select(layer) {
       if (!layer || drawing) return;
 
-      // Selecting a polygon from the sidebar while its layer is hidden
-      // switches that layer back on.
+
       if (layerVisible[layer._layer] === false) {
         setLayerVisible(layer._layer, true);
       }
@@ -945,7 +932,6 @@
       selected = layer;
       const isSuriyakMarker = layer._layer === "suriyak_markers";
 
-      // Suriyak markers are edited through their dedicated tab, not Geoman.
       if (!layer._curve && !isSuriyakMarker) {
         layer.pm.enable();
       }
@@ -989,8 +975,8 @@
       applyStyle(layer);
 
       layer.on("click", function(event) {
-        // During Suriyak placement, polygons/lines are never selectable.
-        // Their click is used only as the marker placement point.
+
+
         if (suriyakDrawing) {
           L.DomEvent.stopPropagation(event);
           addSuriyakMarker(event.latlng);
@@ -1004,7 +990,6 @@
         }
       });
 
-      // Keep the polygon selected while editing vertices.
       layer.on("pm:vertexadded", function() {
         if (layer === selected) {
           suppressNextMapClick();
@@ -1080,7 +1065,6 @@
         return;
       }
 
-      // Don't let a polygon vanish into a hidden layer.
       if (layerVisible[targetId] === false) {
         layerVisible[targetId] = true;
         if (map && !map.hasLayer(groups[targetId])) {
@@ -1136,7 +1120,6 @@
       LAYERS.forEach(function(c) {
         const id = c[0];
 
-        // Suriyak markers have a dedicated tab and controls.
         if (id === "suriyak_markers") return;
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
@@ -1153,7 +1136,6 @@
         arrow.className = "arrow";
         arrow.textContent = "▸";
 
-        // Visibility checkbox: show/hide the whole layer on the map.
         const visibility = document.createElement("input");
         visibility.type = "checkbox";
         visibility.className = "vis";
@@ -1213,12 +1195,10 @@
 
             item.append(grip, text);
 
-            // Normal click selects the polygon.
             item.onclick = function() {
               select(layer);
             };
 
-            // Highlight this exact polygon on the map while hovering its name.
             item.onmouseenter = function() {
               highlightSidebarPolygon(layer);
             };
@@ -1227,7 +1207,6 @@
               unhighlightSidebarPolygon(layer);
             };
 
-            // Drag the sidebar item onto another layer header to move it.
             item.ondragstart = function(event) {
               if (drawing) {
                 event.preventDefault();
@@ -1287,9 +1266,9 @@
         selectElement.innerHTML = "";
 
         LAYERS.forEach(function(c) {
-          // The Draw a polygon tool should only target polygon layers.
-          // The line layers remain available in Selected Layer so their
-          // existing frontline geometry can still be moved between layers.
+
+
+
           if (selectId === "drawLayer" && (c[4] === "line" || c[4] === "marker")) return;
 
           const option = document.createElement("option");
@@ -1300,12 +1279,7 @@
       });
     }
 
-    /* ---------------------------------------------------------
-       CURVED FRONTLINES
-       Based on the War Map Sandbox Catmull-Rom implementation.
-       The user clicks a small number of control points; the editor
-       generates the smooth LineString automatically.
-    --------------------------------------------------------- */
+    
     function makeCurve(points) {
       if (!points || points.length < 2) return points || [];
       if (points.length === 2) return points;
@@ -1558,17 +1532,15 @@
 
       if (!layer) return;
 
-      // Keep the complete original properties object.
       layer.feature = feature;
       setupPolygon(layer, layerId);
       groups[layerId].addLayer(layer);
     }
 
-    // Convert the ACTUAL current Leaflet polygons into valid GeoJSON, WITHOUT
-    // touching the Gray Zone. This is what the undo/redo history stack uses:
-    // restore() never reads the "Gray Zone" key, so there is no reason for
-    // every single edit to pay for a fresh union/buffer/intersect/difference
-    // pass.
+
+
+
+
     function getEditableGeoJSON() {
       const result = {};
 
@@ -1597,16 +1569,14 @@
       return result;
     }
 
-    // Same as above, but also (re)computes the derived Gray Zone layer.
-    // This is the expensive version: only call it where the Gray Zone
-    // output is actually needed (Save / Download / Publish), not on every
-    // edit event.
+
+
+
     function getCurrentGeoJSON() {
       const result = getEditableGeoJSON();
 
-      // Gray Zone is derived from the current edited geometry.
-      // It is included in the published package but is not part of the
-      // editable LAYERS list.
+
+
       generateGrayZone();
 
       if (grayZoneData) {
@@ -1628,8 +1598,7 @@
     function saveHistory() {
       const snap = snapshot();
 
-      // Do not create a huge number of identical history states while
-      // Geoman fires several edit-related events.
+
       const previous = history[history.length - 1];
       if (previous && JSON.stringify(previous) === JSON.stringify(snap)) {
         return;
@@ -1686,7 +1655,6 @@
       deselect(false);
       drawing = true;
 
-      // Drawing into a hidden layer would make the new polygon invisible.
       const target = $("drawLayer").value;
       if (layerVisible[target] === false) {
         setLayerVisible(target, true);
@@ -1706,9 +1674,8 @@
       setStatus("Drawing polygon...");
     }
 
-    // Set to true by the Advance editor while it is drawing an advance polygon,
-    // so this general handler does not ALSO add the same polygon to the
-    // "New polygon layer" chosen in the Draw polygon box.
+
+
     window.polradAdvanceDrawing = false;
 
     function polygonCreated(event) {
@@ -1739,7 +1706,6 @@
       setStatus("New polygon added to " + config(targetId)[1] + ".");
     }
 
-    // Map search
     const searchInput = document.getElementById("mapSearch");
     const searchResults = document.getElementById("mapSearchResults");
     let searchMarker = null;
@@ -1812,14 +1778,7 @@
 
 
     async function load() {
-      /*
-       * The latest advance snapshot is the editor's source of truth.
-       *
-       * Do NOT restore polrad_editor_data on startup: that can be an old
-       * browser copy. First load the current published GeoJSON so the editor
-       * has a valid fallback, then load advances.json and, when available,
-       * restore the newest published advance snapshot.
-       */
+      
       let remoteLoaded = false;
       const remoteData = {};
       const cacheBust = Date.now();
@@ -1853,8 +1812,7 @@
           });
         });
 
-        // Keep the browser cache as a fallback only. It is never the startup
-        // source of truth anymore.
+
         try {
           localStorage.setItem(
             "polrad_editor_data",
@@ -1864,13 +1822,7 @@
           console.warn("Could not update editor cache:", storageError);
         }
 
-        /*
-         * IMPORTANT: default to the NEWEST ADVANCE SNAPSHOT.
-         *
-         * The live data files can be older than the latest saved advance.
-         * advances.json tells us which snapshot is newest, so load that
-         * snapshot directly instead of assuming the live GeoJSON is latest.
-         */
+        
         try {
           const advancesResponse = await fetch(
             publishedPath("advances.json") + "?v=" + cacheBust,
@@ -1928,8 +1880,7 @@
           );
         }
 
-        // If there is no usable advance snapshot, use the current published
-        // GeoJSON as the fallback.
+
         saveHistory();
         renderSidebar();
         generateGrayZone();
@@ -1937,8 +1888,7 @@
         return;
       }
 
-      // Only use localStorage when the published map files themselves cannot
-      // be reached at all.
+
       let savedData = null;
       try {
         const saved = localStorage.getItem("polrad_editor_data");
@@ -2006,8 +1956,7 @@
           zoom: 7
         });
 
-        // Keep Suriyak markers above the territory/town polygons, matching
-        // the small coloured dots used on the public map.
+
         map.createPane("suriyakMarkersPane");
         map.getPane("suriyakMarkersPane").style.zIndex = 650;
 
@@ -2016,8 +1965,7 @@
           { attribution: "Tiles © Esri" }
         );
 
-        // Esri's own reference/labels layer over Esri satellite imagery.
-        // This is the default editor basemap.
+
         const esriLabels = L.tileLayer(
           "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
           {
@@ -2039,7 +1987,6 @@
           { attribution: "© OpenTopoMap" }
         );
 
-        // Esri satellite + Esri labels is the default basemap.
         esriSatelliteLabels.addTo(map);
 
         L.control.layers({
@@ -2049,15 +1996,14 @@
           "OpenTopoMap": topo
         }).addTo(map);
 
-        // Suriyak placement must also work when the user clicks directly on
-        // top of an existing territory/town polygon. Leaflet normally sends
-        // that click to the polygon first, which can stop propagation before
-        // the map's click handler receives it. Capture the DOM click first so
-        // placement works anywhere on the map.
-        //
-        // IMPORTANT: do NOT place a marker after a map drag. Browsers fire a
-        // click event after a pointer is released, even when the pointer was
-        // moved to pan the map. Track pointer movement and ignore that click.
+
+
+
+
+
+
+
+
         let suriyakPointerStart = null;
         let suriyakPointerDragged = false;
         const mapContainer = map.getContainer();
@@ -2089,7 +2035,6 @@
           if (event.target && event.target.closest &&
               event.target.closest(".leaflet-control, #mapSearchBox")) return;
 
-          // A drag/pan must never create a marker.
           if (suriyakPointerDragged) {
             suriyakPointerStart = null;
             suriyakPointerDragged = false;
@@ -2100,17 +2045,15 @@
           suriyakPointerStart = null;
           suriyakPointerDragged = false;
 
-          // Handle placement in the capture phase so clicks on polygons,
-          // towns or other Leaflet layers cannot swallow the placement click.
-          // Stop propagation afterwards so the same click cannot place a
-          // second marker through a layer's own click handler.
+
+
+
           const latlng = map.mouseEventToLatLng(event);
           addSuriyakMarker(latlng);
           event.stopPropagation();
         }, true);
 
-        // Empty map click = deselect.
-        // Editing vertex interactions are temporarily ignored above.
+
         map.on("click", function(event) {
           if (curveDrawing) {
             addCurveMapPoint(event);
@@ -2256,9 +2199,9 @@
         }
       };
       addFeature(feature, "suriyak_markers");
-      // Stay in continuous placement mode. Newly placed markers are not
-      // selected, so clicking repeatedly only places markers until Finish
-      // placement is pressed.
+
+
+
       renderSidebar();
       setStatus("Suriyak town marker added. Keep clicking to place more, or Finish placement when done.");
     }
@@ -2313,7 +2256,6 @@
     $("grayZoneToggle").onclick = toggleGrayZone;
     $("grayZoneRecalc").onclick = recalcGrayZone;
 
-    // SAVE = save the CURRENT edited geometry in this browser.
     $("save").onclick = function() {
       localStorage.setItem(
         "polrad_editor_data",
@@ -2340,8 +2282,7 @@
       URL.revokeObjectURL(url);
     };
 
-    // PUBLISH = send the CURRENT edited geometry as proper GeoJSON
-    // FeatureCollections to the Cloudflare Worker.
+
     $("publish").onclick = async function() {
       setStatus("Publishing...");
 
@@ -2365,7 +2306,6 @@
           throw new Error(result.error || "Publish failed");
         }
 
-        // Keep the editor's local saved copy in sync with what was published.
         localStorage.setItem(
           "polrad_editor_data",
           JSON.stringify(currentFiles)
@@ -2380,18 +2320,14 @@
   </script>
 
 <script>
-/* =========================================================
-   POLRAD ADVANCE EDITOR
-   Fully embedded in this HTML — no second JS file needed.
-   ========================================================= */
+
 (function () {
   "use strict";
 
   const ADVANCE_STORAGE_KEY = "polrad_editor_advances";
 
-  // Same-side territory that an advance polygon must NOT overlap.
-  // An advance is, by definition, ground gained OUTSIDE the territory the
-  // side already controlled, so anything inside these layers is trimmed off.
+
+
   const ADVANCE_TERRITORY = {
     ru_advances: ["ru_territory"],
     ua_advances: ["ua_territory", "regained"]
@@ -2403,8 +2339,7 @@
   let advanceState = {
     active: false,
     side: "ru",
-    type: "normal",          // "normal" or "gray"
-    before: null,
+    type: "normal",    before: null,
     focus: null,
     createdFids: [],
     lastEffects: null
@@ -2551,11 +2486,7 @@
     document.head.appendChild(style);
   }
 
-  /* ---------------------------------------------------------
-     ADVANCE SNAPSHOT STORAGE
-     Keep history metadata in localStorage, but keep large map snapshots
-     in IndexedDB so saving an advance cannot fill the localStorage quota.
-     --------------------------------------------------------- */
+  
   const ADVANCE_DB_NAME = "polrad_editor_advance_db";
   const ADVANCE_DB_VERSION = 1;
   const ADVANCE_SNAPSHOT_STORE = "snapshots";
@@ -2652,20 +2583,14 @@
     return clean;
   }
 
-  /*
-   * Load history SYNCHRONOUSLY first.  This is intentional: the editor UI
-   * must never wait for IndexedDB before the Create Advance button appears.
-   * Old history entries are kept exactly as they are while their snapshots
-   * are migrated in the background.
-   */
+  
   function loadAdvances() {
     try {
       const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
       advances = Array.isArray(parsed) ? parsed : [];
 
-      // Migrate old single-language entries. New entries always keep both
-      // English and Russian descriptions.
+
       advances.forEach(function(item) {
         if (!item || typeof item !== "object") return;
         if (!item.text_en && item.text) item.text_en = item.text;
@@ -2696,11 +2621,7 @@
     }
   }
 
-  /*
-   * Move old large snapshotData entries into IndexedDB without delaying
-   * creation of the Advance UI. If migration fails, the old snapshot stays
-   * in memory so the user does not lose it.
-   */
+  
   async function migrateAdvanceSnapshots() {
     for (const item of advances.slice()) {
       if (!item || !item.id || !item.snapshotData) continue;
@@ -2718,7 +2639,6 @@
       }
     }
 
-    // Load snapshots which were already stored in IndexedDB.
     for (const item of advances) {
       if (!item || !item.id || item.snapshotData) continue;
       try {
@@ -2747,12 +2667,7 @@
     });
   }
 
-  /* ---------------------------------------------------------
-     OVERLAP TRIMMING
-     Removes from an advance polygon any part that lies inside
-     the same side's already-controlled territory, so advances
-     and territory never overlap.
-     --------------------------------------------------------- */
+  
 
   function territoryUnionFor(advanceLayerId) {
     const ids = ADVANCE_TERRITORY[advanceLayerId] || [];
@@ -2782,7 +2697,6 @@
     return unionAll(parts);
   }
 
-  // Returns "unchanged", "trimmed" or "removed".
   function trimAdvanceToTerritory(layer) {
     if (!layer || !layer._layer) return "unchanged";
 
@@ -2806,7 +2720,6 @@
       return "unchanged";
     }
 
-    // Nothing left: the whole polygon was inside existing territory.
     if (!result) {
       const groupId = layer._layer;
 
@@ -2829,7 +2742,6 @@
       afterArea = turf.area(result);
     } catch (e) {}
 
-    // Less than 1 m² difference = no real overlap.
     if (Math.abs(beforeArea - afterArea) < 1) {
       return "unchanged";
     }
@@ -2853,8 +2765,7 @@
     return "trimmed";
   }
 
-  // Trims every advance polygon created during the current advance.
-  // Returns a short human-readable summary (or "").
+
   function trimCreatedAdvances() {
     let trimmed = 0;
     let removed = 0;
@@ -2891,11 +2802,10 @@
 
   const ADVANCE_LAYER_IDS = ["ru_advances", "ua_advances"];
 
-  // An advance polygon carries a "_advanceId" property. If a polygon with
-  // that property sits in a NON-advance layer (e.g. Russian-controlled
-  // territory), it is an accidental duplicate of an advance, created when
-  // the normal draw handler and the advance handler both ran on the same
-  // drawn shape. Remove those copies (also from saved advance snapshots).
+
+
+
+
   function removeStrayAdvanceCopies() {
     let removed = 0;
     let snapshotsCleaned = 0;
@@ -2914,9 +2824,8 @@
 
         groups[id].removeLayer(layer);
 
-        // The very same polygon object may also belong to its real advance
-        // layer; removing it from the wrong group took it off the map, so
-        // put it back.
+
+
         const home = layer._layer;
         if (home !== id && groups[home] && groups[home].hasLayer(layer)) {
           groups[home].addLayer(layer);
@@ -2951,9 +2860,8 @@
     return { removed: removed, snapshotsCleaned: snapshotsCleaned };
   }
 
-  // Manual tool: 1) remove accidental advance copies from other layers,
-  // 2) trim ALL polygons in both advance layers against their side's
-  // territory (useful to clean up advances drawn earlier).
+
+
   function trimAllAdvances() {
     if (!groups) return;
 
@@ -3024,7 +2932,7 @@
           turf.featureCollection([result, features[i]])
         );
       } catch (e) {
-        // If a union fails, continue with the accumulated geometry.
+
       }
     }
 
@@ -3197,8 +3105,7 @@
     };
   }
 
-  // Layer colors used while editing advances. Russian advances use #ffd600;
-  // Ukrainian advances stay blue.
+
   function ensureAdvanceColors() {
     const ru = config("ru_advances");
     const ua = config("ua_advances");
@@ -3218,7 +3125,6 @@
       });
     }
 
-    // Refresh the sidebar swatches with the new colors.
     if (typeof renderSidebar === "function" && groups && groups.ru_advances) {
       renderSidebar();
     }
@@ -3348,12 +3254,10 @@ A("advanceFocusClear").onclick = function() {
 A("advanceSave").onclick = saveAdvance;
 A("advanceCancel").onclick = cancelAdvance;
 
-// Suggest a matching color when the side changes (you can still override it).
 A("advanceSide").onchange = function() {
   A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red";
 };
 
-// Re-draw the area preview when the color changes.
 A("advanceColor").onchange = renderAreaPreview;
 
 renderAdvanceHistory();
@@ -3444,7 +3348,6 @@ if (!groups[layerId]) {
   return;
 }
 
-// Make sure the target layer is visible so the new polygon can be seen.
 if (typeof setLayerVisible === "function" && layerVisible[layerId] === false) {
   setLayerVisible(layerId, true);
 }
@@ -3470,8 +3373,7 @@ setAdvanceStatus(
 function onCreate(event) {
   map.off("pm:create", onCreate);
 
-  // If the user switched to the normal Draw tool meanwhile, this polygon
-  // belongs to that tool, not to the advance.
+
   if (!window.polradAdvanceDrawing) return;
   window.polradAdvanceDrawing = false;
 
@@ -3506,7 +3408,6 @@ function onCreate(event) {
   setupPolygon(layer, layerId);
   groups[layerId].addLayer(layer);
 
-  // Cut away any part that lies inside the side's existing territory.
   const trimResult = trimAdvanceToTerritory(layer);
 
   if (trimResult === "removed") {
@@ -3542,9 +3443,7 @@ map.on("pm:create", onCreate);
 
 }
 
-/* ---------------------------------------------------------
-ADVANCE TYPE POPUP
---------------------------------------------------------- */
+
 function chooseAdvanceType() {
 return new Promise(function(resolve) {
 const sideName  = advanceState.side === "ru" ? "Russian" : "Ukrainian";
@@ -3582,7 +3481,6 @@ const otherName = advanceState.side === "ru" ? "Ukrainian" : "Russian";
 
 }
 
-// Area (km²) of the advance polygons created during this advance.
 function createdPolygonsAreaKm2() {
 let total = 0;
 
@@ -3596,8 +3494,7 @@ return total / 1000000;
 
 }
 
-// normal: + area of the new polygon(s), for the advancing side
-// gray:   - area lost by the OTHER side (its controlled area shrank)
+
 function computeAdvanceEffects() {
 if (advanceState.type === "gray") {
 const other = advanceState.side === "ru" ? "ua" : "ru";
@@ -3636,7 +3533,7 @@ async function finishAdvance() {
 if (!advanceState.active) return;
 
 const type = await chooseAdvanceType();
-if (!type) return;               // cancelled: stay in advance mode
+if (!type) return;
 
 advanceState.type = type;
 
@@ -3645,16 +3542,14 @@ if (!advanceState.focus) {
   return;
 }
 
-// Only a normal advance polygon needs trimming against own territory.
 const trimNote = type === "normal" ? trimCreatedAdvances() : "";
 
 generateGrayZone();
 
 advanceState.lastEffects = computeAdvanceEffects();
 
-// Gray zone expansion: text uses the color of the side that LOSES control
-// (Russia advances -> Ukraine loses -> blue; Ukraine advances -> red).
-// Normal advance: color of the advancing side.
+
+
 const losingIsBlue = advanceState.side === "ru";
 A("advanceColor").value =
   type === "gray"
@@ -3730,7 +3625,6 @@ try {
     beforeAreas: advanceState.before
   };
 
-  // Save the large snapshot first.
   await putAdvanceSnapshot(id, snapshot);
 
   advances.push(item);
@@ -3741,11 +3635,9 @@ try {
     throw new Error("The advance could not be saved to browser storage.");
   }
 
-  // Keep the snapshot in memory for this session.
   item.snapshotData = snapshot;
 
-  // The normal editor cache is optional; don't let quota errors undo a
-  // successfully saved advance.
+
   try {
     localStorage.setItem(
       "polrad_editor_data",
@@ -3836,9 +3728,7 @@ setAdvanceStatus(
 
 }
 
-/* ---------------------------------------------------------
-DELETE ADVANCE
---------------------------------------------------------- */
+
 function deleteAdvance(id) {
 const item = advances.find(function(a) { return a.id === id; });
 if (!item) return;
@@ -3894,10 +3784,8 @@ setStatus(
 async function loadAdvanceSnapshotForJump(item) {
   if (!item || !item.id) return null;
 
-  // 1. Snapshot already loaded into memory.
   if (item.snapshotData) return item.snapshotData;
 
-  // 2. Snapshot stored locally in IndexedDB.
   try {
     const localSnapshot = await getAdvanceSnapshot(item.id);
     if (localSnapshot) {
@@ -3908,8 +3796,7 @@ async function loadAdvanceSnapshotForJump(item) {
     console.warn("Could not read local advance snapshot:", item.id, error);
   }
 
-  // 3. Fall back to the published snapshot on the same site.
-  // This is important on a new browser/device where IndexedDB is empty.
+
   if (item.snapshot) {
     try {
       const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
@@ -3925,7 +3812,6 @@ async function loadAdvanceSnapshotForJump(item) {
       const snapshot = await response.json();
       item.snapshotData = snapshot;
 
-      // Keep a local copy so the next jump is instant.
       try {
         await putAdvanceSnapshot(item.id, snapshot);
       } catch (storageError) {
@@ -3977,10 +3863,10 @@ async function returnToLatestAdvance() {
   setAdvanceStatus("Loading latest published advance...", false);
 
   try {
-    // Use the exact same advance list as the Advances tab.  This is
-    // important because the individual "Jump to this advance" buttons
-    // use the local `advances` array and its IndexedDB snapshots.
-    // The main-button action must behave exactly the same way.
+
+
+
+
     let latest = null;
 
     if (Array.isArray(advances) && advances.length) {
@@ -3996,8 +3882,7 @@ async function returnToLatestAdvance() {
       latest = sorted.length ? sorted[sorted.length - 1] : null;
     }
 
-    // On a fresh browser where there is no local advance list yet, fall
-    // back to the published list.
+
     if (!latest) {
       latest = await getLatestPublishedAdvance();
     }
@@ -4006,8 +3891,7 @@ async function returnToLatestAdvance() {
       throw new Error("No latest advance was found.");
     }
 
-    // Use the exact same snapshot-loading path as an individual
-    // "Jump to this advance" button.
+
     const snapshot = await loadAdvanceSnapshotForJump(latest);
     if (!snapshot) {
       throw new Error(
@@ -4060,8 +3944,7 @@ async function jumpToAdvance(id) {
       );
     }
 
-    // Put the current map into the normal undo stack before changing the
-    // displayed state, so the historical view can be undone if needed.
+
     saveHistory();
     restore(snapshot, true);
 
@@ -4140,13 +4023,11 @@ return a.id === id;
 
 if (!item) return;
 
-// Migrate older single-language entries automatically.
 if (!item.text_en && item.text) item.text_en = item.text;
 if (!item.text_ru) item.text_ru = "";
 
-// Use a real HTML dialog instead of window.prompt(). This makes it
-// possible to enter Cyrillic/Russian text reliably and edit both
-// languages at the same time.
+
+
 const old = document.getElementById("polradAdvanceEditDialog");
 if (old) old.remove();
 
@@ -4273,8 +4154,7 @@ save.onclick = function() {
 
   closeDialog();
 
-  // Keep the existing metadata-editing workflow after the descriptions
-  // have been saved.
+
   editAdvanceMetadata(item);
 };
 
@@ -4345,259 +4225,231 @@ renderAdvanceHistory();
 
 }
 
-/*
 
-Replace the normal Publish button with a version that sends:
-
-
-
-files
-
-advances
-
-advanceSnapshots
-
-
-
-The normal map publishing behavior remains the same.
-/
-/
-
-Publish map data first, then upload advance snapshots in small batches.
-
-
-
-This avoids sending every large snapshot in one browser request. The
-
-Cloudflare Worker handles the map/metadata publish through "publish"
-
-and individual snapshot batches through "publishSnapshots".
-*/
 function installAdvancePublish() {
-const publish = A("publish");
-if (!publish) return;
-if (publish.dataset.advancePublishInstalled === "1") return;
+  const publish = A("publish");
+  if (!publish) return;
+  if (publish.dataset.advancePublishInstalled === "1") return;
 
-publish.dataset.advancePublishInstalled = "1";
+  publish.dataset.advancePublishInstalled = "1";
 
-// Keep a generous margin below request limits. The estimate deliberately
-// overestimates UTF-8 size because JavaScript strings use UTF-16 internally.
-const MAX_BATCH_BYTES = 3 * 1024 * 1024;
+  async function postWorker(payload) {
+    const requestBody = JSON.stringify(Object.assign({}, payload, {
+      password: editorPassword
+    }));
 
-function estimatedBytes(value) {
-  return JSON.stringify(value).length * 2;
-}
+    let response;
 
-async function postWorker(payload) {
-  let response;
-
-  try {
-    response = await fetch(WORKER, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8"
-      },
-      body: JSON.stringify(Object.assign({}, payload, {
-        password: editorPassword
-      }))
-    });
-  } catch (error) {
-    console.error("Worker network error:", error);
-    throw new Error(
-      "Could not connect to the Cloudflare Worker.\n\n" +
-      "Worker URL: " + WORKER + "\n\n" +
-      "Browser error: " +
-      (error && error.message ? error.message : String(error))
-    );
-  }
-
-  let result;
-  const responseText = await response.text();
-
-  try {
-    result = JSON.parse(responseText);
-  } catch (e) {
-    throw new Error(
-      "The publishing server returned invalid JSON (HTTP " +
-      response.status + ").\n\n" +
-      responseText.slice(0, 500)
-    );
-  }
-
-  if (!response.ok || !result.success) {
-    throw new Error(
-      result.error ||
-      "Publish failed (HTTP " + response.status + ")."
-    );
-  }
-
-  return result;
-}
-
-async function loadSnapshotForPublish(item) {
-  if (!item || !item.id) return null;
-
-  // Newly-created/edited advances keep their snapshot in memory first.
-  if (item.snapshotData) return item.snapshotData;
-
-  try {
-    const local = await getAdvanceSnapshot(item.id);
-    if (local) {
-      item.snapshotData = local;
-      return local;
-    }
-  } catch (error) {
-    console.warn("Could not load local snapshot for publish:", item.id, error);
-  }
-
-  return null;
-}
-
-function buildSnapshotBatches(snapshotEntries) {
-  const batches = [];
-  let current = {};
-
-  for (const entry of snapshotEntries) {
-    const single = {
-      action: "publishSnapshots",
-      snapshots: { [entry.id]: entry.snapshot }
-    };
-
-    // A single snapshot larger than the normal batch target must still be
-    // sent by itself. The Worker will handle it normally.
-    if (!Object.keys(current).length && estimatedBytes(single) > MAX_BATCH_BYTES) {
-      batches.push({ [entry.id]: entry.snapshot });
-      continue;
+    try {
+      response = await fetch(WORKER, {
+        method: "POST",
+        mode: "cors",
+        cache: "no-store",
+        redirect: "follow",
+        headers: {
+          "Content-Type": "text/plain;charset=UTF-8"
+        },
+        body: requestBody
+      });
+    } catch (error) {
+      throw new Error(
+        "Could not connect to the Cloudflare Worker.\n\n" +
+        "Worker URL: " + WORKER + "\n\n" +
+        "Browser error: " +
+        (error && error.message ? error.message : String(error))
+      );
     }
 
-    const candidate = Object.assign({}, current, {
-      [entry.id]: entry.snapshot
-    });
+    const responseText = await response.text();
+    let result;
 
-    const candidatePayload = {
-      action: "publishSnapshots",
-      snapshots: candidate
-    };
-
-    if (
-      Object.keys(current).length &&
-      estimatedBytes(candidatePayload) > MAX_BATCH_BYTES
-    ) {
-      batches.push(current);
-      current = { [entry.id]: entry.snapshot };
-    } else {
-      current = candidate;
+    try {
+      result = JSON.parse(responseText);
+    } catch (error) {
+      throw new Error(
+        "The publishing server returned invalid JSON (HTTP " +
+        response.status + ").\n\n" +
+        responseText.slice(0, 500)
+      );
     }
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error ||
+        "Publish failed (HTTP " + response.status + ")."
+      );
+    }
+
+    return result;
   }
 
-  if (Object.keys(current).length) batches.push(current);
-  return batches;
-}
+  async function loadSnapshotForPublish(item) {
+    if (!item || !item.id) return null;
 
-publish.onclick = async function() {
-  publish.disabled = true;
+    if (item.snapshotData) return item.snapshotData;
 
-  try {
-    const currentFiles = getCurrentGeoJSON();
+    try {
+      const local = await getAdvanceSnapshot(item.id);
+      if (local) {
+        item.snapshotData = local;
+        return local;
+      }
+    } catch (error) {
+      console.warn("Could not load local advance snapshot:", item.id, error);
+    }
 
-    // Load every locally available snapshot before touching advances.json.
-    // This is intentional: metadata is published LAST, so the public map
-    // never points at a brand-new advance whose snapshot was not uploaded.
-    const snapshotEntries = [];
+    if (item.snapshot) {
+      try {
+        const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
+        const response = await fetch(
+          publishedPath(item.snapshot) + separator + "v=" + Date.now(),
+          { cache: "no-store" }
+        );
 
-    for (const item of advances) {
-      if (!item || !item.id) continue;
+        if (response.ok) {
+          const remote = await response.json();
+          item.snapshotData = remote;
+          return remote;
+        }
+      } catch (error) {
+        console.warn("Could not load published advance snapshot:", item.id, error);
+      }
+    }
 
-      const snapshot = await loadSnapshotForPublish(item);
-      if (snapshot) {
+    return null;
+  }
+
+  publish.onclick = async function() {
+    publish.disabled = true;
+
+    try {
+      const currentFiles = getCurrentGeoJSON();
+      const fileEntries = Object.entries(currentFiles).filter(function(entry) {
+        return entry[1] !== undefined && entry[1] !== null;
+      });
+
+      if (!fileEntries.length) {
+        throw new Error("There are no map files available to publish.");
+      }
+
+      const snapshotEntries = [];
+
+      for (const item of advances) {
+        if (!item || !item.id) continue;
+
+        const snapshot = await loadSnapshotForPublish(item);
+        if (!snapshot) {
+          throw new Error(
+            "The advance " + item.id +
+            " has no available snapshot. It was not published."
+          );
+        }
+
         snapshotEntries.push({
           id: item.id,
           snapshot: snapshot
         });
       }
-    }
 
-    const batches = buildSnapshotBatches(snapshotEntries);
+      for (let i = 0; i < snapshotEntries.length; i++) {
+        const entry = snapshotEntries[i];
 
-    // STEP 1: publish all advance snapshots first.
-    for (let i = 0; i < batches.length; i++) {
-      setStatus(
-        "Uploading advance snapshots " +
-        (i + 1) + " / " + batches.length + "..."
-      );
-
-      const result = await postWorker({
-        action: "publishSnapshots",
-        snapshots: batches[i]
-      });
-
-      if (!result.files || !result.files.length) {
-        throw new Error(
-          "The Worker reported a successful snapshot upload but returned no files."
+        setStatus(
+          "Uploading advance snapshot " +
+          (i + 1) + " / " + snapshotEntries.length + "..."
         );
+
+        await postWorker({
+          action: "publishSnapshots",
+          snapshots: {
+            [entry.id]: entry.snapshot
+          }
+        });
       }
-    }
 
-    // STEP 2: publish the live map AND advances.json only after every local
-    // snapshot upload succeeded.
-    setStatus("Publishing map and advance metadata...");
+      const publishAdvances = advances.map(stripSnapshotData);
 
-    const publishAdvances = advances.map(stripSnapshotData);
+      for (let i = 0; i < fileEntries.length; i++) {
+        const entry = fileEntries[i];
+        const isLast = i === fileEntries.length - 1;
+        const payload = {
+          action: "publish",
+          files: {
+            [entry[0]]: entry[1]
+          }
+        };
 
-    const publishResult = await postWorker({
-      action: "publish",
-      files: currentFiles,
-      advances: publishAdvances
-    });
+        if (isLast) {
+          payload.advances = publishAdvances;
+        }
 
-    if (!publishResult.files || publishResult.files.indexOf("advances.json") === -1) {
-      throw new Error(
-        "The Worker did not confirm that advances.json was published."
+        setStatus(
+          "Publishing map file " +
+          (i + 1) + " / " + fileEntries.length +
+          ": " + entry[0] + "..."
+        );
+
+        const result = await postWorker(payload);
+
+        if (!result.files || !result.files.length) {
+          throw new Error(
+            "The Worker did not confirm publication of " + entry[0] + "."
+          );
+        }
+
+        if (isLast && result.files.indexOf("advances.json") === -1) {
+          throw new Error(
+            "The Worker did not confirm that advances.json was published."
+          );
+        }
+      }
+
+      try {
+        localStorage.setItem(
+          "polrad_editor_data",
+          JSON.stringify(currentFiles)
+        );
+      } catch (error) {
+        console.warn("Could not update editor cache after publish:", error);
+      }
+
+      saveAdvances();
+
+      setStatus(
+        "Published successfully. " +
+        snapshotEntries.length +
+        " advance snapshot(s) uploaded and " +
+        fileEntries.length +
+        " map file(s) published."
       );
-    }
 
-    try {
-      localStorage.setItem(
-        "polrad_editor_data",
-        JSON.stringify(currentFiles)
+      alert(
+        "Published successfully!\n\n" +
+        snapshotEntries.length +
+        " advance snapshot(s) uploaded.\n" +
+        fileEntries.length +
+        " map file(s) published.\n" +
+        "advances.json updated."
       );
-    } catch (e) {
-      console.warn("Could not update editor cache after publish:", e);
+    } catch (error) {
+      console.error("Publish failed:", error);
+      setStatus(
+        error && error.message
+          ? error.message
+          : "Publish failed."
+      );
+      alert(
+        "Publish failed.\n\n" +
+        (error && error.message
+          ? error.message
+          : "Unknown error.")
+      );
+    } finally {
+      publish.disabled = false;
     }
-
-    saveAdvances();
-
-    setStatus(
-      "Published successfully. " +
-      snapshotEntries.length +
-      " advance snapshot(s) uploaded and advances.json updated."
-    );
-
-    alert(
-      "Published successfully!\n\n" +
-      snapshotEntries.length +
-      " advance snapshot(s) uploaded.\n" +
-      "advances.json updated."
-    );
-  } catch (error) {
-    console.error("Publish failed:", error);
-    setStatus(
-      error && error.message
-        ? error.message
-        : "Publish failed."
-    );
-    alert(
-      "Publish failed.\n\n" +
-      (error && error.message
-        ? error.message
-        : "Unknown error.")
-    );
-  } finally {
-    publish.disabled = false;
-  }
-};
-
+  };
 }
+
 function initAdvanceEditor() {
 addAdvanceCSS();
 loadAdvances();
@@ -4613,17 +4465,11 @@ if (latestAdvanceButton && latestAdvanceButton.dataset.installed !== "1") {
 
 renderAdvanceHistory();
 
-// Migrate/load large snapshots only after the UI is already usable.
 migrateAdvanceSnapshots();
 
 }
 
-/*
 
-The original editor defines all of its functions in the global script.
-
-Wait a little so those definitions and the login UI exist.
-*/
 if (
 document.readyState ===
 "loading"
@@ -4649,4 +4495,3 @@ initAdvanceEditor,
 
 </body>
 </html>
- ill give the cloudflare on elater
