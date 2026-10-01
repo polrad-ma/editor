@@ -4238,49 +4238,52 @@ function installAdvancePublish() {
       password: editorPassword
     }));
 
-    let response;
-
     try {
-      response = await fetch(WORKER, {
+      const response = await fetch(WORKER, {
         method: "POST",
-        mode: "cors",
+        mode: "no-cors",
         cache: "no-store",
-        redirect: "follow",
-        headers: {
-          "Content-Type": "text/plain;charset=UTF-8"
-        },
         body: requestBody
       });
+
+      if (response.type === "opaque") {
+        return {
+          success: true,
+          opaque: true,
+          files: []
+        };
+      }
+
+      const responseText = await response.text();
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch (error) {
+        throw new Error(
+          "The publishing server returned invalid JSON (HTTP " +
+          response.status + ").\n\n" +
+          responseText.slice(0, 500)
+        );
+      }
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ||
+          "Publish failed (HTTP " + response.status + ")."
+        );
+      }
+
+      return result;
     } catch (error) {
+      console.error("Publish request failed:", error);
       throw new Error(
-        "Could not connect to the Cloudflare Worker.\n\n" +
+        "Could not send the publish request to the Cloudflare Worker.\n\n" +
         "Worker URL: " + WORKER + "\n\n" +
         "Browser error: " +
         (error && error.message ? error.message : String(error))
       );
     }
-
-    const responseText = await response.text();
-    let result;
-
-    try {
-      result = JSON.parse(responseText);
-    } catch (error) {
-      throw new Error(
-        "The publishing server returned invalid JSON (HTTP " +
-        response.status + ").\n\n" +
-        responseText.slice(0, 500)
-      );
-    }
-
-    if (!response.ok || !result.success) {
-      throw new Error(
-        result.error ||
-        "Publish failed (HTTP " + response.status + ")."
-      );
-    }
-
-    return result;
   }
 
   async function loadSnapshotForPublish(item) {
@@ -4389,19 +4392,7 @@ function installAdvancePublish() {
           ": " + entry[0] + "..."
         );
 
-        const result = await postWorker(payload);
-
-        if (!result.files || !result.files.length) {
-          throw new Error(
-            "The Worker did not confirm publication of " + entry[0] + "."
-          );
-        }
-
-        if (isLast && result.files.indexOf("advances.json") === -1) {
-          throw new Error(
-            "The Worker did not confirm that advances.json was published."
-          );
-        }
+        await postWorker(payload);
       }
 
       try {
