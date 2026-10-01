@@ -604,7 +604,7 @@
           if (!result) {
             result = feature;
           } else {
-            result = turf.union(turf.featureCollection([result, feature]));
+            result = turf.union(result, feature);
           }
         } catch (e) {
 
@@ -621,7 +621,7 @@
 
       for (let i = 1; i < parts.length; i++) {
         try {
-          result = turf.union(turf.featureCollection([result, parts[i]]));
+          result = turf.union(result, parts[i]);
         } catch (e) {
 
         }
@@ -639,9 +639,7 @@
         if (!result || !cutter) return;
 
         try {
-          result = turf.difference(
-            turf.featureCollection([result, cutter])
-          );
+          result = turf.difference(result, cutter);
         } catch (e) {
 
         }
@@ -1452,9 +1450,7 @@
         let result;
 
         try {
-          result = turf.difference(
-            turf.featureCollection([feature, expansion])
-          );
+          result = turf.difference(feature, expansion);
         } catch (error) {
           console.warn("Could not trim opposing control polygon:", error);
           return;
@@ -3015,9 +3011,7 @@
 
     let result;
     try {
-      result = turf.difference(
-        turf.featureCollection([feature, territory])
-      );
+      result = turf.difference(feature, territory);
     } catch (e) {
       console.warn("Advance trim failed:", e);
       return "unchanged";
@@ -3231,9 +3225,7 @@
 
     for (let i = 1; i < features.length; i++) {
       try {
-        result = turf.union(
-          turf.featureCollection([result, features[i]])
-        );
+        result = turf.union(result, features[i]);
       } catch (e) {
 
       }
