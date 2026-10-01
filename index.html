@@ -365,6 +365,22 @@
   </div>
 
   <div class="box">
+    <b style="font-size:13px">Expand controlled territory</b>
+    <label style="display:block;margin-top:7px">Side</label>
+    <select id="controlExpandSide">
+      <option value="ru">🔴 Expand Russian-controlled territory</option>
+      <option value="ua">🔵 Expand Ukrainian-controlled territory</option>
+    </select>
+    <button class="btn primary" id="controlExpandStart">Draw control expansion</button>
+    <button class="btn" id="controlExpandFinish" style="display:none">Finish control expansion</button>
+    <button class="btn" id="controlExpandCancel" style="display:none">Cancel</button>
+    <div class="small" id="controlExpandStatus" style="margin-top:6px">
+      Draw a polygon over the area that should become controlled by the selected side.
+      The opposing controlled territory will be cut away automatically so the two control layers do not overlap.
+    </div>
+  </div>
+
+  <div class="box">
     <b style="font-size:13px">Draw curved frontline</b>
     <label style="display:block;margin-top:7px">Frontline layer</label>
     <select id="curveDrawLayer">
@@ -484,6 +500,9 @@
     let curvePoints = [];
     let curvePreview = null;
     let suriyakDrawing = false;
+    let controlExpandDrawing = false;
+    let controlExpandPoints = [];
+    let controlExpandPreview = null;
     let suriyakColor = "#ff0000";
     let suriyakMarkerRadius = 5;
     let polygonCounter = 1;
@@ -501,6 +520,28 @@
       const group = L.featureGroup();
       if (layerVisible[id] !== false) group.addTo(map);
       return group;
+    }
+
+    function paneForLayer(layerId) {
+      if (
+        layerId === "ru_territory" ||
+        layerId === "ua_territory" ||
+        layerId === "regained"
+      ) return "territoryPane";
+
+      if (
+        layerId === "ru_advances" ||
+        layerId === "ua_advances"
+      ) return "advancesPane";
+
+      if (
+        layerId === "deepstate_frontline" ||
+        layerId === "ria_frontline"
+      ) return "frontlinePane";
+
+      if (layerId === "suriyak_markers") return "suriyakMarkersPane";
+
+      return "overlayPane";
     }
     let hoveredSidebarLayer = null;
 
@@ -1280,6 +1321,242 @@
     }
 
     
+    /* ---------------------------------------------------------
+       CONTROLLED TERRITORY EXPANSION
+       Draw a new controlled area for Russia or Ukraine. The selected
+       polygon is added to that side's territory, while the opposing
+       territory is cut away automatically.
+    --------------------------------------------------------- */
+    const CONTROL_TERRITORY = {
+      ru: "ru_territory",
+      ua: "ua_territory"
+    };
+
+    const CONTROL_OPPOSING = {
+      ru: "ua_territory",
+      ua: "ru_territory"
+    };
+
+    function controlExpandStatus(text, active) {
+      const node = $("controlExpandStatus");
+      if (!node) return;
+      node.textContent = text;
+      node.style.color = active ? "#b3261e" : "";
+      node.style.fontWeight = active ? "600" : "";
+    }
+
+    function clearControlExpandPreview() {
+      if (controlExpandPreview && map && map.hasLayer(controlExpandPreview)) {
+        map.removeLayer(controlExpandPreview);
+      }
+      controlExpandPreview = null;
+    }
+
+    function updateControlExpandPreview() {
+      clearControlExpandPreview();
+
+      if (!controlExpandPoints.length) return;
+
+      const points = controlExpandPoints.map(function(p) {
+        return [p.lat, p.lng];
+      });
+
+      if (points.length < 2) return;
+
+      controlExpandPreview = L.polygon(points, {
+        color: "#ffffff",
+        fillColor: $("controlExpandSide").value === "ru" ? "#a52714" : "#1a237e",
+        fillOpacity: 0.35,
+        weight: 2,
+        dashArray: "7 5",
+        interactive: false,
+        pane: "frontlinePane"
+      }).addTo(map);
+    }
+
+    function startControlExpansion() {
+      if (controlExpandDrawing) return;
+
+      if (!map || !groups.ru_territory || !groups.ua_territory) {
+        alert("The territory layers have not finished loading yet.");
+        return;
+      }
+
+      deselect(false);
+      drawing = true;
+      controlExpandDrawing = true;
+      controlExpandPoints = [];
+      clearControlExpandPreview();
+
+      $("controlExpandSide").disabled = true;
+      $("controlExpandStart").style.display = "none";
+      $("controlExpandFinish").style.display = "inline-block";
+      $("controlExpandCancel").style.display = "inline-block";
+
+      controlExpandStatus(
+        "Click points around the area that should become controlled by the selected side. Then click Finish control expansion.",
+        true
+      );
+      setStatus("Drawing controlled-territory expansion...");
+    }
+
+    function finishControlExpansion() {
+      if (!controlExpandDrawing) return;
+
+      if (controlExpandPoints.length < 3) {
+        alert("A control expansion needs at least 3 points.");
+        return;
+      }
+
+      const side = $("controlExpandSide").value;
+      const targetId = CONTROL_TERRITORY[side];
+      const opposingId = CONTROL_OPPOSING[side];
+
+      const coordinates = controlExpandPoints.map(function(p) {
+        return [p.lng, p.lat];
+      });
+      coordinates.push(coordinates[0]);
+
+      let expansion;
+
+      try {
+        expansion = turf.polygon([coordinates], {
+          Name: "Controlled territory expansion"
+        });
+      } catch (error) {
+        alert("The control expansion polygon is invalid.");
+        return;
+      }
+
+      clearControlExpandPreview();
+
+      let opposingChanged = false;
+
+      groups[opposingId].getLayers().slice().forEach(function(layer) {
+        let feature;
+
+        try {
+          feature = turf.cleanCoords(layer.toGeoJSON());
+        } catch (error) {
+          feature = layer.toGeoJSON();
+        }
+
+        if (
+          !feature.geometry ||
+          (
+            feature.geometry.type !== "Polygon" &&
+            feature.geometry.type !== "MultiPolygon"
+          )
+        ) return;
+
+        let result;
+
+        try {
+          result = turf.difference(
+            turf.featureCollection([feature, expansion])
+          );
+        } catch (error) {
+          console.warn("Could not trim opposing control polygon:", error);
+          return;
+        }
+
+        if (!result) {
+          if (selected === layer) deselect(false);
+          groups[opposingId].removeLayer(layer);
+          opposingChanged = true;
+          return;
+        }
+
+        let beforeArea = 0;
+        let afterArea = 0;
+
+        try {
+          beforeArea = turf.area(feature);
+          afterArea = turf.area(result);
+        } catch (error) {
+          return;
+        }
+
+        if (Math.abs(beforeArea - afterArea) < 1) return;
+
+        const geometry = result.geometry;
+        const level = geometry.type === "MultiPolygon" ? 2 : 1;
+
+        if (selected === layer) layer.pm.disable();
+
+        layer.setLatLngs(
+          L.GeoJSON.coordsToLatLngs(geometry.coordinates, level)
+        );
+        layer.redraw();
+
+        if (selected === layer) layer.pm.enable();
+
+        opposingChanged = true;
+      });
+
+      const targetLayer = L.geoJSON(expansion, {
+        pane: paneForLayer(targetId)
+      }).getLayers()[0];
+
+      if (!targetLayer) {
+        cancelControlExpansion(false);
+        return;
+      }
+
+      targetLayer.feature = expansion;
+      targetLayer._layer = targetId;
+      targetLayer._fid =
+        "control-" +
+        Date.now() +
+        "-" +
+        Math.random().toString(36).slice(2);
+
+      setupPolygon(targetLayer, targetId);
+      groups[targetId].addLayer(targetLayer);
+
+      saveHistory();
+      renderSidebar();
+
+      const sideName = side === "ru" ? "Russian" : "Ukrainian";
+
+      cancelControlExpansion(true);
+
+      setStatus(
+        sideName +
+        " controlled territory expanded. " +
+        (opposingChanged
+          ? "The opposing controlled territory was trimmed to prevent overlap."
+          : "No opposing territory overlapped the new area.")
+      );
+    }
+
+    function cancelControlExpansion(finished) {
+      clearControlExpandPreview();
+
+      controlExpandPoints = [];
+      controlExpandDrawing = false;
+      drawing = false;
+
+      $("controlExpandSide").disabled = false;
+      $("controlExpandStart").style.display = "block";
+      $("controlExpandFinish").style.display = "none";
+      $("controlExpandCancel").style.display = "none";
+
+      controlExpandStatus(
+        finished
+          ? "Expansion added. Draw another one whenever you want."
+          : "Draw a polygon over the area that should become controlled by the selected side. The opposing controlled territory will be cut away automatically so the two control layers do not overlap.",
+        false
+      );
+    }
+
+    function addControlExpandMapPoint(e) {
+      if (!controlExpandDrawing) return false;
+      controlExpandPoints.push(e.latlng);
+      updateControlExpandPreview();
+      return true;
+    }
+
     function makeCurve(points) {
       if (!points || points.length < 2) return points || [];
       if (points.length === 2) return points;
@@ -1339,7 +1616,8 @@
       const curvedPoints = makeCurve(controlPoints);
       const layer = L.polyline(curvedPoints, {
         color: config(layerId)[3],
-        weight: 3
+        weight: 3,
+        pane: paneForLayer(layerId)
       });
 
       layer._curve = true;
@@ -1438,7 +1716,8 @@
 
       const layer = L.polyline(curvedPoints, {
         color: config(targetId)[3],
-        weight: 3
+        weight: 3,
+        pane: paneForLayer(targetId)
       }).addTo(map);
 
       layer._curve = true;
@@ -1527,7 +1806,9 @@
       if (isLineLayer(layerId)) {
         layer = createCurvedFrontlineLayer(feature, layerId);
       } else {
-        layer = L.geoJSON(feature).getLayers()[0];
+        layer = L.geoJSON(feature, {
+          pane: paneForLayer(layerId)
+        }).getLayers()[0];
       }
 
       if (!layer) return;
@@ -1696,6 +1977,7 @@
       layer.feature = feature;
       layer._layer = targetId;
       layer._fid = "new-" + Date.now() + "-" + Math.random();
+      layer.options.pane = paneForLayer(targetId);
 
       setupPolygon(layer, targetId);
       groups[targetId].addLayer(layer);
@@ -1957,6 +2239,15 @@
         });
 
 
+        map.createPane("territoryPane");
+        map.getPane("territoryPane").style.zIndex = 400;
+
+        map.createPane("advancesPane");
+        map.getPane("advancesPane").style.zIndex = 450;
+
+        map.createPane("frontlinePane");
+        map.getPane("frontlinePane").style.zIndex = 520;
+
         map.createPane("suriyakMarkersPane");
         map.getPane("suriyakMarkersPane").style.zIndex = 650;
 
@@ -2055,10 +2346,16 @@
 
 
         map.on("click", function(event) {
+          if (controlExpandDrawing) {
+            addControlExpandMapPoint(event);
+            return;
+          }
+
           if (curveDrawing) {
             addCurveMapPoint(event);
             return;
           }
+
           if (drawing || ignoreNextMapClick) return;
           deselect();
         });
@@ -2127,6 +2424,12 @@
     $("drawCurve").onclick = startCurveDrawing;
     $("finishCurve").onclick = finishCurveDrawing;
     $("cancelCurve").onclick = function() { cancelCurveDrawing(false); };
+
+    $("controlExpandStart").onclick = startControlExpansion;
+    $("controlExpandFinish").onclick = finishControlExpansion;
+    $("controlExpandCancel").onclick = function() {
+      cancelControlExpansion(false);
+    };
 
     function setSuriyakColor(color) {
       suriyakColor = color;
@@ -3383,6 +3686,7 @@ function onCreate(event) {
   drawing = false;
 
   map.removeLayer(layer);
+  layer.options.pane = paneForLayer(layerId);
 
   const feature = layer.toGeoJSON();
 
