@@ -1032,6 +1032,7 @@
       layer.on("pm:vertexadded", function() {
         if (layer === selected) {
           suppressNextMapClick();
+          normalizeControlTerritoryOverlaps();
           saveHistory();
           updatePointCount();
           if (grayZoneVisible) generateGrayZone();
@@ -1042,6 +1043,7 @@
       layer.on("pm:vertexremoved", function() {
         if (layer === selected) {
           suppressNextMapClick();
+          normalizeControlTerritoryOverlaps();
           saveHistory();
           updatePointCount();
           if (grayZoneVisible) generateGrayZone();
@@ -1067,6 +1069,7 @@
       layer.on("pm:edit", function() {
         if (!drawing && layer === selected) {
           suppressNextMapClick();
+          normalizeControlTerritoryOverlaps();
           saveHistory();
           renderSidebar();
           updatePointCount();
@@ -1125,6 +1128,7 @@
         $("selectedLayer").value = targetId;
       }
 
+      normalizeControlTerritoryOverlaps();
       saveHistory();
       renderSidebar();
       setStatus("Polygon moved to " + config(targetId)[1] + ".");
@@ -1510,6 +1514,7 @@
       setupPolygon(targetLayer, targetId);
       groups[targetId].addLayer(targetLayer);
 
+      normalizeControlTerritoryOverlaps();
       saveHistory();
       renderSidebar();
 
@@ -1818,7 +1823,144 @@
 
 
 
+    function normalizeControlTerritoryOverlaps() {
+      const ruGroup = groups.ru_territory;
+      const uaGroup = groups.ua_territory;
+      const regainedGroup = groups.regained;
+
+      if (!ruGroup || !uaGroup) return false;
+
+      function layerFeature(layer) {
+        let feature;
+        try {
+          feature = turf.cleanCoords(layer.toGeoJSON());
+        } catch (error) {
+          feature = layer.toGeoJSON();
+        }
+
+        feature.properties = Object.assign(
+          {},
+          layer.feature && layer.feature.properties
+            ? layer.feature.properties
+            : {}
+        );
+
+        return feature;
+      }
+
+      function polygonFeatures(group) {
+        if (!group) return [];
+        return group.getLayers().map(layerFeature).filter(function(feature) {
+          return feature && feature.geometry &&
+            (feature.geometry.type === 'Polygon' ||
+             feature.geometry.type === 'MultiPolygon');
+        });
+      }
+
+      function unionFeaturesSafe(features) {
+        if (!features.length) return null;
+        let result = features[0];
+
+        for (let i = 1; i < features.length; i++) {
+          try {
+            result = turf.union(result, features[i]);
+          } catch (error) {
+            console.warn('Control territory union failed:', error);
+          }
+        }
+
+        return result;
+      }
+
+      function clipGroup(group, cutter) {
+        if (!group || !cutter) return false;
+
+        let changed = false;
+
+        group.getLayers().slice().forEach(function(layer) {
+          let feature = layerFeature(layer);
+          let result = feature;
+
+          try {
+            result = turf.difference(feature, cutter);
+          } catch (error) {
+            console.warn('Control overlap cleanup failed:', error);
+            return;
+          }
+
+          if (!result) {
+            if (layer === selected) deselect(false);
+            group.removeLayer(layer);
+            changed = true;
+            return;
+          }
+
+          try {
+            if (JSON.stringify(result.geometry) === JSON.stringify(feature.geometry)) {
+              return;
+            }
+          } catch (error) {}
+
+          if (
+            !result.geometry ||
+            (
+              result.geometry.type !== 'Polygon' &&
+              result.geometry.type !== 'MultiPolygon'
+            )
+          ) {
+            return;
+          }
+
+          const geometry = result.geometry;
+          const level = geometry.type === 'MultiPolygon' ? 2 : 1;
+          const wasSelected = layer === selected;
+
+          if (wasSelected) layer.pm.disable();
+
+          layer.setLatLngs(
+            L.GeoJSON.coordsToLatLngs(geometry.coordinates, level)
+          );
+          layer.redraw();
+          layer.feature = result;
+          layer.feature.properties = Object.assign(
+            {},
+            feature.properties || {},
+            result.properties || {}
+          );
+          layer.feature.properties.Name =
+            (feature.properties && feature.properties.Name) ||
+            layer.feature.properties.Name ||
+            'Controlled territory';
+
+          if (wasSelected) layer.pm.enable();
+          changed = true;
+        });
+
+        return changed;
+      }
+
+      const uaFeatures = polygonFeatures(uaGroup);
+      const regainedFeatures = polygonFeatures(regainedGroup);
+      const uaSideUnion = unionFeaturesSafe(
+        uaFeatures.concat(regainedFeatures)
+      );
+
+      let changed = false;
+
+      if (uaSideUnion) {
+        changed = clipGroup(ruGroup, uaSideUnion) || changed;
+      }
+
+      const uaOnlyUnion = unionFeaturesSafe(uaFeatures);
+      if (uaOnlyUnion && regainedGroup) {
+        changed = clipGroup(regainedGroup, uaOnlyUnion) || changed;
+      }
+
+      return changed;
+    }
+
     function getEditableGeoJSON() {
+      normalizeControlTerritoryOverlaps();
       const result = {};
 
       LAYERS.forEach(function(c) {
@@ -1923,6 +2065,7 @@
         }
       });
 
+      normalizeControlTerritoryOverlaps();
       renderSidebar();
       generateGrayZone();
     }
@@ -2629,7 +2772,7 @@
 
   const ADVANCE_TERRITORY = {
     ru_advances: ["ru_territory"],
-    ua_advances: ["ua_territory", "regained"]
+    ua_advances: ["ua_territory"]
   };
 
   let advances = [];
