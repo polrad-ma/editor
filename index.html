@@ -492,6 +492,13 @@
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
 
+    /* Layers to skip on publish by default. These two are enormous
+       (15-20 MB) and would exceed the Cloudflare request body limit. */
+    const SKIP_PUBLISH_LAYERS = new Set([
+      "Claimed DeepState Frontline",
+      "Claimed RIA Frontline"
+    ]);
+
     let map;
     let groups = {};
     let selected = null;
@@ -659,17 +666,6 @@
       }
     }
 
-    /* =========================================================
-       GRAY ZONE  (manual recalc only)
-
-       Definition:
-         RU side  = ru_territory + ru_advances
-         UA side  = ua_territory + ua_advances + regained
-
-         Gray Zone = (buffer(RU, 15km) ∩ buffer(UA, 15km))
-                     − RU territory
-                     − UA territory
-       ========================================================= */
     function generateGrayZone() {
       grayZoneData = null;
 
@@ -818,9 +814,9 @@
     let ignoreNextMapClick = false;
     let ignoreMapClickTimer = null;
 
-    /* =========================================================
-       Debounced normalize + save
-       ========================================================= */
+    /* Debounced normalize + save: dragging a vertex on a big territory layer
+       used to trigger normalizeControlTerritoryOverlaps() + saveHistory() for
+       every micro-change. Now they run once, 250 ms after the user stops. */
     let _normalizeTimer = null;
 
     function scheduleNormalizeAndSave() {
@@ -1032,8 +1028,6 @@
           select(layer);
         }
       });
-
-      /* Debounced editing handlers */
 
       layer.on("pm:vertexadded", function() {
         if (layer === selected) {
@@ -1314,9 +1308,6 @@
     }
 
 
-    /* ---------------------------------------------------------
-       CONTROLLED TERRITORY EXPANSION
-    --------------------------------------------------------- */
     const CONTROL_TERRITORY = {
       ru: "ru_territory",
       ua: "ua_territory"
@@ -1847,6 +1838,8 @@
 
       function unionFeaturesSafe(features) {
         if (!features.length) return null;
+        if (features.length === 1) return features[0];
+
         let result = features[0];
 
         for (let i = 1; i < features.length; i++) {
@@ -4722,8 +4715,17 @@ function installAdvancePublish() {
 
     try {
       const currentFiles = getCurrentGeoJSON();
-      const fileEntries = Object.entries(currentFiles).filter(function(entry) {
+      const allEntries = Object.entries(currentFiles).filter(function(entry) {
         return entry[1] !== undefined && entry[1] !== null;
+      });
+
+      const skipped = [];
+      const fileEntries = allEntries.filter(function(entry) {
+        if (SKIP_PUBLISH_LAYERS.has(entry[0])) {
+          skipped.push(entry[0]);
+          return false;
+        }
+        return true;
       });
 
       if (!fileEntries.length) {
@@ -4801,12 +4803,17 @@ function installAdvancePublish() {
 
       saveAdvances();
 
+      const skipNote = skipped.length
+        ? " Skipped (too big): " + skipped.join(", ") + "."
+        : "";
+
       setStatus(
         "Published successfully. " +
         snapshotEntries.length +
         " advance snapshot(s) uploaded and " +
         fileEntries.length +
-        " map file(s) published."
+        " map file(s) published." +
+        skipNote
       );
 
       alert(
@@ -4814,8 +4821,11 @@ function installAdvancePublish() {
         snapshotEntries.length +
         " advance snapshot(s) uploaded.\n" +
         fileEntries.length +
-        " map file(s) published.\n" +
-        "advances.json updated."
+        " map file(s) published." +
+        (skipped.length
+          ? "\n\nSkipped (too big to upload):\n" + skipped.join("\n")
+          : "") +
+        "\nadvances.json updated."
       );
     } catch (error) {
       console.error("Publish failed:", error);
