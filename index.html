@@ -492,8 +492,9 @@
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
 
-    /* Layers to skip on publish by default. These two are enormous
-       (15-20 MB) and would exceed the Cloudflare request body limit. */
+    // Layers that are too big to publish reliably (14–18 MB each).
+    // The editor still loads them, so you can edit them locally,
+    // but Publish will skip them. Republish manually from GitHub if needed.
     const SKIP_PUBLISH_LAYERS = new Set([
       "Claimed DeepState Frontline",
       "Claimed RIA Frontline"
@@ -623,6 +624,7 @@
 
     function unionAll(parts) {
       if (!parts.length) return null;
+      if (parts.length === 1) return parts[0];
 
       let result = parts[0];
 
@@ -666,6 +668,13 @@
       }
     }
 
+    // =========================================================
+    // GRAY ZONE  (manual recalc only — click the Recalculate button)
+    //
+    // RU side  = ru_territory + ru_advances
+    // UA side  = ua_territory + ua_advances + regained
+    // Gray     = (buffer(RU, 15km) ∩ buffer(UA, 15km)) − RU − UA
+    // =========================================================
     function generateGrayZone() {
       grayZoneData = null;
 
@@ -814,9 +823,8 @@
     let ignoreNextMapClick = false;
     let ignoreMapClickTimer = null;
 
-    /* Debounced normalize + save: dragging a vertex on a big territory layer
-       used to trigger normalizeControlTerritoryOverlaps() + saveHistory() for
-       every micro-change. Now they run once, 250 ms after the user stops. */
+    // Debounced normalize+save: dragging a vertex fires this once at the end
+    // instead of on every micro-change.
     let _normalizeTimer = null;
 
     function scheduleNormalizeAndSave() {
@@ -1308,6 +1316,9 @@
     }
 
 
+    /* ---------------------------------------------------------
+       CONTROLLED TERRITORY EXPANSION
+    --------------------------------------------------------- */
     const CONTROL_TERRITORY = {
       ru: "ru_territory",
       ua: "ua_territory"
@@ -4620,6 +4631,24 @@ renderAdvanceHistory();
 }
 
 
+async function snapshotExistsOnGitHub(id) {
+  try {
+    const url =
+      "https://raw.githubusercontent.com/polrad-ma/uawarmap/main/history/advances/" +
+      id + ".json";
+
+    const response = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store"
+    });
+
+    return response.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+
 function installAdvancePublish() {
   const publish = A("publish");
   if (!publish) return;
@@ -4732,39 +4761,40 @@ function installAdvancePublish() {
         throw new Error("There are no map files available to publish.");
       }
 
-      const snapshotEntries = [];
+      // Only upload snapshots that are NOT already on GitHub.
+      // Existing snapshots never change, so re-uploading them is
+      // both wasteful and, at 14–18 MB per snapshot × 37, what was
+      // breaking Publish with "Failed to fetch".
+      let snapshotsUploaded = 0;
+      let snapshotsSkipped = 0;
 
       for (const item of advances) {
         if (!item || !item.id) continue;
+
+        const onGitHub = await snapshotExistsOnGitHub(item.id);
+        if (onGitHub) {
+          snapshotsSkipped++;
+          continue;
+        }
 
         const snapshot = await loadSnapshotForPublish(item);
         if (!snapshot) {
           throw new Error(
             "The advance " + item.id +
-            " has no available snapshot. It was not published."
+            " has no available snapshot and is not on GitHub."
           );
         }
 
-        snapshotEntries.push({
-          id: item.id,
-          snapshot: snapshot
-        });
-      }
-
-      for (let i = 0; i < snapshotEntries.length; i++) {
-        const entry = snapshotEntries[i];
-
-        setStatus(
-          "Uploading advance snapshot " +
-          (i + 1) + " / " + snapshotEntries.length + "..."
-        );
+        setStatus("Uploading new advance snapshot: " + item.id + "...");
 
         await postWorker({
           action: "publishSnapshots",
           snapshots: {
-            [entry.id]: entry.snapshot
+            [item.id]: snapshot
           }
         });
+
+        snapshotsUploaded++;
       }
 
       const publishAdvances = advances.map(stripSnapshotData);
@@ -4809,23 +4839,20 @@ function installAdvancePublish() {
 
       setStatus(
         "Published successfully. " +
-        snapshotEntries.length +
-        " advance snapshot(s) uploaded and " +
-        fileEntries.length +
-        " map file(s) published." +
+        snapshotsUploaded + " new snapshot(s) uploaded, " +
+        snapshotsSkipped + " existing snapshot(s) skipped, " +
+        fileEntries.length + " map file(s) published." +
         skipNote
       );
 
       alert(
         "Published successfully!\n\n" +
-        snapshotEntries.length +
-        " advance snapshot(s) uploaded.\n" +
-        fileEntries.length +
-        " map file(s) published." +
+        snapshotsUploaded + " new advance snapshot(s) uploaded.\n" +
+        snapshotsSkipped + " existing snapshot(s) already on GitHub (skipped).\n" +
+        fileEntries.length + " map file(s) published." +
         (skipped.length
           ? "\n\nSkipped (too big to upload):\n" + skipped.join("\n")
-          : "") +
-        "\nadvances.json updated."
+          : "")
       );
     } catch (error) {
       console.error("Publish failed:", error);
