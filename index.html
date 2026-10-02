@@ -665,27 +665,27 @@
     }
 
     function generateGrayZone() {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
       grayZoneData = null;
 
-      const ru = safeFeatureCollection(getFeatureCollection("ru_territory"));
-      const uaTerritory = safeFeatureCollection(getFeatureCollection("ua_territory"));
-      const regained = safeFeatureCollection(getFeatureCollection("regained"));
-      const ruAdvances = safeFeatureCollection(getFeatureCollection("ru_advances"));
-      const uaAdvances = safeFeatureCollection(getFeatureCollection("ua_advances"));
+      const ru = safeFeatureCollection(
+        getFeatureCollection("ru_territory")
+      );
+
+      const ruAdvances = safeFeatureCollection(
+        getFeatureCollection("ru_advances")
+      );
+
+      const uaTerritory = safeFeatureCollection(
+        getFeatureCollection("ua_territory")
+      );
+
+      const uaAdvances = safeFeatureCollection(
+        getFeatureCollection("ua_advances")
+      );
+
+      const regained = safeFeatureCollection(
+        getFeatureCollection("regained")
+      );
 
       if (!ru || !uaTerritory) {
         updateGrayZoneLayer();
@@ -694,25 +694,32 @@
 
       try {
         const ruParts = [];
-        const ruBase = unionFeatures(ru);
-        if (ruBase) ruParts.push(ruBase);
+
+        if (ru.features.length) {
+          const base = unionFeatures(ru);
+          if (base) ruParts.push(base);
+        }
+
         if (ruAdvances && ruAdvances.features.length) {
-          const a = unionFeatures(ruAdvances);
-          if (a) ruParts.push(a);
+          const advances = unionFeatures(ruAdvances);
+          if (advances) ruParts.push(advances);
         }
 
         const uaParts = [];
-        if (uaTerritory && uaTerritory.features.length) {
-          const u = unionFeatures(uaTerritory);
-          if (u) uaParts.push(u);
+
+        if (uaTerritory.features.length) {
+          const base = unionFeatures(uaTerritory);
+          if (base) uaParts.push(base);
         }
-        if (regained && regained.features.length) {
-          const r = unionFeatures(regained);
-          if (r) uaParts.push(r);
-        }
+
         if (uaAdvances && uaAdvances.features.length) {
-          const a = unionFeatures(uaAdvances);
-          if (a) uaParts.push(a);
+          const advances = unionFeatures(uaAdvances);
+          if (advances) uaParts.push(advances);
+        }
+
+        if (regained && regained.features.length) {
+          const recovered = unionFeatures(regained);
+          if (recovered) uaParts.push(recovered);
         }
 
         if (!ruParts.length || !uaParts.length) {
@@ -728,40 +735,98 @@
           return null;
         }
 
+        const ruBuffer = turf.buffer(
+          ruUnion,
+          15,
+          {
+            units: "kilometers",
+            steps: 8
+          }
+        );
 
-
-
-
-        const ruBuffer = lightBuffer(ruUnion, 15);
-        const uaBuffer = lightBuffer(uaUnion, 15);
+        const uaBuffer = turf.buffer(
+          uaUnion,
+          15,
+          {
+            units: "kilometers",
+            steps: 8
+          }
+        );
 
         if (!ruBuffer || !uaBuffer) {
           updateGrayZoneLayer();
           return null;
         }
 
-
-        const corridor = turf.intersect(
-          turf.featureCollection([ruBuffer, uaBuffer])
+        let gray = turf.intersect(
+          turf.featureCollection([
+            ruBuffer,
+            uaBuffer
+          ])
         );
 
-        if (!corridor) {
+        if (!gray) {
           updateGrayZoneLayer();
           return null;
         }
 
+        const occupied = [];
 
-        let gray = differenceFeatures(corridor, [ruUnion, uaUnion]);
+        ru.features.forEach(function(feature) {
+          if (feature && feature.geometry) occupied.push(feature);
+        });
+
+        if (ruAdvances) {
+          ruAdvances.forEach(function(feature) {
+            if (feature && feature.geometry) occupied.push(feature);
+          });
+        }
+
+        uaTerritory.features.forEach(function(feature) {
+          if (feature && feature.geometry) occupied.push(feature);
+        });
+
+        if (uaAdvances) {
+          uaAdvances.forEach(function(feature) {
+            if (feature && feature.geometry) occupied.push(feature);
+          });
+        }
+
+        if (regained) {
+          regained.forEach(function(feature) {
+            if (feature && feature.geometry) occupied.push(feature);
+          });
+        }
+
+        const occupiedUnion = unionFeatures(
+          safeFeatureCollection({
+            type: "FeatureCollection",
+            features: occupied
+          })
+        );
+
+        if (occupiedUnion) {
+          gray = turf.difference(
+            gray,
+            occupiedUnion
+          );
+        }
 
         if (gray) {
           gray.properties = {
             Name: "Automatically generated Gray Zone"
           };
-          grayZoneData = turf.featureCollection([gray]);
+
+          grayZoneData = turf.featureCollection([
+            gray
+          ]);
         }
 
       } catch (error) {
-        console.warn("Gray Zone generation failed:", error);
+        console.warn(
+          "Gray Zone generation failed:",
+          error
+        );
         grayZoneData = null;
       }
 
