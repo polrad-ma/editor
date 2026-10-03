@@ -615,12 +615,6 @@
       return !(a[0] > b[2] || a[2] < b[0] || a[1] > b[3] || a[3] < b[1]);
     }
 
-    // Gray zone, computed pairwise.
-    //
-    // Each pair of nearby RU and UA features is buffered and intersected
-    // independently, then the subtraction step removes each side's own
-    // territory. Result stays as a FeatureCollection of separate pieces,
-    // so overlaps cannot stack opacity.
     function generateGrayZone() {
       grayZoneData = null;
 
@@ -700,9 +694,45 @@
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-      console.log("Gray zone: " + pieces.length + " separate pieces (no merging).");
+      // Final cleanup: subtract every RU and UA territory feature from
+      // every piece. The pairwise pass only subtracted the paired feature;
+      // a piece can still overlap other territory polygons, and those
+      // overlaps are what appear as "shadows" on top of the territories.
+      setStatus("Gray zone: cleaning " + pieces.length + " pieces...");
 
-      grayZoneData = turf.featureCollection(pieces);
+      const cleaned = [];
+
+      pieces.forEach(function (p) {
+        let q = p;
+
+        ruSide.forEach(function (rf) {
+          if (!q) return;
+          try { q = turf.difference(q, rf); } catch (e) {}
+        });
+
+        if (q) {
+          uaSide.forEach(function (uf) {
+            if (!q) return;
+            try { q = turf.difference(q, uf); } catch (e) {}
+          });
+        }
+
+        if (!q) return;
+
+        if (q.type === "FeatureCollection") {
+          (q.features || []).forEach(function (f) {
+            if (f && f.geometry) cleaned.push(f);
+          });
+        } else if (q.geometry) {
+          cleaned.push(q);
+        }
+      });
+
+      console.log("Gray zone: cleanup finished, " + cleaned.length + " pieces remain.");
+
+      if (!cleaned.length) { updateGrayZoneLayer(); return null; }
+
+      grayZoneData = turf.featureCollection(cleaned);
 
       updateGrayZoneLayer();
       return grayZoneData;
