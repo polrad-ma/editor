@@ -374,20 +374,7 @@
     </div>
   </div>
 
-  <div class="box">
-    <b style="font-size:13px">Draw curved frontline</b>
-    <label style="display:block;margin-top:7px">Frontline layer</label>
-    <select id="curveDrawLayer">
-      <option value="deepstate_frontline">Claimed DeepState Frontline</option>
-      <option value="ria_frontline">Claimed RIA Frontline</option>
-    </select>
-    <button class="btn primary" id="drawCurve">Draw curved line</button>
-    <div class="advance-row" style="display:flex;gap:5px">
-      <button class="btn" id="finishCurve" style="display:none">Finish curved line</button>
-      <button class="btn" id="cancelCurve" style="display:none">Cancel</button>
-    </div>
-    <div class="small" id="curveStatus" style="margin-top:5px">Click points along the frontline. The line will be smoothly curved between them.</div>
-  </div>
+
 
   <div class="box" id="selectedBox" style="display:none">
     <b id="selectedName" style="font-size:13px"></b>
@@ -481,9 +468,7 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"],
-      ["deepstate_frontline", "Claimed DeepState Frontline", "DeepState%20Frontline.geojson", "#000000", "line"],
-      ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
+     ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"]
     ];
 
     // Layers too big to send to Cloudflare reliably. Skipped on Publish.
