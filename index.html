@@ -694,10 +694,35 @@
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-      // Final cleanup: subtract every RU and UA territory feature from
-      // every piece. The pairwise pass only subtracted the paired feature;
-      // a piece can still overlap other territory polygons, and those
-      // overlaps are what appear as "shadows" on top of the territories.
+      // Build one merged shape per side (union of all features, then
+      // simplified) and subtract that from every piece. Doing one big
+      // difference per side is both faster and far more reliable than
+      // 31 small differences, which turf silently drops on complex
+      // geometry — every silent failure left a "shadow" overlap.
+      setStatus("Gray zone: building side unions for cleanup...");
+
+      let ruUnion = null;
+      try { ruUnion = turf.union(turf.featureCollection(ruSide)); } catch (e) {}
+      if (!ruUnion) {
+        try { ruUnion = unionAll(ruSide); } catch (e) {}
+      }
+
+      let uaUnion = null;
+      try { uaUnion = turf.union(turf.featureCollection(uaSide)); } catch (e) {}
+      if (!uaUnion) {
+        try { uaUnion = unionAll(uaSide); } catch (e) {}
+      }
+
+      // Simplify to reduce vertex count. The exact border is imprecise,
+      // but the gray zone is 15 km wide, so a couple of meters of error
+      // at the edge is invisible.
+      if (ruUnion) {
+        try { ruUnion = turf.simplify(ruUnion, { tolerance: 0.002, highQuality: false }); } catch (e) {}
+      }
+      if (uaUnion) {
+        try { uaUnion = turf.simplify(uaUnion, { tolerance: 0.002, highQuality: false }); } catch (e) {}
+      }
+
       setStatus("Gray zone: cleaning " + pieces.length + " pieces...");
 
       const cleaned = [];
@@ -705,16 +730,11 @@
       pieces.forEach(function (p) {
         let q = p;
 
-        ruSide.forEach(function (rf) {
-          if (!q) return;
-          try { q = turf.difference(q, rf); } catch (e) {}
-        });
-
-        if (q) {
-          uaSide.forEach(function (uf) {
-            if (!q) return;
-            try { q = turf.difference(q, uf); } catch (e) {}
-          });
+        if (q && ruUnion) {
+          try { q = turf.difference(q, ruUnion); } catch (e) {}
+        }
+        if (q && uaUnion) {
+          try { q = turf.difference(q, uaUnion); } catch (e) {}
         }
 
         if (!q) return;
