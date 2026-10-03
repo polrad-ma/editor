@@ -681,10 +681,7 @@
           } catch (e) { return; }
           if (!piece) return;
 
-          try { piece = turf.difference(piece, ruEntry.feature); } catch (e) {}
-          if (!piece) return;
-          try { piece = turf.difference(piece, uaEntry.feature); } catch (e) {}
-          if (!piece) return;
+        
 
           if (piece.type === "FeatureCollection") {
             (piece.features || []).forEach(function (f) {
