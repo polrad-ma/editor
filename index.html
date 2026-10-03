@@ -584,10 +584,6 @@
 
     // ---- Gray zone helpers ----
 
-    // smartBuffer: simplify input BEFORE buffering.
-    // The buffer operation becomes unreliable on geometries with tens of thousands
-    // of vertices — it either times out, returns a partial result, or produces a
-    // self-intersecting polygon that renders as a "shadow".
     function smartBuffer(feature, km) {
       let simplified = feature;
       try {
@@ -600,14 +596,12 @@
       try {
         buffered = turf.buffer(simplified, km, { units: "kilometers", steps: 4 });
       } catch (e) {
-        console.warn("Buffer failed on simplified geometry, retrying on original:", e);
         try {
           buffered = turf.buffer(feature, km, { units: "kilometers", steps: 2 });
         } catch (e2) {
           return null;
         }
       }
-
       if (!buffered) return null;
 
       try {
@@ -617,120 +611,121 @@
       }
     }
 
-    // dissolveFeatures: merge a FeatureCollection of overlapping polygons
-    // into a single clean feature. This prevents stacking opacity when drawn.
-    function dissolveFeatures(fc) {
-      if (!fc) return null;
-      if (fc.type !== "FeatureCollection") return fc;
-      if (!fc.features || !fc.features.length) return null;
-      if (fc.features.length === 1) return fc.features[0];
-
-      let result = fc.features[0];
-      for (let i = 1; i < fc.features.length; i++) {
-        try {
-          result = turf.union(result, fc.features[i]);
-        } catch (e) {
-          console.warn("Dissolve step failed:", e);
-        }
-      }
-      return result;
+    function bboxOverlap(a, b) {
+      return !(a[0] > b[2] || a[2] < b[0] || a[1] > b[3] || a[3] < b[1]);
     }
 
+    // Gray zone, computed pairwise.
+    //
+    // Instead of unioning all RU features into one giant polygon and all UA
+    // features into another, and then intersecting those two monsters (which
+    // turf.js silently fails on when the boundary is complex and narrow), we
+    // intersect small pairs of features that are actually near each other.
+    // Pairwise operations are simple enough that turf can do them reliably.
     function generateGrayZone() {
       grayZoneData = null;
 
       const ru = safeFeatureCollection(getFeatureCollection("ru_territory"));
-      const ruAdvances = safeFeatureCollection(getFeatureCollection("ru_advances"));
-      const uaTerritory = safeFeatureCollection(getFeatureCollection("ua_territory"));
-      const uaAdvances = safeFeatureCollection(getFeatureCollection("ua_advances"));
+      const ruAdv = safeFeatureCollection(getFeatureCollection("ru_advances"));
+      const ua = safeFeatureCollection(getFeatureCollection("ua_territory"));
+      const uaAdv = safeFeatureCollection(getFeatureCollection("ua_advances"));
       const regained = safeFeatureCollection(getFeatureCollection("regained"));
 
-      if (!ru || !uaTerritory) {
-        updateGrayZoneLayer();
-        return null;
-      }
+      if (!ru || !ua) { updateGrayZoneLayer(); return null; }
 
-      const ruFeatures = [];
-      const uaFeatures = [];
-
-      function pushPolygons(fc, target) {
+      function collect(fc, target) {
         if (!fc || !Array.isArray(fc.features)) return;
-        fc.features.forEach(function(feature) {
-          if (!feature || !feature.geometry) return;
-          if (
-            feature.geometry.type !== "Polygon" &&
-            feature.geometry.type !== "MultiPolygon"
-          ) return;
-          try {
-            target.push(turf.cleanCoords(feature));
-          } catch (e) {
-            target.push(feature);
-          }
+        fc.features.forEach(function (f) {
+          if (!f || !f.geometry) return;
+          if (f.geometry.type !== "Polygon" && f.geometry.type !== "MultiPolygon") return;
+          try { target.push(turf.cleanCoords(f)); } catch (e) { target.push(f); }
         });
       }
 
-      pushPolygons(ru, ruFeatures);
-      pushPolygons(ruAdvances, ruFeatures);
+      const ruSide = [];
+      const uaSide = [];
+      collect(ru, ruSide);
+      collect(ruAdv, ruSide);
+      collect(ua, uaSide);
+      collect(uaAdv, uaSide);
+      collect(regained, uaSide);
 
-      pushPolygons(uaTerritory, uaFeatures);
-      pushPolygons(uaAdvances, uaFeatures);
-      pushPolygons(regained, uaFeatures);
+      if (!ruSide.length || !uaSide.length) { updateGrayZoneLayer(); return null; }
 
-      if (!ruFeatures.length || !uaFeatures.length) {
-        updateGrayZoneLayer();
-        return null;
-      }
+      setStatus("Gray zone: preparing buffers for " + ruSide.length + " RU and " + uaSide.length + " UA features...");
 
-      try {
-        const ruUnion = unionAll(ruFeatures);
-        const uaUnion = unionAll(uaFeatures);
+      const ruBufs = [];
+      ruSide.forEach(function (f) {
+        const b = smartBuffer(f, 15);
+        if (b) ruBufs.push({ feature: f, buf: b, bbox: turf.bbox(b) });
+      });
 
-        if (!ruUnion || !uaUnion) {
-          updateGrayZoneLayer();
-          return null;
-        }
+      const uaInfo = uaSide.map(function (f) {
+        return { feature: f, bbox: turf.bbox(f) };
+      });
 
-        const ruBuf = smartBuffer(ruUnion, 15);
-        const uaBuf = smartBuffer(uaUnion, 15);
+      const pieces = [];
+      let pairsChecked = 0, pairsUsed = 0;
 
-        if (!ruBuf || !uaBuf) {
-          updateGrayZoneLayer();
-          return null;
-        }
+      ruBufs.forEach(function (ruEntry) {
+        uaInfo.forEach(function (uaEntry) {
+          if (!bboxOverlap(ruEntry.bbox, uaEntry.bbox)) return;
+          pairsChecked++;
 
-        let piece = null;
+          const uaBuf = smartBuffer(uaEntry.feature, 15);
+          if (!uaBuf) return;
 
+          let piece = null;
+          try {
+            piece = turf.intersect(turf.featureCollection([ruEntry.buf, uaBuf]));
+          } catch (e) { return; }
+          if (!piece) return;
+
+          try { piece = turf.difference(piece, ruEntry.feature); } catch (e) {}
+          if (!piece) return;
+          try { piece = turf.difference(piece, uaEntry.feature); } catch (e) {}
+          if (!piece) return;
+
+          if (piece.type === "FeatureCollection") {
+            (piece.features || []).forEach(function (f) {
+              if (f && f.geometry) pieces.push(f);
+            });
+          } else if (piece.geometry) {
+            pieces.push(piece);
+          }
+          pairsUsed++;
+        });
+      });
+
+      console.log("Gray zone: " + pairsChecked + " pairs passed bbox, " + pairsUsed + " produced pieces, " + pieces.length + " total pieces.");
+
+      if (!pieces.length) { updateGrayZoneLayer(); return null; }
+
+      setStatus("Gray zone: merging " + pieces.length + " pieces...");
+
+      // Try to merge overlapping pieces. If a merge fails, keep the current
+      // merged result and move on.
+      let merged = pieces[0];
+      let mergeFails = 0;
+      for (let i = 1; i < pieces.length; i++) {
         try {
-          piece = turf.intersect(turf.featureCollection([ruBuf, uaBuf]));
+          const u = turf.union(merged, pieces[i]);
+          if (u) merged = u;
+          else mergeFails++;
         } catch (e) {
-          console.warn("Gray Zone intersect failed:", e);
+          mergeFails++;
         }
-
-        if (piece) {
-          try { piece = turf.difference(piece, ruUnion); } catch (e) {}
-        }
-        if (piece) {
-          try { piece = turf.difference(piece, uaUnion); } catch (e) {}
-        }
-
-        // Dissolve: merge overlapping gray pieces so opacity doesn't stack.
-        if (piece && piece.type === "FeatureCollection") {
-          piece = dissolveFeatures(piece);
-        }
-
-        if (piece) {
-          grayZoneData = piece.type === "FeatureCollection"
-            ? piece
-            : turf.featureCollection([piece]);
-        }
-      } catch (error) {
-        console.warn("Gray Zone generation failed:", error);
       }
+
+      console.log("Gray zone: merged " + (pieces.length - 1 - mergeFails) + " of " + (pieces.length - 1) + " pieces.");
+
+      grayZoneData = merged.type === "FeatureCollection"
+        ? merged
+        : turf.featureCollection([merged]);
 
       updateGrayZoneLayer();
       return grayZoneData;
     }
-
     function updateGrayZoneLayer() {
       if (grayZoneLayer) {
         map.removeLayer(grayZoneLayer);
