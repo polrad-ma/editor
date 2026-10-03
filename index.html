@@ -468,19 +468,10 @@
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
       ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-     ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"]
+      ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"]
     ];
 
-    // Layers too big to send to Cloudflare reliably. Skipped on Publish.
-    const SKIP_PUBLISH_LAYERS = new Set([
-      "Claimed DeepState Frontline",
-      "Claimed RIA Frontline"
-    ]);
-
-    // Layers that only render if explicitly requested.
-    const HIDDEN_BY_DEFAULT = new Set([
-      "Gray Zone"
-    ]);
+    const SKIP_PUBLISH_LAYERS = new Set([]);
 
     let map;
     let groups = {};
@@ -501,9 +492,7 @@
     const layerOpenState = {};
 
     const layerVisible = {
-      suriyak_markers: false,
-      deepstate_frontline: false,
-      ria_frontline: false
+      suriyak_markers: false
     };
 
     function createGroup(id) {
@@ -523,11 +512,6 @@
         layerId === "ru_advances" ||
         layerId === "ua_advances"
       ) return "advancesPane";
-
-      if (
-        layerId === "deepstate_frontline" ||
-        layerId === "ria_frontline"
-      ) return "frontlinePane";
 
       if (layerId === "suriyak_markers") return "suriyakMarkersPane";
 
@@ -584,26 +568,6 @@
       }
     }
 
-    function unionFeatures(fc) {
-      if (!fc || !fc.features.length) return null;
-
-      let result = null;
-
-      fc.features.forEach(function(feature) {
-        try {
-          if (!result) {
-            result = feature;
-          } else {
-            result = turf.union(result, feature);
-          }
-        } catch (e) {
-
-        }
-      });
-
-      return result;
-    }
-
     function unionAll(parts) {
       if (!parts.length) return null;
       if (parts.length === 1) return parts[0];
@@ -621,24 +585,6 @@
       return result;
     }
 
-    function differenceFeatures(base, cutters) {
-      if (!base) return null;
-
-      let result = base;
-
-      cutters.forEach(function(cutter) {
-        if (!result || !cutter) return;
-
-        try {
-          result = turf.difference(result, cutter);
-        } catch (e) {
-
-        }
-      });
-
-      return result;
-    }
-
     function lightBuffer(feature, km) {
       const buffered = turf.buffer(feature, km, { units: "kilometers", steps: 4 });
       if (!buffered) return null;
@@ -650,9 +596,6 @@
       }
     }
 
-    // =========================================================
-    // GRAY ZONE — manual recalc only. Runs when you click the button.
-    // =========================================================
     function generateGrayZone() {
       grayZoneData = null;
 
@@ -757,7 +700,8 @@
           fillColor: "#808080",
           fillOpacity: 0.35,
           weight: 1.5,
-          interactive: false
+          interactive: false,
+          fillRule: "evenodd"
         },
         interactive: false
       }).addTo(map);
@@ -818,6 +762,53 @@
       }, 250);
     }
 
+    // ---- IndexedDB cache (replaces localStorage for the map data) ----
+    const POLRAD_CACHE_DB = "polrad_editor_cache_db";
+    const POLRAD_CACHE_STORE = "mapCache";
+    let _polradCacheDB = null;
+
+    function openPolradCacheDB() {
+      return new Promise(function (resolve, reject) {
+        if (_polradCacheDB) return resolve(_polradCacheDB);
+        const req = indexedDB.open(POLRAD_CACHE_DB, 1);
+        req.onupgradeneeded = function (e) {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(POLRAD_CACHE_STORE)) {
+            db.createObjectStore(POLRAD_CACHE_STORE);
+          }
+        };
+        req.onsuccess = function (e) {
+          _polradCacheDB = e.target.result;
+          resolve(_polradCacheDB);
+        };
+        req.onerror = function () {
+          reject(req.error || new Error("Could not open cache DB"));
+        };
+      });
+    }
+
+    function saveMapCache(data) {
+      return openPolradCacheDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          const tx = db.transaction(POLRAD_CACHE_STORE, "readwrite");
+          tx.objectStore(POLRAD_CACHE_STORE).put(data, "current");
+          tx.oncomplete = resolve;
+          tx.onerror = function () { reject(tx.error); };
+        });
+      });
+    }
+
+    function loadMapCache() {
+      return openPolradCacheDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          const tx = db.transaction(POLRAD_CACHE_STORE, "readonly");
+          const req = tx.objectStore(POLRAD_CACHE_STORE).get("current");
+          req.onsuccess = function () { resolve(req.result || null); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
     function $(id) {
       return document.getElementById(id);
     }
@@ -869,7 +860,6 @@
       const c = config(layer._layer);
       if (!c) return;
 
-      const isLine = c[4] === "line";
       const isMarkerLayer = c[4] === "marker";
       if (isMarkerLayer) {
         const markerColor =
@@ -886,15 +876,11 @@
         return;
       }
 
-      const fillOpacity = isLine ? 0 : 0.4;
-      const normalWeight = isLine ? 3 : 2;
-      const selectedWeight = isLine ? 5 : 4;
-
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
-        fillOpacity: fillOpacity,
-        weight: isSelected ? selectedWeight : normalWeight
+        fillOpacity: 0.4,
+        weight: isSelected ? 4 : 2
       });
     }
 
@@ -1285,7 +1271,7 @@
 
 
 
-          if (selectId === "drawLayer" && (c[4] === "line" || c[4] === "marker")) return;
+          if (selectId === "drawLayer" && c[4] === "marker") return;
 
           const option = document.createElement("option");
           option.value = c[0];
@@ -1525,223 +1511,6 @@
       return true;
     }
 
-    function makeCurve(points) {
-      if (!points || points.length < 2) return points || [];
-      if (points.length === 2) return points;
-
-      const result = [];
-      const segmentsPerSpan = 12;
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const p0 = points[i - 1] || points[i];
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        const p3 = points[i + 2] || p2;
-
-        for (let j = 0; j < segmentsPerSpan; j++) {
-          const t = j / segmentsPerSpan;
-          const t2 = t * t;
-          const t3 = t2 * t;
-
-          const lat = 0.5 * (
-            (2 * p1[0]) +
-            (-p0[0] + p2[0]) * t +
-            (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
-            (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3
-          );
-
-          const lng = 0.5 * (
-            (2 * p1[1]) +
-            (-p0[1] + p2[1]) * t +
-            (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
-            (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3
-          );
-
-          result.push([lat, lng]);
-        }
-      }
-
-      result.push(points[points.length - 1]);
-      return result;
-    }
-
-    function isLineLayer(layerId) {
-      const c = config(layerId);
-      return !!c && c[4] === "line";
-    }
-
-    function createCurvedFrontlineLayer(feature, layerId) {
-      const props = Object.assign({}, feature.properties || {});
-      let controlPoints = props._curveControlPoints;
-
-      if (!Array.isArray(controlPoints) || controlPoints.length < 2) {
-        const coords = feature.geometry && feature.geometry.coordinates;
-        controlPoints = Array.isArray(coords) ? coords : [];
-      }
-
-      if (controlPoints.length < 2) return null;
-
-      const curvedPoints = makeCurve(controlPoints);
-      const layer = L.polyline(curvedPoints, {
-        color: config(layerId)[3],
-        weight: 3,
-        pane: paneForLayer(layerId)
-      });
-
-      layer._curve = true;
-      layer._curveControlPoints = controlPoints.map(function(p) {
-        return [Number(p[0]), Number(p[1])];
-      });
-      layer.feature = {
-        type: "Feature",
-        properties: Object.assign(props, {
-          _curve: true,
-          _curveControlPoints: layer._curveControlPoints
-        }),
-        geometry: {
-          type: "LineString",
-          coordinates: curvedPoints
-        }
-      };
-
-      return layer;
-    }
-
-    function updateCurveLayerGeometry(layer) {
-      if (!layer || !layer._curveControlPoints) return;
-      const curvedPoints = makeCurve(layer._curveControlPoints);
-      layer.setLatLngs(curvedPoints);
-      layer.feature = layer.feature || { type: "Feature", properties: {} };
-      layer.feature.properties = layer.feature.properties || {};
-      layer.feature.properties._curve = true;
-      layer.feature.properties._curveControlPoints = layer._curveControlPoints.map(function(p) {
-        return [Number(p[0]), Number(p[1])];
-      });
-      layer.feature.geometry = { type: "LineString", coordinates: curvedPoints };
-      layer.redraw();
-    }
-
-    function startCurveDrawing() {
-      if (curveDrawing) return;
-
-      const targetId = $("curveDrawLayer").value;
-      if (!isLineLayer(targetId)) return;
-
-      if (layerVisible[targetId] === false) setLayerVisible(targetId, true);
-
-      deselect(false);
-      drawing = true;
-      curveDrawing = true;
-      curvePoints = [];
-
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-        curvePreview = null;
-      }
-
-      $("drawCurve").style.display = "none";
-      $("finishCurve").style.display = "inline-block";
-      $("cancelCurve").style.display = "inline-block";
-      $("curveDrawLayer").disabled = true;
-      $("curveStatus").textContent = "Click at least 3 control points along the frontline, then click Finish curved line.";
-      setStatus("Drawing curved frontline...");
-    }
-
-    function updateCurvePreview() {
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-        curvePreview = null;
-      }
-
-      if (!curvePoints.length) return;
-
-      const previewPoints = curvePoints.map(function(p) { return [p.lat, p.lng]; });
-      const curve = makeCurve(previewPoints);
-
-      curvePreview = L.polyline(curve, {
-        color: config($("curveDrawLayer").value)[3],
-        weight: 4,
-        dashArray: "7 5",
-        interactive: false
-      }).addTo(map);
-    }
-
-    function finishCurveDrawing() {
-      if (!curveDrawing) return;
-      if (curvePoints.length < 3) {
-        alert("A curved frontline needs at least 3 control points.");
-        return;
-      }
-
-      const targetId = $("curveDrawLayer").value;
-      const controlPoints = curvePoints.map(function(p) { return [p.lat, p.lng]; });
-      const curvedPoints = makeCurve(controlPoints);
-
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-        curvePreview = null;
-      }
-
-      const layer = L.polyline(curvedPoints, {
-        color: config(targetId)[3],
-        weight: 3,
-        pane: paneForLayer(targetId)
-      }).addTo(map);
-
-      layer._curve = true;
-      layer._curveControlPoints = controlPoints;
-      layer._layer = targetId;
-      layer._fid = "curve-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-      layer.feature = {
-        type: "Feature",
-        properties: {
-          Name: "Curved frontline " + (groups[targetId].getLayers().length + 1),
-          _curve: true,
-          _curveControlPoints: controlPoints
-        },
-        geometry: {
-          type: "LineString",
-          coordinates: curvedPoints
-        }
-      };
-
-      setupPolygon(layer, targetId);
-      groups[targetId].addLayer(layer);
-
-      saveHistory();
-      renderSidebar();
-      select(layer);
-
-      cancelCurveDrawing(true);
-      setStatus("Curved frontline added to " + config(targetId)[1] + ".");
-    }
-
-    function cancelCurveDrawing(finished) {
-      if (curvePreview) {
-        map.removeLayer(curvePreview);
-        curvePreview = null;
-      }
-
-      curvePoints = [];
-      curveDrawing = false;
-      drawing = false;
-
-      $("drawCurve").style.display = "block";
-      $("finishCurve").style.display = "none";
-      $("cancelCurve").style.display = "none";
-      $("curveDrawLayer").disabled = false;
-      $("curveStatus").textContent = finished
-        ? "Curved frontline added. Draw another one whenever you want."
-        : "Click points along the frontline. The line will be smoothly curved between them.";
-    }
-
-    function addCurveMapPoint(e) {
-      if (!curveDrawing) return false;
-      curvePoints.push(e.latlng);
-      updateCurvePreview();
-      return true;
-    }
-
     function addFeature(feature, layerId) {
       if (layerId === "suriyak_markers") {
         if (!feature || !feature.geometry || feature.geometry.type !== "Point") return;
@@ -1771,13 +1540,9 @@
 
       let layer = null;
 
-      if (isLineLayer(layerId)) {
-        layer = createCurvedFrontlineLayer(feature, layerId);
-      } else {
-        layer = L.geoJSON(feature, {
-          pane: paneForLayer(layerId)
-        }).getLayers()[0];
-      }
+      layer = L.geoJSON(feature, {
+        pane: paneForLayer(layerId)
+      }).getLayers()[0];
 
       if (!layer) return;
 
@@ -2195,10 +1960,7 @@
 
 
         try {
-          localStorage.setItem(
-            "polrad_editor_data",
-            JSON.stringify(remoteData)
-          );
+          await saveMapCache(remoteData);
         } catch (storageError) {
           console.warn("Could not update editor cache:", storageError);
         }
@@ -2272,8 +2034,7 @@
 
       let savedData = null;
       try {
-        const saved = localStorage.getItem("polrad_editor_data");
-        if (saved) savedData = JSON.parse(saved);
+        savedData = await loadMapCache();
       } catch (error) {
         savedData = null;
       }
@@ -2439,11 +2200,6 @@
             return;
           }
 
-          if (curveDrawing) {
-            addCurveMapPoint(event);
-            return;
-          }
-
           if (drawing || ignoreNextMapClick) return;
           deselect();
         });
@@ -2509,9 +2265,7 @@
       }
     };
 
-    $("drawCurve").onclick = startCurveDrawing;
-    $("finishCurve").onclick = finishCurveDrawing;
-    $("cancelCurve").onclick = function() { cancelCurveDrawing(false); };
+
 
     $("controlExpandStart").onclick = startControlExpansion;
     $("controlExpandFinish").onclick = finishControlExpansion;
@@ -2647,25 +2401,18 @@
     $("grayZoneToggle").onclick = toggleGrayZone;
     $("grayZoneRecalc").onclick = recalcGrayZone;
 
-    $("save").onclick = function() {
-      // Only save the small, non-huge layers to localStorage.
-      // The huge frontlines are dropped so localStorage doesn't overflow.
+    $("save").onclick = async function () {
       const all = getCurrentGeoJSON();
-      const slim = {};
-      Object.keys(all).forEach(function(key) {
-        if (SKIP_PUBLISH_LAYERS.has(key)) return;
-        slim[key] = all[key];
-      });
-
       try {
-        localStorage.setItem(
-          "polrad_editor_data",
-          JSON.stringify(slim)
-        );
+        await saveMapCache(all);
         setStatus("Saved in this browser.");
         alert("Changes saved successfully.");
       } catch (error) {
-        alert("Could not save: browser storage is full. Try clearing site data for polrad-ma.github.io, then saving again.");
+        console.error("Save failed:", error);
+        alert(
+          "Could not save: " +
+          (error && error.message ? error.message : "Unknown error.")
+        );
       }
     };
 
@@ -2710,10 +2457,7 @@
         }
 
         try {
-          localStorage.setItem(
-            "polrad_editor_data",
-            JSON.stringify(currentFiles)
-          );
+          await saveMapCache(currentFiles);
         } catch (storageError) {
           console.warn("Could not update editor cache:", storageError);
         }
@@ -3356,29 +3100,6 @@
         "ua_advances"
       ])
     };
-  }
-
-  function calculateEffects(before, after) {
-    const ru = Number((after.ru - before.ru).toFixed(2));
-    const ua = Number((after.ua - before.ua).toFixed(2));
-
-    const effects = [];
-
-    if (Math.abs(ru) >= 0.005) {
-      effects.push({
-        side: "ru",
-        value: ru
-      });
-    }
-
-    if (Math.abs(ua) >= 0.005) {
-      effects.push({
-        side: "ua",
-        value: ua
-      });
-    }
-
-    return effects;
   }
 
   function formatAreaEffects(effects, color) {
@@ -4038,10 +3759,7 @@ try {
 
 
   try {
-    localStorage.setItem(
-      "polrad_editor_data",
-      JSON.stringify(getCurrentGeoJSON())
-    );
+    await saveMapCache(getCurrentGeoJSON());
   } catch (storageError) {
     console.warn("Could not update editor cache:", storageError);
   }
@@ -4754,9 +4472,6 @@ function installAdvancePublish() {
         throw new Error("There are no map files available to publish.");
       }
 
-      // Only upload snapshots that don't already exist on GitHub.
-      // Re-uploading 37 snapshots × several MB each on every publish is
-      // what breaks Publish with "Failed to fetch".
       let snapshotsUploaded = 0;
       let snapshotsSkipped = 0;
 
@@ -4822,10 +4537,7 @@ function installAdvancePublish() {
       }
 
       try {
-        localStorage.setItem(
-          "polrad_editor_data",
-          JSON.stringify(currentFiles)
-        );
+        await saveMapCache(currentFiles);
       } catch (error) {
         console.warn("Could not update editor cache after publish:", error);
       }
