@@ -477,9 +477,6 @@
     let groups = {};
     let selected = null;
     let drawing = false;
-    let curveDrawing = false;
-    let curvePoints = [];
-    let curvePreview = null;
     let suriyakDrawing = false;
     let controlExpandDrawing = false;
     let controlExpandPoints = [];
@@ -585,8 +582,32 @@
       return result;
     }
 
-    function lightBuffer(feature, km) {
-      const buffered = turf.buffer(feature, km, { units: "kilometers", steps: 4 });
+    // ---- Gray zone helpers ----
+
+    // smartBuffer: simplify input BEFORE buffering.
+    // The buffer operation becomes unreliable on geometries with tens of thousands
+    // of vertices — it either times out, returns a partial result, or produces a
+    // self-intersecting polygon that renders as a "shadow".
+    function smartBuffer(feature, km) {
+      let simplified = feature;
+      try {
+        simplified = turf.simplify(feature, { tolerance: 0.001, highQuality: true });
+      } catch (e) {
+        simplified = feature;
+      }
+
+      let buffered = null;
+      try {
+        buffered = turf.buffer(simplified, km, { units: "kilometers", steps: 4 });
+      } catch (e) {
+        console.warn("Buffer failed on simplified geometry, retrying on original:", e);
+        try {
+          buffered = turf.buffer(feature, km, { units: "kilometers", steps: 2 });
+        } catch (e2) {
+          return null;
+        }
+      }
+
       if (!buffered) return null;
 
       try {
@@ -594,6 +615,25 @@
       } catch (e) {
         return buffered;
       }
+    }
+
+    // dissolveFeatures: merge a FeatureCollection of overlapping polygons
+    // into a single clean feature. This prevents stacking opacity when drawn.
+    function dissolveFeatures(fc) {
+      if (!fc) return null;
+      if (fc.type !== "FeatureCollection") return fc;
+      if (!fc.features || !fc.features.length) return null;
+      if (fc.features.length === 1) return fc.features[0];
+
+      let result = fc.features[0];
+      for (let i = 1; i < fc.features.length; i++) {
+        try {
+          result = turf.union(result, fc.features[i]);
+        } catch (e) {
+          console.warn("Dissolve step failed:", e);
+        }
+      }
+      return result;
     }
 
     function generateGrayZone() {
@@ -650,8 +690,8 @@
           return null;
         }
 
-        const ruBuf = lightBuffer(ruUnion, 15);
-        const uaBuf = lightBuffer(uaUnion, 15);
+        const ruBuf = smartBuffer(ruUnion, 15);
+        const uaBuf = smartBuffer(uaUnion, 15);
 
         if (!ruBuf || !uaBuf) {
           updateGrayZoneLayer();
@@ -671,6 +711,11 @@
         }
         if (piece) {
           try { piece = turf.difference(piece, uaUnion); } catch (e) {}
+        }
+
+        // Dissolve: merge overlapping gray pieces so opacity doesn't stack.
+        if (piece && piece.type === "FeatureCollection") {
+          piece = dissolveFeatures(piece);
         }
 
         if (piece) {
@@ -700,8 +745,7 @@
           fillColor: "#808080",
           fillOpacity: 0.35,
           weight: 1.5,
-          interactive: false,
-          fillRule: "evenodd"
+          interactive: false
         },
         interactive: false
       }).addTo(map);
@@ -732,13 +776,18 @@
     }
 
     function recalcGrayZone() {
-      generateGrayZone();
+      setStatus("Recalculating gray zone...");
+      // Give the browser a moment to render the status before the
+      // (potentially slow) turf math runs.
+      setTimeout(function () {
+        generateGrayZone();
 
-      if (grayZoneVisible) {
-        setStatus("Gray Zone recalculated.");
-      } else {
-        setStatus("Gray Zone recalculated (currently hidden — click \"Show Gray Zone\" to view).");
-      }
+        if (grayZoneVisible) {
+          setStatus("Gray Zone recalculated.");
+        } else {
+          setStatus("Gray Zone recalculated (currently hidden — click \"Show Gray Zone\" to view).");
+        }
+      }, 30);
     }
 
 
@@ -762,7 +811,6 @@
       }, 250);
     }
 
-    // ---- IndexedDB cache (replaces localStorage for the map data) ----
     const POLRAD_CACHE_DB = "polrad_editor_cache_db";
     const POLRAD_CACHE_STORE = "mapCache";
     let _polradCacheDB = null;
@@ -946,7 +994,7 @@
       selected = layer;
       const isSuriyakMarker = layer._layer === "suriyak_markers";
 
-      if (!layer._curve && !isSuriyakMarker) {
+      if (!isSuriyakMarker) {
         layer.pm.enable();
       }
       applyStyle(layer, true);
