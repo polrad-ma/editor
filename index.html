@@ -694,61 +694,90 @@
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-      // Build one merged shape per side (union of all features, then
-      // simplified) and subtract that from every piece. Doing one big
-      // difference per side is both faster and far more reliable than
-      // 31 small differences, which turf silently drops on complex
-      // geometry — every silent failure left a "shadow" overlap.
+            // Build one merged shape per side. turf.union of many features can
+      // return a Feature OR a FeatureCollection. turf.difference only
+      // accepts a single Feature, so unwrap before subtracting.
       setStatus("Gray zone: building side unions for cleanup...");
 
+      function unwrapToFeature(fc) {
+        if (!fc) return null;
+        if (fc.type === "Feature") return fc;
+        if (fc.type === "FeatureCollection" && Array.isArray(fc.features) && fc.features.length) {
+          if (fc.features.length === 1) return fc.features[0];
+          let merged = fc.features[0];
+          for (let i = 1; i < fc.features.length; i++) {
+            try { merged = turf.union(merged, fc.features[i]); } catch (e) {}
+          }
+          return merged && merged.type === "Feature" ? merged : null;
+        }
+        return null;
+      }
+
       let ruUnion = null;
-      try { ruUnion = turf.union(turf.featureCollection(ruSide)); } catch (e) {}
+      try { ruUnion = unwrapToFeature(turf.union(turf.featureCollection(ruSide))); } catch (e) {}
       if (!ruUnion) {
-        try { ruUnion = unionAll(ruSide); } catch (e) {}
+        try { ruUnion = unwrapToFeature(unionAll(ruSide)); } catch (e) {}
       }
 
       let uaUnion = null;
-      try { uaUnion = turf.union(turf.featureCollection(uaSide)); } catch (e) {}
+      try { uaUnion = unwrapToFeature(turf.union(turf.featureCollection(uaSide))); } catch (e) {}
       if (!uaUnion) {
-        try { uaUnion = unionAll(uaSide); } catch (e) {}
+        try { uaUnion = unwrapToFeature(unionAll(uaSide)); } catch (e) {}
       }
 
-      // Simplify to reduce vertex count. The exact border is imprecise,
-      // but the gray zone is 15 km wide, so a couple of meters of error
-      // at the edge is invisible.
+      console.log(
+        "Cleanup unions:",
+        "RU=" + (ruUnion && ruUnion.geometry ? ruUnion.geometry.type : "null"),
+        "UA=" + (uaUnion && uaUnion.geometry ? uaUnion.geometry.type : "null")
+      );
+
       if (ruUnion) {
-        try { ruUnion = turf.simplify(ruUnion, { tolerance: 0.002, highQuality: false }); } catch (e) {}
+        try { ruUnion = turf.simplify(ruUnion, { tolerance: 0.001, highQuality: false }); } catch (e) {}
       }
       if (uaUnion) {
-        try { uaUnion = turf.simplify(uaUnion, { tolerance: 0.002, highQuality: false }); } catch (e) {}
+        try { uaUnion = turf.simplify(uaUnion, { tolerance: 0.001, highQuality: false }); } catch (e) {}
       }
 
       setStatus("Gray zone: cleaning " + pieces.length + " pieces...");
 
       const cleaned = [];
+      let subtractFailures = 0;
 
       pieces.forEach(function (p) {
         let q = p;
 
-        if (q && ruUnion) {
-          try { q = turf.difference(q, ruUnion); } catch (e) {}
+        if (q && ruUnion && q.geometry) {
+          try {
+            const r = turf.difference(q, ruUnion);
+            if (r && r.geometry) q = r;
+          } catch (e) {
+            subtractFailures++;
+          }
         }
-        if (q && uaUnion) {
-          try { q = turf.difference(q, uaUnion); } catch (e) {}
+        if (q && uaUnion && q.geometry) {
+          try {
+            const r = turf.difference(q, uaUnion);
+            if (r && r.geometry) q = r;
+          } catch (e) {
+            subtractFailures++;
+          }
         }
 
-        if (!q) return;
+        if (!q || !q.geometry) return;
 
         if (q.type === "FeatureCollection") {
           (q.features || []).forEach(function (f) {
             if (f && f.geometry) cleaned.push(f);
           });
-        } else if (q.geometry) {
+        } else {
           cleaned.push(q);
         }
       });
 
-      console.log("Gray zone: cleanup finished, " + cleaned.length + " pieces remain.");
+      console.log(
+        "Gray zone: cleanup finished, " + cleaned.length +
+        " pieces remain, " + subtractFailures + " subtraction failures."
+      );
 
       if (!cleaned.length) { updateGrayZoneLayer(); return null; }
 
