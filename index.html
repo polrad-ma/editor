@@ -617,11 +617,10 @@
 
     // Gray zone, computed pairwise.
     //
-    // Instead of unioning all RU features into one giant polygon and all UA
-    // features into another, and then intersecting those two monsters (which
-    // turf.js silently fails on when the boundary is complex and narrow), we
-    // intersect small pairs of features that are actually near each other.
-    // Pairwise operations are simple enough that turf can do them reliably.
+    // Each pair of nearby RU and UA features is buffered and intersected
+    // independently, then the subtraction step removes each side's own
+    // territory. Result stays as a FeatureCollection of separate pieces,
+    // so overlaps cannot stack opacity.
     function generateGrayZone() {
       grayZoneData = null;
 
@@ -681,7 +680,10 @@
           } catch (e) { return; }
           if (!piece) return;
 
-        
+          try { piece = turf.difference(piece, ruEntry.feature); } catch (e) {}
+          if (!piece) return;
+          try { piece = turf.difference(piece, uaEntry.feature); } catch (e) {}
+          if (!piece) return;
 
           if (piece.type === "FeatureCollection") {
             (piece.features || []).forEach(function (f) {
@@ -698,31 +700,14 @@
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-      setStatus("Gray zone: merging " + pieces.length + " pieces...");
+      console.log("Gray zone: " + pieces.length + " separate pieces (no merging).");
 
-      // Try to merge overlapping pieces. If a merge fails, keep the current
-      // merged result and move on.
-      let merged = pieces[0];
-      let mergeFails = 0;
-      for (let i = 1; i < pieces.length; i++) {
-        try {
-          const u = turf.union(merged, pieces[i]);
-          if (u) merged = u;
-          else mergeFails++;
-        } catch (e) {
-          mergeFails++;
-        }
-      }
-
-      console.log("Gray zone: merged " + (pieces.length - 1 - mergeFails) + " of " + (pieces.length - 1) + " pieces.");
-
-      grayZoneData = merged.type === "FeatureCollection"
-        ? merged
-        : turf.featureCollection([merged]);
+      grayZoneData = turf.featureCollection(pieces);
 
       updateGrayZoneLayer();
       return grayZoneData;
     }
+
     function updateGrayZoneLayer() {
       if (grayZoneLayer) {
         map.removeLayer(grayZoneLayer);
@@ -732,6 +717,7 @@
       if (!grayZoneVisible || !grayZoneData || !map) return;
 
       grayZoneLayer = L.geoJSON(grayZoneData, {
+        pane: "grayZonePane",
         style: {
           color: "#666",
           fillColor: "#808080",
@@ -741,10 +727,6 @@
         },
         interactive: false
       }).addTo(map);
-
-      grayZoneLayer.eachLayer(function(layer) {
-        if (layer.bringToBack) layer.bringToBack();
-      });
     }
 
     function toggleGrayZone() {
@@ -769,8 +751,6 @@
 
     function recalcGrayZone() {
       setStatus("Recalculating gray zone...");
-      // Give the browser a moment to render the status before the
-      // (potentially slow) turf math runs.
       setTimeout(function () {
         generateGrayZone();
 
@@ -2138,6 +2118,8 @@
           zoom: 7
         });
 
+        map.createPane("grayZonePane");
+        map.getPane("grayZonePane").style.zIndex = 350;
 
         map.createPane("territoryPane");
         map.getPane("territoryPane").style.zIndex = 400;
