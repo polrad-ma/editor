@@ -322,13 +322,7 @@
     <div id="loginbox">
       <h2>POLRAD MAPPING</h2>
       <div style="color:#bbb;font-size:13px;margin-bottom:14px">Editor access</div>
-      <input
-        id="password"
-        type="password"
-        placeholder="Password"
-        autocomplete="current-password"
-        tabindex="1"
-      >
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" tabindex="1">
       <button id="loginbtn">Enter</button>
       <div id="err">Incorrect password.</div>
     </div>
@@ -492,12 +486,15 @@
       ["ria_frontline", "Claimed RIA Frontline", "RIA%20Frontline.geojson", "#000000", "line"]
     ];
 
-    // Layers that are too big to publish reliably (14–18 MB each).
-    // The editor still loads them, so you can edit them locally,
-    // but Publish will skip them. Republish manually from GitHub if needed.
+    // Layers too big to send to Cloudflare reliably. Skipped on Publish.
     const SKIP_PUBLISH_LAYERS = new Set([
       "Claimed DeepState Frontline",
       "Claimed RIA Frontline"
+    ]);
+
+    // Layers that only render if explicitly requested.
+    const HIDDEN_BY_DEFAULT = new Set([
+      "Gray Zone"
     ]);
 
     let map;
@@ -669,11 +666,7 @@
     }
 
     // =========================================================
-    // GRAY ZONE  (manual recalc only — click the Recalculate button)
-    //
-    // RU side  = ru_territory + ru_advances
-    // UA side  = ua_territory + ua_advances + regained
-    // Gray     = (buffer(RU, 15km) ∩ buffer(UA, 15km)) − RU − UA
+    // GRAY ZONE — manual recalc only. Runs when you click the button.
     // =========================================================
     function generateGrayZone() {
       grayZoneData = null;
@@ -823,18 +816,20 @@
     let ignoreNextMapClick = false;
     let ignoreMapClickTimer = null;
 
-    // Debounced normalize+save: dragging a vertex fires this once at the end
-    // instead of on every micro-change.
     let _normalizeTimer = null;
 
     function scheduleNormalizeAndSave() {
       clearTimeout(_normalizeTimer);
       _normalizeTimer = setTimeout(function () {
-        normalizeControlTerritoryOverlaps();
-        saveHistory();
-        renderSidebar();
-        updatePointCount();
-        setStatus("Unsaved changes. Click \"Recalculate Gray Zone\" to refresh the gray zone.");
+        try {
+          normalizeControlTerritoryOverlaps();
+          saveHistory();
+          renderSidebar();
+          updatePointCount();
+          setStatus("Unsaved changes. Click \"Recalculate Gray Zone\" to refresh the gray zone.");
+        } catch (e) {
+          console.warn("Scheduled work failed:", e);
+        }
       }, 250);
     }
 
@@ -1316,9 +1311,6 @@
     }
 
 
-    /* ---------------------------------------------------------
-       CONTROLLED TERRITORY EXPANSION
-    --------------------------------------------------------- */
     const CONTROL_TERRITORY = {
       ru: "ru_territory",
       ua: "ua_territory"
@@ -2671,13 +2663,25 @@
     $("grayZoneRecalc").onclick = recalcGrayZone;
 
     $("save").onclick = function() {
-      localStorage.setItem(
-        "polrad_editor_data",
-        JSON.stringify(getCurrentGeoJSON())
-      );
+      // Only save the small, non-huge layers to localStorage.
+      // The huge frontlines are dropped so localStorage doesn't overflow.
+      const all = getCurrentGeoJSON();
+      const slim = {};
+      Object.keys(all).forEach(function(key) {
+        if (SKIP_PUBLISH_LAYERS.has(key)) return;
+        slim[key] = all[key];
+      });
 
-      setStatus("Saved in this browser.");
-      alert("Changes saved successfully.");
+      try {
+        localStorage.setItem(
+          "polrad_editor_data",
+          JSON.stringify(slim)
+        );
+        setStatus("Saved in this browser.");
+        alert("Changes saved successfully.");
+      } catch (error) {
+        alert("Could not save: browser storage is full. Try clearing site data for polrad-ma.github.io, then saving again.");
+      }
     };
 
     $("download").onclick = function() {
@@ -2720,10 +2724,14 @@
           throw new Error(result.error || "Publish failed");
         }
 
-        localStorage.setItem(
-          "polrad_editor_data",
-          JSON.stringify(currentFiles)
-        );
+        try {
+          localStorage.setItem(
+            "polrad_editor_data",
+            JSON.stringify(currentFiles)
+          );
+        } catch (storageError) {
+          console.warn("Could not update editor cache:", storageError);
+        }
 
         setStatus("Published successfully.");
         alert("Published successfully!");
@@ -4761,17 +4769,22 @@ function installAdvancePublish() {
         throw new Error("There are no map files available to publish.");
       }
 
-      // Only upload snapshots that are NOT already on GitHub.
-      // Existing snapshots never change, so re-uploading them is
-      // both wasteful and, at 14–18 MB per snapshot × 37, what was
-      // breaking Publish with "Failed to fetch".
+      // Only upload snapshots that don't already exist on GitHub.
+      // Re-uploading 37 snapshots × several MB each on every publish is
+      // what breaks Publish with "Failed to fetch".
       let snapshotsUploaded = 0;
       let snapshotsSkipped = 0;
 
       for (const item of advances) {
         if (!item || !item.id) continue;
 
-        const onGitHub = await snapshotExistsOnGitHub(item.id);
+        let onGitHub = false;
+        try {
+          onGitHub = await snapshotExistsOnGitHub(item.id);
+        } catch (e) {
+          onGitHub = false;
+        }
+
         if (onGitHub) {
           snapshotsSkipped++;
           continue;
@@ -4779,22 +4792,23 @@ function installAdvancePublish() {
 
         const snapshot = await loadSnapshotForPublish(item);
         if (!snapshot) {
-          throw new Error(
-            "The advance " + item.id +
-            " has no available snapshot and is not on GitHub."
-          );
+          console.warn("Skipping snapshot with no data:", item.id);
+          continue;
         }
 
         setStatus("Uploading new advance snapshot: " + item.id + "...");
 
-        await postWorker({
-          action: "publishSnapshots",
-          snapshots: {
-            [item.id]: snapshot
-          }
-        });
-
-        snapshotsUploaded++;
+        try {
+          await postWorker({
+            action: "publishSnapshots",
+            snapshots: {
+              [item.id]: snapshot
+            }
+          });
+          snapshotsUploaded++;
+        } catch (e) {
+          console.warn("Could not upload snapshot " + item.id + ":", e);
+        }
       }
 
       const publishAdvances = advances.map(stripSnapshotData);
