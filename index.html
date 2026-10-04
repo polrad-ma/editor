@@ -334,7 +334,6 @@
 <div class="tabs">
   <button class="tab active" id="tabTools" type="button">Editor tools</button>
   <button class="tab" id="tabAdvances" type="button">Advances</button>
-  <button class="tab" id="tabSuriyak" type="button">Suriyak Markers</button>
 </div>
 
 <div class="body" id="paneTools">
@@ -401,46 +400,6 @@
   <div id="advanceHistory"></div>
 </div>
 
-<div class="body" id="paneSuriyak" style="display:none">
-  <b style="font-size:13px">Suriyak town markers</b>
-  <div class="small" style="margin-top:4px">
-    Place small colored circles on the map. They are stored in a separate GeoJSON layer and can be edited later.
-  </div>
-
-  <div class="box" style="margin-top:10px">
-    <b style="font-size:13px">Marker color</b>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      <button class="btn" id="suriyakRed" type="button">Red</button>
-      <button class="btn" id="suriyakOrange" type="button">Orange</button>
-      <button class="btn" id="suriyakBlue" type="button">Blue</button>
-      <button class="btn" id="suriyakGreen" type="button">Green</button>
-    </div>
-    <label style="display:block;margin-top:9px">Custom color</label>
-    <input id="suriyakColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
-    <label style="display:block;margin-top:9px">Circle size</label>
-    <input id="suriyakRadius" type="range" min="2" max="10" step="1" value="5">
-    <span id="suriyakRadiusValue" class="small">5 px</span>
-  </div>
-
-  <div class="box">
-    <button class="btn primary" id="addSuriyakMarker" type="button">Place marker</button>
-    <button class="btn" id="finishSuriyakPlacement" type="button" style="display:none">Finish placement</button>
-    <button class="btn" id="toggleSuriyakLayer" type="button">Show marker layer</button>
-    <div class="small" id="suriyakStatus" style="margin-top:6px">Choose a color, then click Place marker and click the map.</div>
-  </div>
-
-  <div class="box" id="suriyakSelectedBox" style="display:none">
-    <b style="font-size:13px">Selected marker</b>
-    <label style="display:block;margin-top:8px">Color</label>
-    <input id="suriyakSelectedColor" type="color" value="#ff0000" style="width:54px;height:34px;padding:2px">
-    <label style="display:block;margin-top:8px">Circle size</label>
-    <input id="suriyakSelectedRadius" type="range" min="2" max="10" step="1" value="3">
-    <span id="suriyakSelectedRadiusValue" class="small">3 px</span>
-    <button class="btn" id="deleteSuriyakMarker" type="button" style="color:#b3261e">Delete marker</button>
-  </div>
-</div>
-
-
   </div>
 
   <div id="map"></div>
@@ -467,8 +426,7 @@
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
-      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"],
-      ["suriyak_markers", "Suriyak town markers", "Suriyak%20town%20markers.geojson", "#ff0000", "marker"]
+      ["regained", "Territories regained in the last month", "Territories%20regained%20in%20the%20last%20month.geojson", "#0f9d58"]
     ];
 
     const SKIP_PUBLISH_LAYERS = new Set([]);
@@ -477,20 +435,15 @@
     let groups = {};
     let selected = null;
     let drawing = false;
-    let suriyakDrawing = false;
     let controlExpandDrawing = false;
     let controlExpandPoints = [];
     let controlExpandPreview = null;
-    let suriyakColor = "#ff0000";
-    let suriyakMarkerRadius = 5;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
     const layerOpenState = {};
 
-    const layerVisible = {
-      suriyak_markers: false
-    };
+    const layerVisible = {};
 
     function createGroup(id) {
       const group = L.featureGroup();
@@ -509,8 +462,6 @@
         layerId === "ru_advances" ||
         layerId === "ua_advances"
       ) return "advancesPane";
-
-      if (layerId === "suriyak_markers") return "suriyakMarkersPane";
 
       return "overlayPane";
     }
@@ -694,9 +645,6 @@
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-            // Build one merged shape per side. turf.union of many features can
-      // return a Feature OR a FeatureCollection. turf.difference only
-      // accepts a single Feature, so unwrap before subtracting.
       setStatus("Gray zone: building side unions for cleanup...");
 
       function unwrapToFeature(fc) {
@@ -959,22 +907,6 @@
       const c = config(layer._layer);
       if (!c) return;
 
-      const isMarkerLayer = c[4] === "marker";
-      if (isMarkerLayer) {
-        const markerColor =
-          layer.feature && layer.feature.properties && layer.feature.properties.color
-            ? layer.feature.properties.color
-            : c[3];
-        layer.setStyle({
-          radius: isSelected ? suriyakMarkerRadius + 2 : suriyakMarkerRadius,
-          color: "#ffffff",
-          fillColor: markerColor,
-          fillOpacity: 1,
-          weight: isSelected ? 2.5 : 1.5
-        });
-        return;
-      }
-
       layer.setStyle({
         color: c[3],
         fillColor: c[3],
@@ -1043,19 +975,13 @@
       }
 
       selected = layer;
-      const isSuriyakMarker = layer._layer === "suriyak_markers";
 
-      if (!isSuriyakMarker) {
-        layer.pm.enable();
-      }
+      layer.pm.enable();
       applyStyle(layer, true);
 
-      $("selectedBox").style.display = isSuriyakMarker ? "none" : "block";
-      $("suriyakSelectedBox").style.display = isSuriyakMarker ? "block" : "none";
-      if (!isSuriyakMarker) {
-        $("selectedName").textContent = polygonName(layer);
-        $("selectedLayer").value = layer._layer;
-      }
+      $("selectedBox").style.display = "block";
+      $("selectedName").textContent = polygonName(layer);
+      $("selectedLayer").value = layer._layer;
       updatePointCount();
 
       renderSidebar();
@@ -1074,13 +1000,6 @@
 
       layer.feature.properties = layer.feature.properties || {};
 
-      if (layerId === "suriyak_markers") {
-        layer.on("click", function(event) {
-          L.DomEvent.stopPropagation(event);
-          if (!drawing) selectSuriyakMarker(layer);
-        });
-      }
-
       if (!layer.feature.properties.Name) {
         layer.feature.properties.Name = "New polygon " + polygonCounter++;
       }
@@ -1088,13 +1007,6 @@
       applyStyle(layer);
 
       layer.on("click", function(event) {
-
-        if (suriyakDrawing) {
-          L.DomEvent.stopPropagation(event);
-          addSuriyakMarker(event.latlng);
-          return;
-        }
-
         L.DomEvent.stopPropagation(event);
 
         if (!drawing) {
@@ -1221,7 +1133,6 @@
       LAYERS.forEach(function(c) {
         const id = c[0];
 
-        if (id === "suriyak_markers") return;
         const group = groups[id];
         const layers = group ? group.getLayers() : [];
         const isVisible = layerVisible[id] !== false;
@@ -1367,10 +1278,6 @@
         selectElement.innerHTML = "";
 
         LAYERS.forEach(function(c) {
-
-
-
-          if (selectId === "drawLayer" && c[4] === "marker") return;
 
           const option = document.createElement("option");
           option.value = c[0];
@@ -1611,32 +1518,6 @@
     }
 
     function addFeature(feature, layerId) {
-      if (layerId === "suriyak_markers") {
-        if (!feature || !feature.geometry || feature.geometry.type !== "Point") return;
-        const coords = feature.geometry.coordinates || [];
-        if (coords.length < 2) return;
-        const props = feature.properties || {};
-        const color = props.color || "#ff0000";
-        const layer = L.circleMarker([Number(coords[1]), Number(coords[0])], {
-          radius: Number(props.radius) || suriyakMarkerRadius,
-          color: "#ffffff",
-          fillColor: color,
-          fillOpacity: 1,
-          weight: 1.5,
-          pane: "suriyakMarkersPane"
-        });
-        layer._layer = layerId;
-        layer._fid = props._fid || ("suriyak-" + Date.now() + "-" + Math.random().toString(36).slice(2));
-        layer.feature = {
-          type: "Feature",
-          properties: Object.assign({}, props, { color: color, radius: Number(props.radius) || suriyakMarkerRadius }),
-          geometry: { type: "Point", coordinates: [Number(coords[0]), Number(coords[1])] }
-        };
-        setupPolygon(layer, layerId);
-        groups[layerId].addLayer(layer);
-        return;
-      }
-
       let layer = null;
 
       layer = L.geoJSON(feature, {
@@ -2209,9 +2090,6 @@
         map.createPane("frontlinePane");
         map.getPane("frontlinePane").style.zIndex = 520;
 
-        map.createPane("suriyakMarkersPane");
-        map.getPane("suriyakMarkersPane").style.zIndex = 650;
-
         const satellite = L.tileLayer(
           "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
           { attribution: "Tiles © Esri" }
@@ -2247,53 +2125,6 @@
           "OpenStreetMap": osm,
           "OpenTopoMap": topo
         }).addTo(map);
-
-        let suriyakPointerStart = null;
-        let suriyakPointerDragged = false;
-        const mapContainer = map.getContainer();
-
-        mapContainer.addEventListener("pointerdown", function(event) {
-          if (!suriyakDrawing) return;
-          if (event.target && event.target.closest &&
-              event.target.closest(".leaflet-control, #mapSearchBox")) return;
-          suriyakPointerStart = { x: event.clientX, y: event.clientY };
-          suriyakPointerDragged = false;
-        }, true);
-
-        mapContainer.addEventListener("pointermove", function(event) {
-          if (!suriyakDrawing || !suriyakPointerStart) return;
-          const dx = event.clientX - suriyakPointerStart.x;
-          const dy = event.clientY - suriyakPointerStart.y;
-          if ((dx * dx) + (dy * dy) > 36) {
-            suriyakPointerDragged = true;
-          }
-        }, true);
-
-        mapContainer.addEventListener("pointercancel", function() {
-          suriyakPointerStart = null;
-          suriyakPointerDragged = false;
-        }, true);
-
-        mapContainer.addEventListener("click", function(event) {
-          if (!suriyakDrawing) return;
-          if (event.target && event.target.closest &&
-              event.target.closest(".leaflet-control, #mapSearchBox")) return;
-
-          if (suriyakPointerDragged) {
-            suriyakPointerStart = null;
-            suriyakPointerDragged = false;
-            event.stopPropagation();
-            return;
-          }
-
-          suriyakPointerStart = null;
-          suriyakPointerDragged = false;
-
-          const latlng = map.mouseEventToLatLng(event);
-          addSuriyakMarker(latlng);
-          event.stopPropagation();
-        }, true);
-
 
         map.on("click", function(event) {
           if (controlExpandDrawing) {
@@ -2349,9 +2180,6 @@
       if (!selected) return;
 
       groups[selected._layer].removeLayer(selected);
-      if (selected._layer === "suriyak_markers") {
-        $("suriyakSelectedBox").style.display = "none";
-      }
       selected = null;
       $("selectedBox").style.display = "none";
 
@@ -2374,126 +2202,18 @@
       cancelControlExpansion(false);
     };
 
-    function setSuriyakColor(color) {
-      suriyakColor = color;
-      $("suriyakColor").value = color;
-      if (selected && selected._layer === "suriyak_markers") {
-        selected.feature.properties.color = color;
-        applyStyle(selected, true);
-        saveHistory();
-        setStatus("Marker color changed.");
-      }
-    }
-
-    function updateSuriyakRadius(value, forSelected) {
-      const radius = Math.max(2, Math.min(10, Number(value) || 5));
-      if (forSelected && selected && selected._layer === "suriyak_markers") {
-        selected.feature.properties.radius = radius;
-        applyStyle(selected, true);
-        $("suriyakSelectedRadiusValue").textContent = radius + " px";
-        saveHistory();
-        setStatus("Marker size changed.");
-      } else {
-        suriyakMarkerRadius = radius;
-        $("suriyakRadiusValue").textContent = radius + " px";
-      }
-    }
-
-    function selectSuriyakMarker(layer) {
-      select(layer);
-      const props = layer.feature.properties || {};
-      const color = props.color || "#ff0000";
-      const radius = Number(props.radius) || 5;
-      $("suriyakSelectedBox").style.display = "block";
-      $("suriyakSelectedColor").value = color;
-      $("suriyakSelectedRadius").value = radius;
-      $("suriyakSelectedRadiusValue").textContent = radius + " px";
-    }
-
-    function startSuriyakMarkerPlacement() {
-      if (suriyakDrawing) return;
-      if (layerVisible.suriyak_markers === false) setLayerVisible("suriyak_markers", true);
-      suriyakDrawing = true;
-      drawing = true;
-      $("addSuriyakMarker").textContent = "Placing markers…";
-      $("finishSuriyakPlacement").style.display = "inline-block";
-      $("suriyakStatus").textContent = "Click the map to place multiple markers. Click Finish placement when done.";
-    }
-
-    function finishSuriyakPlacement() {
-      suriyakDrawing = false;
-      drawing = false;
-      $("addSuriyakMarker").textContent = "Place marker";
-      $("finishSuriyakPlacement").style.display = "none";
-      $("suriyakStatus").textContent = "Choose a color, then click Place marker to place multiple markers.";
-      saveHistory();
-      renderSidebar();
-      setStatus("Finished placing Suriyak town markers.");
-    }
-
-    function addSuriyakMarker(latlng) {
-      const feature = {
-        type: "Feature",
-        properties: {
-          Name: "Suriyak town marker " + (groups.suriyak_markers.getLayers().length + 1),
-          color: suriyakColor,
-          radius: suriyakMarkerRadius
-        },
-        geometry: {
-          type: "Point",
-          coordinates: [latlng.lng, latlng.lat]
-        }
-      };
-      addFeature(feature, "suriyak_markers");
-
-
-
-      renderSidebar();
-      setStatus("Suriyak town marker added. Keep clicking to place more, or Finish placement when done.");
-    }
-
-
-    $("suriyakRed").onclick = function() { setSuriyakColor("#ff0000"); };
-    $("suriyakOrange").onclick = function() { setSuriyakColor("#ff7a00"); };
-    $("suriyakBlue").onclick = function() { setSuriyakColor("#0066ff"); };
-    $("suriyakGreen").onclick = function() { setSuriyakColor("#00a83b"); };
-    $("suriyakColor").oninput = function() { setSuriyakColor(this.value); };
-    $("suriyakRadius").oninput = function() { updateSuriyakRadius(this.value, false); };
-    $("suriyakSelectedColor").oninput = function() { setSuriyakColor(this.value); };
-    $("suriyakSelectedRadius").oninput = function() { updateSuriyakRadius(this.value, true); };
-    $("addSuriyakMarker").onclick = startSuriyakMarkerPlacement;
-    $("finishSuriyakPlacement").onclick = finishSuriyakPlacement;
-    $("toggleSuriyakLayer").onclick = function() {
-      const visible = layerVisible.suriyak_markers !== false;
-      setLayerVisible("suriyak_markers", !visible);
-      $("toggleSuriyakLayer").textContent = visible ? "Show marker layer" : "Hide marker layer";
-    };
-    $("deleteSuriyakMarker").onclick = function() {
-      if (!selected || selected._layer !== "suriyak_markers") return;
-      groups.suriyak_markers.removeLayer(selected);
-      selected = null;
-      $("selectedBox").style.display = "none";
-      $("suriyakSelectedBox").style.display = "none";
-      saveHistory();
-      setStatus("Suriyak town marker deleted.");
-    };
-
     function showEditorTab(name) {
       const tools = name === "tools";
       const advances = name === "advances";
-      const suriyak = name === "suriyak";
 
       $("paneTools").style.display = tools ? "block" : "none";
       $("paneAdvances").style.display = advances ? "block" : "none";
-      $("paneSuriyak").style.display = suriyak ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
       $("tabAdvances").classList.toggle("active", advances);
-      $("tabSuriyak").classList.toggle("active", suriyak);
     }
 
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
-    $("tabSuriyak").onclick = function() { showEditorTab("suriyak"); };
 
     $("search").oninput = renderSidebar;
 
