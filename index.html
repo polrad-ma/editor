@@ -2593,6 +2593,44 @@
     }
   }
 
+  async function mergeAdvancesWithGitHub() {
+    try {
+      const response = await fetch(
+        "https://raw.githubusercontent.com/polrad-ma/uawarmap/main/advances.json?v=" + Date.now(),
+        { cache: "no-store" }
+      );
+
+      if (!response.ok) return advances;
+
+      const remote = await response.json();
+      if (!Array.isArray(remote)) return advances;
+
+      const byId = {};
+      remote.forEach(function(item) {
+        if (item && item.id) byId[item.id] = item;
+      });
+      advances.forEach(function(item) {
+        if (item && item.id) byId[item.id] = item;
+      });
+
+      const merged = Object.keys(byId).map(function(k) { return byId[k]; });
+      merged.sort(function(a, b) {
+        const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
+        const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
+        return ak.localeCompare(bk);
+      });
+
+      advances = merged;
+      saveAdvances();
+      renderAdvanceHistory();
+      console.log("Advances merged with GitHub. Total: " + advances.length);
+      return advances;
+    } catch (e) {
+      console.warn("Could not merge advances with GitHub:", e);
+      return advances;
+    }
+  }
+
 
   async function migrateAdvanceSnapshots() {
     for (const item of advances.slice()) {
@@ -4275,6 +4313,9 @@ function installAdvancePublish() {
     publish.disabled = true;
 
     try {
+      setStatus("Merging advances with GitHub before publish...");
+      await mergeAdvancesWithGitHub();
+
       const currentFiles = getCurrentGeoJSON();
       const allEntries = Object.entries(currentFiles).filter(function(entry) {
         return entry[1] !== undefined && entry[1] !== null;
@@ -4373,12 +4414,14 @@ function installAdvancePublish() {
         "Published successfully. " +
         snapshotsUploaded + " new snapshot(s) uploaded, " +
         snapshotsSkipped + " existing snapshot(s) skipped, " +
-        fileEntries.length + " map file(s) published." +
+        fileEntries.length + " map file(s) published. " +
+        advances.length + " advances in file." +
         skipNote
       );
 
       alert(
         "Published successfully!\n\n" +
+        advances.length + " advances in the file.\n" +
         snapshotsUploaded + " new advance snapshot(s) uploaded.\n" +
         snapshotsSkipped + " existing snapshot(s) already on GitHub (skipped).\n" +
         fileEntries.length + " map file(s) published." +
@@ -4421,6 +4464,8 @@ if (latestAdvanceButton && latestAdvanceButton.dataset.installed !== "1") {
 renderAdvanceHistory();
 
 migrateAdvanceSnapshots();
+
+mergeAdvancesWithGitHub();
 
 }
 
