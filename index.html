@@ -1918,10 +1918,14 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
-    // Merge a freehand shape with polygons in the SAME layer:
-    //  1. cut out overlapping parts of the layer's existing polygons,
-    //  2. union the remaining (trimmed) shape with polygons it touches so
-    //     the shape "snaps" into the existing territory.
+       // Merge a freehand shape with polygons in the SAME layer:
+    //  1. figure out which existing polygons the shape actually touches,
+    //  2. cut out the overlapping parts (union of touched polygons only),
+    //  3. union the trimmed shape with those polygons so it "snaps" onto them.
+    // If the shape touches nothing, it is added untouched.
+    // If any Turf call fails, we fall back to keeping the shape instead of
+    // discarding it — so the "nothing added" alert only fires when the
+    // shape really is entirely inside existing polygons.
     function mergeFreehandWithSameLayer(newFeature, targetId) {
       const targetGroup = groups[targetId];
 
@@ -1934,104 +1938,105 @@
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
-      const existingFeatures = existingLayers.map(function(layer) {
+      // Collect only the existing polygons the new shape touches or overlaps.
+      const touched = [];
+
+      existingLayers.forEach(function (layer) {
+        let ef;
         try {
-          return turf.cleanCoords(layer.toGeoJSON());
+          ef = turf.cleanCoords(layer.toGeoJSON());
         } catch (e) {
-          return layer.toGeoJSON();
+          ef = layer.toGeoJSON();
         }
+
+        if (!ef || !ef.geometry) return;
+        if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
+
+        let hit = false;
+        try {
+          hit = turf.booleanIntersects(newFeature, ef);
+        } catch (e) {
+          // If we cannot tell, skip this polygon — better to leave the
+          // shape alone than to accidentally discard it.
+          hit = false;
+        }
+
+        if (hit) touched.push({ layer: layer, feature: ef });
       });
 
-      const validExisting = existingFeatures.filter(function(f) {
-        return f && f.geometry &&
-          (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
-      });
-
-      if (!validExisting.length) {
+      // Shape does not touch any existing polygon — nothing to trim or merge.
+      // Add it untouched.
+      if (!touched.length) {
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
-      // Which existing polygons does the new shape touch or overlap?
-      const touched = [];
-      existingLayers.forEach(function(layer, idx) {
-        const ef = existingFeatures[idx];
-        if (!ef || !ef.geometry) return;
-        if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
-        try {
-          if (turf.booleanIntersects(newFeature, ef)) {
-            touched.push({ layer: layer, feature: ef });
-          }
-        } catch (e) {}
-      });
+      // Union only the polygons the shape actually touches.
+      let touchedUnion = null;
+      try {
+        touchedUnion = unionAll(touched.map(function (t) { return t.feature; }));
+        if (touchedUnion && touchedUnion.type === "FeatureCollection") {
+          touchedUnion = unionAll(touchedUnion.features || []);
+        }
+      } catch (e) {
+        console.warn("Touched union failed:", e);
+        touchedUnion = null;
+      }
 
-      const existingUnion = unionAll(validExisting);
-      if (!existingUnion) {
+      if (!touchedUnion || !touchedUnion.geometry) {
+        // Could not build the union — keep the shape as-is.
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
       // Cut the overlap out of the new shape.
       let trimmed = null;
-      let wasTrimmed = false;
-
       try {
-        trimmed = turf.difference(newFeature, existingUnion);
-
-        if (trimmed && trimmed.geometry) {
-          try {
-            const origArea = turf.area(newFeature);
-            const trimArea = turf.area(trimmed);
-            wasTrimmed = Math.abs(origArea - trimArea) > 0.5;
-          } catch (e) {
-            wasTrimmed = true;
-          }
+        trimmed = turf.difference(newFeature, touchedUnion);
+        if (trimmed && trimmed.type === "FeatureCollection") {
+          trimmed = unionAll(trimmed.features || []);
         }
       } catch (e) {
-        trimmed = null;
+        console.warn("Trim difference failed:", e);
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
+      // Difference returning nothing means the drawn shape really is fully
+      // inside the polygons it touched — that is the only case we discard.
       if (!trimmed || !trimmed.geometry) {
         return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
+      }
+
+      // Snap: union the trimmed shape with every polygon it touched.
+      let mergedFeature = null;
+      try {
+        mergedFeature = unionAll(
+          [trimmed].concat(touched.map(function (t) { return t.feature; }))
+        );
+        if (mergedFeature && mergedFeature.type === "FeatureCollection") {
+          mergedFeature = unionAll(mergedFeature.features || []);
+        }
+      } catch (e) {
+        console.warn("Snap union failed:", e);
+        mergedFeature = null;
+      }
+
+      if (!mergedFeature || !mergedFeature.geometry) {
+        // Snap failed — keep the trimmed shape alone (still correct geometry,
+        // just not merged visually into the neighbour).
+        mergedFeature = trimmed;
       }
 
       const name =
         (newFeature.properties && newFeature.properties.Name) ||
         ("New polygon " + polygonCounter);
 
-      if (!trimmed.properties) trimmed.properties = {};
-      trimmed.properties.Name = name;
-
-      if (!touched.length) {
-        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
-      }
-
-      // Union trimmed shape with every touched polygon so they snap together.
-      const parts = [trimmed];
-      touched.forEach(function(t) { parts.push(t.feature); });
-
-      let merged = unionAll(parts);
-
-      if (!merged) {
-        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
-      }
-
-      // Sometimes turf.union returns a FeatureCollection of disjoint
-      // pieces; re-union if that happens.
-      if (merged.type === "FeatureCollection") {
-        merged = unionAll(merged.features || []);
-      }
-
-      if (!merged || !merged.geometry) {
-        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
-      }
-
-      if (!merged.properties) merged.properties = {};
-      merged.properties.Name = name;
+      if (!mergedFeature.properties) mergedFeature.properties = {};
+      mergedFeature.properties.Name = name;
 
       return {
-        feature: merged,
-        mergedLayers: touched.map(function(t) { return t.layer; }),
+        feature: mergedFeature,
+        mergedLayers: touched.map(function (t) { return t.layer; }),
         discarded: false,
-        wasTrimmed: wasTrimmed
+        wasTrimmed: true
       };
     }
 
