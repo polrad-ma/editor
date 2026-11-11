@@ -319,6 +319,11 @@
       color: #fff;
       border-color: #b3261e;
     }
+    .btn.freehand-active {
+      background: #1a73e8;
+      color: #fff;
+      border-color: #1a73e8;
+    }
   </style>
 
 </head>
@@ -363,7 +368,7 @@
     <button class="btn primary" id="draw">Draw a polygon</button>
     <button class="btn" id="drawFreehand">Draw freehand shape (drag)</button>
     <button class="btn" id="eraserFreehand" style="display:none">Erase freehand shape (drag)</button>
-    <div class="small" style="margin-top:6px">Freehand shapes are simplified automatically and added to the selected layer. Overlapping parts of the same layer are cut out and merged with the shape it touches. The eraser only works on the currently selected layer and is only available while the freehand tool is active.</div>
+    <div class="small" style="margin-top:6px">Freehand shapes are simplified automatically and added to the selected layer. Overlapping parts of the same layer are cut out and merged with the shape it touches. Click the freehand button again (or press Esc) to stop. The eraser is only available while freehand is active.</div>
   </div>
 
   <div class="box">
@@ -1829,21 +1834,319 @@
       setStatus("Drawing polygon...");
     }
 
+    // ==================================================================
+    // =============== ROBUST GEOMETRY HELPERS ==========================
+    // ==================================================================
+
+    // Turn any turf op result into a Feature with Polygon/MultiPolygon
+    // geometry (or null if empty).
+    function normalizeGeometryResult(result) {
+      if (!result) return null;
+
+      if (result.type === "Feature" && result.geometry) {
+        const t = result.geometry.type;
+        if (t === "Polygon" || t === "MultiPolygon") return result;
+        return null;
+      }
+
+      if (result.type === "FeatureCollection") {
+        const pieces = (result.features || []).filter(function (f) {
+          return f && f.geometry &&
+            (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
+        });
+        if (!pieces.length) return null;
+        if (pieces.length === 1) return pieces[0];
+
+        const polys = [];
+        pieces.forEach(function (p) {
+          if (p.geometry.type === "Polygon") {
+            polys.push(p.geometry.coordinates);
+          } else {
+            p.geometry.coordinates.forEach(function (c) { polys.push(c); });
+          }
+        });
+        if (!polys.length) return null;
+        try { return turf.multiPolygon(polys); }
+        catch (e) { return pieces[0]; }
+      }
+
+      if (result.type === "Polygon" || result.type === "MultiPolygon") {
+        return { type: "Feature", properties: {}, geometry: result };
+      }
+
+      return null;
+    }
+
+    // Robust union with multiple fallback strategies.
+    function robustUnion(features) {
+      if (!features || !features.length) return null;
+      if (features.length === 1) return features[0];
+
+      // Strategy 1: pairwise, direct
+      try {
+        let acc = features[0];
+        for (let i = 1; i < features.length; i++) {
+          const u = turf.union(acc, features[i]);
+          if (!u || !u.geometry) { acc = null; break; }
+          acc = u;
+        }
+        if (acc && acc.geometry) return acc;
+      } catch (e) { console.warn("robustUnion pairwise:", e); }
+
+      // Strategy 2: featureCollection form
+      try {
+        const u = turf.union(turf.featureCollection(features));
+        const norm = normalizeGeometryResult(u);
+        if (norm && norm.geometry) return norm;
+      } catch (e) { console.warn("robustUnion FC:", e); }
+
+      // Strategy 3: buffer(0) then pairwise
+      try {
+        const cleaned = features.map(function (f) {
+          try { return turf.buffer(f, 0, { units: "meters" }) || f; }
+          catch (e) { return f; }
+        });
+        let acc = cleaned[0];
+        for (let i = 1; i < cleaned.length; i++) {
+          const u = turf.union(acc, cleaned[i]);
+          if (!u || !u.geometry) { acc = null; break; }
+          acc = u;
+        }
+        if (acc && acc.geometry) return acc;
+      } catch (e) { console.warn("robustUnion cleaned:", e); }
+
+      // Strategy 4: simplify then pairwise
+      try {
+        const simplified = features.map(function (f) {
+          try { return turf.simplify(f, { tolerance: 0.0005, highQuality: false }) || f; }
+          catch (e) { return f; }
+        });
+        let acc = simplified[0];
+        for (let i = 1; i < simplified.length; i++) {
+          const u = turf.union(acc, simplified[i]);
+          if (!u || !u.geometry) { acc = null; break; }
+          acc = u;
+        }
+        if (acc && acc.geometry) return acc;
+      } catch (e) { console.warn("robustUnion simplified:", e); }
+
+      return null;
+    }
+
+    // Subtract cutter from feature.  Returns
+    //   { feature: Feature|null, changed: bool, error: string|null }
+    function subtractFromFeature(feature, cutter) {
+      if (!feature || !feature.geometry) return { feature: feature, changed: false, error: "no feature" };
+      if (!cutter || !cutter.geometry) return { feature: feature, changed: false, error: "no cutter" };
+
+      // Fast bbox check — skip polygons that clearly don't overlap.
+      try {
+        const fb = turf.bbox(feature);
+        const cb = turf.bbox(cutter);
+        if (fb[0] > cb[2] || fb[2] < cb[0] || fb[1] > cb[3] || fb[3] < cb[1]) {
+          return { feature: feature, changed: false, error: null };
+        }
+      } catch (e) { /* proceed */ }
+
+      let raw = null;
+      let err = null;
+
+      try {
+        raw = turf.difference(feature, cutter);
+      } catch (e) {
+        err = e;
+      }
+
+      // Fallback 1: buffer(0) clean, retry
+      if (err) {
+        try {
+          const fc = turf.buffer(feature, 0, { units: "meters" }) || feature;
+          const cc = turf.buffer(cutter, 0, { units: "meters" }) || cutter;
+          raw = turf.difference(fc, cc);
+          err = null;
+        } catch (e) { err = e; }
+      }
+
+      // Fallback 2: simplify, retry
+      if (err) {
+        try {
+          const fs = turf.simplify(feature, { tolerance: 0.001, highQuality: false }) || feature;
+          const cs = turf.simplify(cutter, { tolerance: 0.001, highQuality: false }) || cutter;
+          raw = turf.difference(fs, cs);
+          err = null;
+        } catch (e) { err = e; }
+      }
+
+      if (err) {
+        return { feature: feature, changed: false, error: err.message || String(err) };
+      }
+
+      if (!raw || !raw.geometry) {
+        // fully erased
+        return { feature: null, changed: true, error: null };
+      }
+
+      // Check if the geometry actually changed (area comparison)
+      try {
+        const origArea = turf.area(feature);
+        const newArea = turf.area(raw);
+        if (Math.abs(origArea - newArea) < 1) {
+          // no meaningful change
+          return { feature: feature, changed: false, error: null };
+        }
+      } catch (e) { /* proceed */ }
+
+      const norm = normalizeGeometryResult(raw);
+      if (!norm || !norm.geometry) {
+        return { feature: null, changed: true, error: null };
+      }
+
+      if (norm.properties) delete norm.properties;
+      norm.properties = Object.assign({}, feature.properties || {});
+
+      return { feature: norm, changed: true, error: null };
+    }
+
+    // ==================================================================
+    // =============== MERGE FREHAND WITH SAME LAYER ===================
+    // ==================================================================
+    function mergeFreehandWithSameLayer(newFeature, targetId) {
+      const targetGroup = groups[targetId];
+      if (!targetGroup) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      const existingLayers = targetGroup.getLayers().slice();
+      if (!existingLayers.length) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      // Fast bbox-based candidate detection (no turf polygon ops that can throw).
+      let newBbox;
+      try { newBbox = turf.bbox(newFeature); }
+      catch (e) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      const candidates = [];
+      existingLayers.forEach(function (layer) {
+        let ef;
+        try { ef = turf.cleanCoords(layer.toGeoJSON()); }
+        catch (e) { ef = layer.toGeoJSON(); }
+
+        if (!ef || !ef.geometry) return;
+        if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
+
+        let bbox;
+        try { bbox = turf.bbox(ef); } catch (e) { return; }
+        if (newBbox[0] > bbox[2] || newBbox[2] < bbox[0] ||
+            newBbox[1] > bbox[3] || newBbox[3] < bbox[1]) return;
+
+        candidates.push({ layer: layer, feature: ef });
+      });
+
+      if (!candidates.length) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      // Step 1: subtract each candidate from the new shape.
+      // Only candidates that actually reduce the area are "touched".
+      let trimmed = newFeature;
+      const touched = [];
+      let anyTrimmed = false;
+
+      for (const c of candidates) {
+        const r = subtractFromFeature(trimmed, c.feature);
+        if (r.error) continue;
+        if (!r.changed) continue;
+        anyTrimmed = true;
+        if (!r.feature) {
+          // fully erased — the drawn shape was entirely inside existing polygons
+          return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
+        }
+        trimmed = r.feature;
+        touched.push(c);
+      }
+
+      if (!anyTrimmed) {
+        // no meaningful overlap → add as-is
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      // Step 2: union the trimmed result with the touched polygons.
+      // Since we already removed the overlap, union is now the easy case.
+      if (touched.length > 0) {
+        const allFeatures = [trimmed].concat(touched.map(function (t) { return t.feature; }));
+        const merged = robustUnion(allFeatures);
+
+        if (merged && merged.geometry) {
+          const name =
+            (newFeature.properties && newFeature.properties.Name) ||
+            ("New polygon " + polygonCounter);
+          if (!merged.properties) merged.properties = {};
+          merged.properties.Name = name;
+          return {
+            feature: merged,
+            mergedLayers: touched.map(function (t) { return t.layer; }),
+            discarded: false,
+            wasTrimmed: true
+          };
+        }
+      }
+
+      // Step 3: union failed — add the trimmed shape separately.
+      const name =
+        (newFeature.properties && newFeature.properties.Name) ||
+        ("New polygon " + polygonCounter);
+      if (!trimmed.properties) trimmed.properties = {};
+      trimmed.properties.Name = name;
+
+      return {
+        feature: trimmed,
+        mergedLayers: [],
+        discarded: false,
+        wasTrimmed: true
+      };
+    }
+
+    // ==================================================================
+    // =============== FREEHAND DRAWING =================================
+    // ==================================================================
     let freehandDrawing = false;
     let freehandPoints = [];
     let freehandPreview = null;
 
-    let eraserActive = false;
-    let eraserDrawing = false;
-    let eraserPoints = [];
-    let eraserPreview = null;
-
     function freehandKeydown(event) {
-      if (event.key === "Escape" && freehandDrawing) {
-        cancelFreehand();
+      if (event.key === "Escape") {
+        if (eraserDrawing) { cancelEraserStroke(); return; }
+        if (freehandDrawing) { stopFreehandDrawing(); return; }
       }
-      if (event.key === "Escape" && eraserDrawing) {
-        cancelEraser();
+    }
+
+    function unbindFreehandHandlers() {
+      map.off("mousedown", freehandDown);
+      map.off("mousemove", freehandMove);
+      window.removeEventListener("mouseup", freehandUp);
+      document.removeEventListener("keydown", freehandKeydown);
+    }
+
+    function bindFreehandHandlers() {
+      unbindFreehandHandlers();
+      map.on("mousedown", freehandDown);
+      map.on("mousemove", freehandMove);
+      window.addEventListener("mouseup", freehandUp);
+      document.addEventListener("keydown", freehandKeydown);
+    }
+
+    function updateFreehandButton() {
+      const btn = $("drawFreehand");
+      if (!btn) return;
+      if (freehandDrawing) {
+        btn.textContent = "✓ Freehand active — click to stop";
+        btn.classList.add("freehand-active");
+      } else {
+        btn.textContent = "Draw freehand shape (drag)";
+        btn.classList.remove("freehand-active");
       }
     }
 
@@ -1853,54 +2156,13 @@
       btn.style.display = show ? "block" : "none";
     }
 
-    function setEraserActive(active) {
-      eraserActive = !!active;
-      const btn = $("eraserFreehand");
-      if (btn) {
-        btn.classList.toggle("eraser-active", eraserActive);
-        btn.textContent = eraserActive
-          ? "Eraser active — click to stop"
-          : "Erase freehand shape (drag)";
-      }
-      if (eraserActive) {
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-        setStatus("Eraser active. Drag over the selected layer to remove parts of it. Press Esc or click the eraser button again to stop.");
-      } else {
-        cancelEraser();
-        if (!freehandDrawing) {
-          map.dragging.enable();
-          map.getContainer().style.cursor = "";
-        }
-      }
-    }
-
-    function cancelFreehand() {
-      if (!freehandDrawing) return;
-
-      freehandDrawing = false;
-
-      map.off("mousedown", freehandDown);
-      map.off("mousemove", freehandMove);
-      window.removeEventListener("mouseup", freehandUp);
-      document.removeEventListener("keydown", freehandKeydown);
-
-      if (freehandPreview) {
-        map.removeLayer(freehandPreview);
-        freehandPreview = null;
-      }
-
-      freehandPoints = [];
-      drawing = false;
-
-      showEraserButton(false);
-      if (eraserActive) setEraserActive(false);
-      map.dragging.enable();
-      map.getContainer().style.cursor = "";
-    }
-
     function startFreehandDrawing() {
-      if (drawing || controlExpandDrawing || window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) return;
+      if (freehandDrawing) return;
+      if (drawing || controlExpandDrawing ||
+          window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) {
+        setStatus("Stop the current drawing mode first.");
+        return;
+      }
 
       deselect(false);
       drawing = true;
@@ -1913,33 +2175,48 @@
       }
 
       const target = $("drawLayer").value;
-      if (layerVisible[target] === false) {
-        setLayerVisible(target, true);
-      }
+      if (layerVisible[target] === false) setLayerVisible(target, true);
 
       map.dragging.disable();
       map.getContainer().style.cursor = "crosshair";
-
-      map.on("mousedown", freehandDown);
-      map.on("mousemove", freehandMove);
-      window.addEventListener("mouseup", freehandUp);
-      document.addEventListener("keydown", freehandKeydown);
-
+      bindFreehandHandlers();
       showEraserButton(true);
+      updateFreehandButton();
 
-      setStatus("Drag on the map to draw the shape freehand. Release to finish. Use the eraser button to remove parts of the selected layer.");
+      setStatus("Freehand mode ON. Drag on the map to draw. Click the freehand button again or press Esc to stop.");
+    }
+
+    function stopFreehandDrawing() {
+      if (!freehandDrawing) return;
+      freehandDrawing = false;
+      drawing = false;
+      freehandPoints = [];
+
+      unbindFreehandHandlers();
+
+      if (freehandPreview) {
+        map.removeLayer(freehandPreview);
+        freehandPreview = null;
+      }
+
+      if (eraserActive) setEraserActive(false);
+      showEraserButton(false);
+      updateFreehandButton();
+
+      map.dragging.enable();
+      map.getContainer().style.cursor = "";
+      setStatus("Freehand mode OFF.");
     }
 
     function freehandDown(event) {
       if (!freehandDrawing) return;
       if (eraserActive) return;
+      if (eraserDrawing) return;
       if (event.originalEvent && event.originalEvent.button !== 0) return;
 
       freehandPoints = [event.latlng];
 
-      if (freehandPreview) {
-        map.removeLayer(freehandPreview);
-      }
+      if (freehandPreview) map.removeLayer(freehandPreview);
 
       const c = config($("drawLayer").value);
       freehandPreview = L.polyline(freehandPoints, {
@@ -1967,279 +2244,9 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
-    // ---- Robust turf helpers ----
-
-    // Convert a FeatureCollection (or any multi-piece result) into a
-    // single Feature with Polygon or MultiPolygon geometry.  Returns
-    // null if there is nothing.
-    function normalizeGeometryResult(result) {
-      if (!result) return null;
-
-      if (result.type === "Feature" && result.geometry) {
-        const t = result.geometry.type;
-        if (t === "Polygon" || t === "MultiPolygon") return result;
-        return null;
-      }
-
-      if (result.type === "FeatureCollection") {
-        const pieces = (result.features || []).filter(function (f) {
-          return f && f.geometry &&
-            (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
-        });
-        if (!pieces.length) return null;
-        if (pieces.length === 1) return pieces[0];
-
-        // Build a proper MultiPolygon: array of polygon coordinate arrays.
-        const polys = [];
-        pieces.forEach(function (p) {
-          if (p.geometry.type === "Polygon") {
-            polys.push(p.geometry.coordinates);
-          } else {
-            p.geometry.coordinates.forEach(function (coords) {
-              polys.push(coords);
-            });
-          }
-        });
-
-        if (!polys.length) return null;
-
-        try {
-          return turf.multiPolygon(polys);
-        } catch (e) {
-          console.warn("MultiPolygon build failed:", e);
-          return null;
-        }
-      }
-
-      if (result.type === "Polygon" || result.type === "MultiPolygon") {
-        return { type: "Feature", properties: {}, geometry: result };
-      }
-
-      return null;
-    }
-
-    // Union a list of features.  Tries several strategies because
-    // turf.union can silently fail on complex / large polygons.
-    // Returns a Feature or null.
-    function unionSafe(features) {
-      if (!features || !features.length) return null;
-      if (features.length === 1) return features[0];
-
-      // Attempt 1: single FeatureCollection argument (Turf v7 style).
-      try {
-        const fc = turf.featureCollection(features);
-        const r = turf.union(fc);
-        const norm = normalizeGeometryResult(r);
-        if (norm && norm.geometry) return norm;
-      } catch (e) {
-        console.warn("unionSafe: FC form failed:", e);
-      }
-
-      // Attempt 2: pairwise union.
-      try {
-        let acc = features[0];
-        for (let i = 1; i < features.length; i++) {
-          const u = turf.union(acc, features[i]);
-          const norm = normalizeGeometryResult(u);
-          if (!norm || !norm.geometry) {
-            acc = null;
-            break;
-          }
-          acc = norm;
-        }
-        if (acc && acc.geometry) return acc;
-      } catch (e) {
-        console.warn("unionSafe: pairwise form failed:", e);
-      }
-
-      // Attempt 3: simplify inputs first, then try FC form again.
-      try {
-        const simplified = features.map(function (f) {
-          try { return turf.simplify(f, { tolerance: 0.0002, highQuality: false }); }
-          catch (e) { return f; }
-        });
-        const fc = turf.featureCollection(simplified);
-        const r = turf.union(fc);
-        const norm = normalizeGeometryResult(r);
-        if (norm && norm.geometry) return norm;
-      } catch (e) {
-        console.warn("unionSafe: simplified FC form failed:", e);
-      }
-
-      return null;
-    }
-
-    // Subtract `cutter` from `feature`.  Returns
-    //   { feature: Feature | null, changed: boolean, error: string | null }
-    // Feature null means "fully erased".  feature === original means
-    // "nothing changed".
-    function subtractFromFeature(feature, cutter) {
-      if (!feature || !feature.geometry) {
-        return { feature: feature, changed: false, error: "missing feature" };
-      }
-      if (!cutter || !cutter.geometry) {
-        return { feature: feature, changed: false, error: "missing cutter" };
-      }
-
-      let raw = null;
-      try {
-        raw = turf.difference(feature, cutter);
-      } catch (e) {
-        console.warn("subtractFromFeature: difference threw:", e);
-        return { feature: feature, changed: false, error: e.message || String(e) };
-      }
-
-      const norm = normalizeGeometryResult(raw);
-
-      if (!norm || !norm.geometry) {
-        // Difference returned empty → fully erased
-        return { feature: null, changed: true, error: null };
-      }
-
-      // If geometry type isn't Polygon/MultiPolygon we bail.
-      const t = norm.geometry.type;
-      if (t !== "Polygon" && t !== "MultiPolygon") {
-        return { feature: feature, changed: false, error: "unexpected geometry type " + t };
-      }
-
-      // Preserve the original properties.
-      if (norm.properties) {
-        delete norm.properties;
-      }
-      norm.properties = Object.assign({}, feature.properties || {});
-
-      return { feature: norm, changed: true, error: null };
-    }
-
-    // Merge a freehand shape with the SAME layer:
-    //   • figure out which existing polygons the shape actually touches,
-    //   • union the new shape with all of them (union naturally removes
-    //     the overlap, so the semi‑transparent fill no longer doubles up),
-    //   • if union fails, fall back to adding the new shape separately
-    //     (never silently throw the user's drawing away).
-    function mergeFreehandWithSameLayer(newFeature, targetId) {
-      const targetGroup = groups[targetId];
-      if (!targetGroup) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: "layer missing" };
-      }
-
-      const existingLayers = targetGroup.getLayers().slice();
-      if (!existingLayers.length) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
-      }
-
-      const touched = [];
-
-      existingLayers.forEach(function (layer) {
-        let ef;
-        try { ef = turf.cleanCoords(layer.toGeoJSON()); }
-        catch (e) { ef = layer.toGeoJSON(); }
-        if (!ef || !ef.geometry) return;
-        if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
-
-        let hit = false;
-        try { hit = turf.booleanIntersects(newFeature, ef); }
-        catch (e) { hit = false; }
-
-        if (hit) touched.push({ layer: layer, feature: ef });
-      });
-
-      if (!touched.length) {
-        // New shape touches nothing: add it as-is.
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
-      }
-
-      // Verify the drawn shape actually overlaps a meaningful area.
-      // booleanIntersects is true even for edge-touching; if the overlap
-      // area is negligible we skip the merge path.
-      let realOverlap = false;
-      for (let i = 0; i < touched.length && !realOverlap; i++) {
-        try {
-          const inter = turf.intersect(newFeature, touched[i].feature);
-          if (inter && inter.geometry && turf.area(inter) > 1) {
-            realOverlap = true;
-          }
-        } catch (e) { /* ignore */ }
-      }
-
-      if (!realOverlap) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
-      }
-
-      // Attempt the actual merge: union new shape with every touched polygon.
-      const allFeatures = [newFeature].concat(touched.map(function (t) { return t.feature; }));
-      const merged = unionSafe(allFeatures);
-
-      if (merged && merged.geometry) {
-        const name =
-          (newFeature.properties && newFeature.properties.Name) ||
-          (merged.properties && merged.properties.Name) ||
-          ("New polygon " + polygonCounter);
-
-        if (!merged.properties) merged.properties = {};
-        merged.properties.Name = name;
-
-        return {
-          feature: merged,
-          mergedLayers: touched.map(function (t) { return t.layer; }),
-          discarded: false,
-          wasTrimmed: true,
-          error: null
-        };
-      }
-
-      // Union failed.  Try a simpler fallback: add the trimmed shape
-      // as its own separate polygon so the user's drawing survives.
-      let trimmedShape = newFeature;
-      let wasTrimmed = false;
-      for (let i = 0; i < touched.length; i++) {
-        const result = subtractFromFeature(trimmedShape, touched[i].feature);
-        if (result.changed) wasTrimmed = true;
-        if (!result.feature) {
-          // The drawn shape is completely inside the existing polygons.
-          return {
-            feature: null,
-            mergedLayers: [],
-            discarded: true,
-            wasTrimmed: true,
-            error: null
-          };
-        }
-        trimmedShape = result.feature;
-      }
-
-      const name =
-        (newFeature.properties && newFeature.properties.Name) ||
-        ("New polygon " + polygonCounter);
-
-      if (!trimmedShape.properties) trimmedShape.properties = {};
-      trimmedShape.properties.Name = name;
-
-      return {
-        feature: trimmedShape,
-        mergedLayers: [],
-        discarded: false,
-        wasTrimmed: wasTrimmed,
-        error: "union failed, added separately"
-      };
-    }
-
-    function rearmFreehandMode() {
-      if (!freehandDrawing) {
-        freehandDrawing = true;
-        drawing = true;
-        map.on("mousedown", freehandDown);
-        map.on("mousemove", freehandMove);
-        window.addEventListener("mouseup", freehandUp);
-        document.addEventListener("keydown", freehandKeydown);
-      }
-      map.dragging.disable();
-      map.getContainer().style.cursor = "crosshair";
-      showEraserButton(true);
-    }
-
     function freehandUp() {
       if (!freehandDrawing || eraserActive) return;
+      if (!freehandPoints.length) return;
 
       const points = freehandPoints.slice();
       freehandPoints = [];
@@ -2251,13 +2258,10 @@
 
       if (points.length < 3) {
         setStatus("Freehand shape is too small. Drag a larger area.");
-        rearmFreehandMode();
         return;
       }
 
-      let ring = points.map(function (p) {
-        return [p.lng, p.lat];
-      });
+      let ring = points.map(function (p) { return [p.lng, p.lat]; });
       ring.push(ring[0]);
 
       let geometry = { type: "Polygon", coordinates: [ring] };
@@ -2286,7 +2290,6 @@
         geometry.coordinates[0].length < 4
       ) {
         setStatus("Freehand shape could not be simplified. Try drawing a larger shape.");
-        rearmFreehandMode();
         return;
       }
 
@@ -2302,15 +2305,13 @@
       const mergeResult = mergeFreehandWithSameLayer(originalFeature, targetId);
 
       if (mergeResult.discarded) {
-        setStatus("The freehand shape is entirely inside existing polygons on this layer, so nothing was added.");
+        setStatus("The freehand shape is entirely inside existing polygons on this layer — nothing added.");
         alert("The shape you drew is entirely inside existing polygons on this layer.\n\nNothing was added.");
-        rearmFreehandMode();
         return;
       }
 
       if (!mergeResult.feature) {
         setStatus("The freehand shape could not be added.");
-        rearmFreehandMode();
         return;
       }
 
@@ -2333,7 +2334,7 @@
       }).getLayers()[0];
 
       if (!layer) {
-        rearmFreehandMode();
+        setStatus("Could not create the layer from the drawn shape.");
         return;
       }
 
@@ -2350,14 +2351,9 @@
       saveHistory();
       select(layer);
 
-      if (mergeResult.error) {
+      if (mergeResult.mergedLayers.length > 0) {
         setStatus(
-          "Freehand polygon added to " + config(targetId)[1] +
-          " (" + mergeResult.error + ")."
-        );
-      } else if (mergeResult.mergedLayers.length > 0) {
-        setStatus(
-          "Freehand polygon merged with " +
+          "Freehand polygon trimmed and merged with " +
           mergeResult.mergedLayers.length +
           " existing polygon(s) in " + config(targetId)[1] + "."
         );
@@ -2366,41 +2362,65 @@
       } else {
         setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
       }
-
-      rearmFreehandMode();
     }
 
-    // ---------- Eraser (freehand drag over the selected layer) ----------
+    // ==================================================================
+    // =============== ERASER ===========================================
+    // ==================================================================
+    let eraserActive = false;
+    let eraserDrawing = false;
+    let eraserPoints = [];
+    let eraserPreview = null;
 
-    function cancelEraser() {
-      if (eraserDrawing) {
+    function setEraserActive(active) {
+      const wasActive = eraserActive;
+      eraserActive = !!active;
+
+      const btn = $("eraserFreehand");
+      if (btn) {
+        btn.classList.toggle("eraser-active", eraserActive);
+        btn.textContent = eraserActive
+          ? "✓ Eraser active — click to stop"
+          : "Erase freehand shape (drag)";
+      }
+
+      if (eraserActive && !wasActive) {
+        if (!freehandDrawing) {
+          setStatus("Freehand mode must be active to use the eraser.");
+          eraserActive = false;
+          return;
+        }
+        map.dragging.disable();
+        map.getContainer().style.cursor = "crosshair";
+        map.on("mousedown", eraserDown);
+        map.on("mousemove", eraserMove);
+        window.addEventListener("mouseup", eraserUp);
+        setStatus("Eraser active. Drag over the selected layer to erase. Click the eraser button again or press Esc to stop.");
+      } else if (!eraserActive && wasActive) {
         map.off("mousedown", eraserDown);
         map.off("mousemove", eraserMove);
         window.removeEventListener("mouseup", eraserUp);
-      }
-      eraserDrawing = false;
-      eraserPoints = [];
-
-      if (eraserPreview) {
-        map.removeLayer(eraserPreview);
-        eraserPreview = null;
+        cancelEraserStroke();
+        if (!freehandDrawing) {
+          map.dragging.enable();
+          map.getContainer().style.cursor = "";
+        }
+        setStatus("Eraser OFF.");
       }
     }
 
     function toggleEraser() {
       if (!freehandDrawing) return;
       if (eraserDrawing) return;
-
       setEraserActive(!eraserActive);
+    }
 
-      if (eraserActive) {
-        map.on("mousedown", eraserDown);
-        map.on("mousemove", eraserMove);
-        window.addEventListener("mouseup", eraserUp);
-      } else {
-        map.off("mousedown", eraserDown);
-        map.off("mousemove", eraserMove);
-        window.removeEventListener("mouseup", eraserUp);
+    function cancelEraserStroke() {
+      eraserDrawing = false;
+      eraserPoints = [];
+      if (eraserPreview) {
+        map.removeLayer(eraserPreview);
+        eraserPreview = null;
       }
     }
 
@@ -2411,9 +2431,7 @@
       eraserDrawing = true;
       eraserPoints = [event.latlng];
 
-      if (eraserPreview) {
-        map.removeLayer(eraserPreview);
-      }
+      if (eraserPreview) map.removeLayer(eraserPreview);
 
       eraserPreview = L.polyline(eraserPoints, {
         color: "#b3261e",
@@ -2442,24 +2460,15 @@
     function eraserUp() {
       if (!eraserDrawing) return;
 
-      eraserDrawing = false;
-
       const points = eraserPoints.slice();
-      eraserPoints = [];
-
-      if (eraserPreview) {
-        map.removeLayer(eraserPreview);
-        eraserPreview = null;
-      }
+      cancelEraserStroke();
 
       if (points.length < 3) {
         setStatus("Eraser shape is too small. Drag a larger area.");
         return;
       }
 
-      let ring = points.map(function (p) {
-        return [p.lng, p.lat];
-      });
+      let ring = points.map(function (p) { return [p.lng, p.lat]; });
       ring.push(ring[0]);
 
       let geometry = { type: "Polygon", coordinates: [ring] };
@@ -2487,17 +2496,13 @@
         !geometry.coordinates[0] ||
         geometry.coordinates[0].length < 4
       ) {
-        setStatus("Eraser shape could not be simplified. Try dragging a larger area.");
+        setStatus("Eraser shape could not be simplified.");
         return;
       }
 
       const targetId = $("drawLayer").value;
       const targetGroup = groups[targetId];
-
-      if (!targetGroup) {
-        setStatus("The selected layer is not loaded.");
-        return;
-      }
+      if (!targetGroup) { setStatus("The selected layer is not loaded."); return; }
 
       const eraserFeature = {
         type: "Feature",
@@ -2508,6 +2513,7 @@
       let changed = 0;
       let failed = 0;
 
+      // Iterate all polygons on the target layer. No booleanIntersects gate.
       targetGroup.getLayers().slice().forEach(function (layer) {
         let ef;
         try { ef = turf.cleanCoords(layer.toGeoJSON()); }
@@ -2516,23 +2522,13 @@
         if (!ef || !ef.geometry) return;
         if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
 
-        let hit = false;
-        try { hit = turf.booleanIntersects(eraserFeature, ef); }
-        catch (e) { hit = false; }
-
-        if (!hit) return;
-
         const result = subtractFromFeature(ef, eraserFeature);
 
-        if (result.error) {
-          console.warn("Erase failed on a polygon:", result.error);
-          failed++;
-          return;
-        }
+        if (result.error) { failed++; return; }
         if (!result.changed) return;
 
         if (!result.feature) {
-          // Fully erased
+          // fully erased
           if (layer === selected) deselect(false);
           targetGroup.removeLayer(layer);
           changed++;
@@ -2541,7 +2537,6 @@
 
         const geom = result.feature.geometry;
         if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) {
-          console.warn("Erase: unexpected geometry type", geom && geom.type);
           failed++;
           return;
         }
@@ -2564,7 +2559,7 @@
           layer.redraw();
           changed++;
         } catch (e) {
-          console.warn("Erase: setLatLngs failed:", e);
+          console.warn("Erase setLatLngs failed:", e);
           failed++;
         }
 
@@ -2579,12 +2574,15 @@
           (failed ? " (" + failed + " failed)" : "") + "."
         );
       } else if (failed > 0) {
-        setStatus("Eraser failed on " + failed + " polygon(s). See console for details.");
+        setStatus("Eraser failed on " + failed + " polygon(s). Check the browser console.");
       } else {
         setStatus("Nothing to erase on " + config(targetId)[1] + " in that area.");
       }
     }
 
+    // ==================================================================
+    // =============== POLYGON CREATION (Geoman) ========================
+    // ==================================================================
     window.polradAdvanceDrawing = false;
 
     function polygonCreated(event) {
@@ -2988,7 +2986,11 @@
 
     $("draw").onclick = startDrawing;
 
-    $("drawFreehand").onclick = startFreehandDrawing;
+    // Freehand button is a toggle: start if inactive, stop if active.
+    $("drawFreehand").onclick = function () {
+      if (freehandDrawing) stopFreehandDrawing();
+      else startFreehandDrawing();
+    };
 
     $("eraserFreehand").onclick = toggleEraser;
 
