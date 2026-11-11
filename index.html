@@ -1967,148 +1967,260 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
-    // Per-polygon subtract: cut the given cutter out of a single feature.
-    // Returns { feature: Feature|null, changed: boolean }.
-    function subtractFromFeature(feature, cutter) {
-      let remainder = null;
-      try {
-        remainder = turf.difference(feature, cutter);
-      } catch (e) {
-        console.warn("Difference failed:", e);
-        return { feature: feature, changed: false };
+    // ---- Robust turf helpers ----
+
+    // Convert a FeatureCollection (or any multi-piece result) into a
+    // single Feature with Polygon or MultiPolygon geometry.  Returns
+    // null if there is nothing.
+    function normalizeGeometryResult(result) {
+      if (!result) return null;
+
+      if (result.type === "Feature" && result.geometry) {
+        const t = result.geometry.type;
+        if (t === "Polygon" || t === "MultiPolygon") return result;
+        return null;
       }
 
-      if (!remainder || !remainder.geometry) {
-        return { feature: null, changed: true };
-      }
-
-      // If difference returns a collection of disjoint pieces, keep all of
-      // them as a single MultiPolygon feature.
-      if (remainder.type === "FeatureCollection") {
-        const pieces = (remainder.features || []).filter(function (f) {
+      if (result.type === "FeatureCollection") {
+        const pieces = (result.features || []).filter(function (f) {
           return f && f.geometry &&
             (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
         });
-        if (!pieces.length) {
-          return { feature: null, changed: true };
-        }
-        if (pieces.length === 1) {
-          remainder = pieces[0];
-        } else {
-          const unioned = unionAll(pieces);
-          remainder = unioned && unioned.geometry
-            ? unioned
-            : turf.multiPolygon(
-                pieces.map(function (p) {
-                  return p.geometry.type === "Polygon"
-                    ? p.geometry.coordinates
-                    : p.geometry.coordinates;
-                }).flat().reduce(function (acc, coords) {
-                  acc.push(coords);
-                  return acc;
-                }, [])
-              );
+        if (!pieces.length) return null;
+        if (pieces.length === 1) return pieces[0];
+
+        // Build a proper MultiPolygon: array of polygon coordinate arrays.
+        const polys = [];
+        pieces.forEach(function (p) {
+          if (p.geometry.type === "Polygon") {
+            polys.push(p.geometry.coordinates);
+          } else {
+            p.geometry.coordinates.forEach(function (coords) {
+              polys.push(coords);
+            });
+          }
+        });
+
+        if (!polys.length) return null;
+
+        try {
+          return turf.multiPolygon(polys);
+        } catch (e) {
+          console.warn("MultiPolygon build failed:", e);
+          return null;
         }
       }
 
-      if (remainder.properties) {
-        delete remainder.properties;
+      if (result.type === "Polygon" || result.type === "MultiPolygon") {
+        return { type: "Feature", properties: {}, geometry: result };
       }
-      remainder.properties = Object.assign(
-        {},
-        feature.properties || {}
-      );
 
-      return { feature: remainder, changed: true };
+      return null;
     }
 
-    // Merge freehand with the SAME layer: for each touched existing polygon,
-    // subtract it from the new shape (so no overlap remains), and merge the
-    // trimmed new shape into the touched polygon it belongs to (snap).
+    // Union a list of features.  Tries several strategies because
+    // turf.union can silently fail on complex / large polygons.
+    // Returns a Feature or null.
+    function unionSafe(features) {
+      if (!features || !features.length) return null;
+      if (features.length === 1) return features[0];
+
+      // Attempt 1: single FeatureCollection argument (Turf v7 style).
+      try {
+        const fc = turf.featureCollection(features);
+        const r = turf.union(fc);
+        const norm = normalizeGeometryResult(r);
+        if (norm && norm.geometry) return norm;
+      } catch (e) {
+        console.warn("unionSafe: FC form failed:", e);
+      }
+
+      // Attempt 2: pairwise union.
+      try {
+        let acc = features[0];
+        for (let i = 1; i < features.length; i++) {
+          const u = turf.union(acc, features[i]);
+          const norm = normalizeGeometryResult(u);
+          if (!norm || !norm.geometry) {
+            acc = null;
+            break;
+          }
+          acc = norm;
+        }
+        if (acc && acc.geometry) return acc;
+      } catch (e) {
+        console.warn("unionSafe: pairwise form failed:", e);
+      }
+
+      // Attempt 3: simplify inputs first, then try FC form again.
+      try {
+        const simplified = features.map(function (f) {
+          try { return turf.simplify(f, { tolerance: 0.0002, highQuality: false }); }
+          catch (e) { return f; }
+        });
+        const fc = turf.featureCollection(simplified);
+        const r = turf.union(fc);
+        const norm = normalizeGeometryResult(r);
+        if (norm && norm.geometry) return norm;
+      } catch (e) {
+        console.warn("unionSafe: simplified FC form failed:", e);
+      }
+
+      return null;
+    }
+
+    // Subtract `cutter` from `feature`.  Returns
+    //   { feature: Feature | null, changed: boolean, error: string | null }
+    // Feature null means "fully erased".  feature === original means
+    // "nothing changed".
+    function subtractFromFeature(feature, cutter) {
+      if (!feature || !feature.geometry) {
+        return { feature: feature, changed: false, error: "missing feature" };
+      }
+      if (!cutter || !cutter.geometry) {
+        return { feature: feature, changed: false, error: "missing cutter" };
+      }
+
+      let raw = null;
+      try {
+        raw = turf.difference(feature, cutter);
+      } catch (e) {
+        console.warn("subtractFromFeature: difference threw:", e);
+        return { feature: feature, changed: false, error: e.message || String(e) };
+      }
+
+      const norm = normalizeGeometryResult(raw);
+
+      if (!norm || !norm.geometry) {
+        // Difference returned empty → fully erased
+        return { feature: null, changed: true, error: null };
+      }
+
+      // If geometry type isn't Polygon/MultiPolygon we bail.
+      const t = norm.geometry.type;
+      if (t !== "Polygon" && t !== "MultiPolygon") {
+        return { feature: feature, changed: false, error: "unexpected geometry type " + t };
+      }
+
+      // Preserve the original properties.
+      if (norm.properties) {
+        delete norm.properties;
+      }
+      norm.properties = Object.assign({}, feature.properties || {});
+
+      return { feature: norm, changed: true, error: null };
+    }
+
+    // Merge a freehand shape with the SAME layer:
+    //   • figure out which existing polygons the shape actually touches,
+    //   • union the new shape with all of them (union naturally removes
+    //     the overlap, so the semi‑transparent fill no longer doubles up),
+    //   • if union fails, fall back to adding the new shape separately
+    //     (never silently throw the user's drawing away).
     function mergeFreehandWithSameLayer(newFeature, targetId) {
       const targetGroup = groups[targetId];
-
       if (!targetGroup) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: "layer missing" };
       }
 
       const existingLayers = targetGroup.getLayers().slice();
       if (!existingLayers.length) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
       }
 
       const touched = [];
 
       existingLayers.forEach(function (layer) {
         let ef;
-        try {
-          ef = turf.cleanCoords(layer.toGeoJSON());
-        } catch (e) {
-          ef = layer.toGeoJSON();
-        }
+        try { ef = turf.cleanCoords(layer.toGeoJSON()); }
+        catch (e) { ef = layer.toGeoJSON(); }
         if (!ef || !ef.geometry) return;
         if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
 
         let hit = false;
-        try {
-          hit = turf.booleanIntersects(newFeature, ef);
-        } catch (e) {
-          hit = false;
-        }
+        try { hit = turf.booleanIntersects(newFeature, ef); }
+        catch (e) { hit = false; }
+
         if (hit) touched.push({ layer: layer, feature: ef });
       });
 
       if (!touched.length) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+        // New shape touches nothing: add it as-is.
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
       }
 
-      // Subtract each touched polygon from the new shape individually.
-      let trimmed = newFeature;
+      // Verify the drawn shape actually overlaps a meaningful area.
+      // booleanIntersects is true even for edge-touching; if the overlap
+      // area is negligible we skip the merge path.
+      let realOverlap = false;
+      for (let i = 0; i < touched.length && !realOverlap; i++) {
+        try {
+          const inter = turf.intersect(newFeature, touched[i].feature);
+          if (inter && inter.geometry && turf.area(inter) > 1) {
+            realOverlap = true;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (!realOverlap) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, error: null };
+      }
+
+      // Attempt the actual merge: union new shape with every touched polygon.
+      const allFeatures = [newFeature].concat(touched.map(function (t) { return t.feature; }));
+      const merged = unionSafe(allFeatures);
+
+      if (merged && merged.geometry) {
+        const name =
+          (newFeature.properties && newFeature.properties.Name) ||
+          (merged.properties && merged.properties.Name) ||
+          ("New polygon " + polygonCounter);
+
+        if (!merged.properties) merged.properties = {};
+        merged.properties.Name = name;
+
+        return {
+          feature: merged,
+          mergedLayers: touched.map(function (t) { return t.layer; }),
+          discarded: false,
+          wasTrimmed: true,
+          error: null
+        };
+      }
+
+      // Union failed.  Try a simpler fallback: add the trimmed shape
+      // as its own separate polygon so the user's drawing survives.
+      let trimmedShape = newFeature;
       let wasTrimmed = false;
-
       for (let i = 0; i < touched.length; i++) {
-        const result = subtractFromFeature(trimmed, touched[i].feature);
-        if (result.changed) {
-          wasTrimmed = true;
-        }
+        const result = subtractFromFeature(trimmedShape, touched[i].feature);
+        if (result.changed) wasTrimmed = true;
         if (!result.feature) {
-          // The remaining new shape has been completely consumed by the
-          // touched polygons. This is the only case we discard.
-          return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
+          // The drawn shape is completely inside the existing polygons.
+          return {
+            feature: null,
+            mergedLayers: [],
+            discarded: true,
+            wasTrimmed: true,
+            error: null
+          };
         }
-        trimmed = result.feature;
+        trimmedShape = result.feature;
       }
 
-      // Snap: pick the first touched polygon as the base, union it with
-      // the trimmed new shape.
-      let mergedFeature = touched[0].feature;
-      try {
-        const unioned = turf.union(mergedFeature, trimmed);
-        if (unioned && unioned.geometry) {
-          mergedFeature = unioned;
-        }
-      } catch (e) {
-        console.warn("Snap union failed:", e);
-      }
+      const name =
+        (newFeature.properties && newFeature.properties.Name) ||
+        ("New polygon " + polygonCounter);
 
-      if (mergedFeature.properties) {
-        delete mergedFeature.properties;
-      }
-      mergedFeature.properties = Object.assign(
-        {},
-        (newFeature.properties && newFeature.properties.Name)
-          ? { Name: newFeature.properties.Name }
-          : (touched[0].feature.properties || {})
-      );
-      if (newFeature.properties && newFeature.properties.Name) {
-        mergedFeature.properties.Name = newFeature.properties.Name;
-      }
+      if (!trimmedShape.properties) trimmedShape.properties = {};
+      trimmedShape.properties.Name = name;
 
       return {
-        feature: mergedFeature,
-        mergedLayers: touched.map(function (t) { return t.layer; }),
+        feature: trimmedShape,
+        mergedLayers: [],
         discarded: false,
-        wasTrimmed: wasTrimmed
+        wasTrimmed: wasTrimmed,
+        error: "union failed, added separately"
       };
     }
 
@@ -2238,9 +2350,14 @@
       saveHistory();
       select(layer);
 
-      if (mergeResult.mergedLayers.length > 0) {
+      if (mergeResult.error) {
         setStatus(
-          "Freehand polygon trimmed and merged with " +
+          "Freehand polygon added to " + config(targetId)[1] +
+          " (" + mergeResult.error + ")."
+        );
+      } else if (mergeResult.mergedLayers.length > 0) {
+        setStatus(
+          "Freehand polygon merged with " +
           mergeResult.mergedLayers.length +
           " existing polygon(s) in " + config(targetId)[1] + "."
         );
@@ -2389,71 +2506,80 @@
       };
 
       let changed = 0;
+      let failed = 0;
 
       targetGroup.getLayers().slice().forEach(function (layer) {
         let ef;
-        try {
-          ef = turf.cleanCoords(layer.toGeoJSON());
-        } catch (e) {
-          ef = layer.toGeoJSON();
-        }
+        try { ef = turf.cleanCoords(layer.toGeoJSON()); }
+        catch (e) { ef = layer.toGeoJSON(); }
 
         if (!ef || !ef.geometry) return;
         if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
 
         let hit = false;
-        try {
-          hit = turf.booleanIntersects(eraserFeature, ef);
-        } catch (e) {
-          hit = false;
-        }
+        try { hit = turf.booleanIntersects(eraserFeature, ef); }
+        catch (e) { hit = false; }
 
         if (!hit) return;
 
         const result = subtractFromFeature(ef, eraserFeature);
+
+        if (result.error) {
+          console.warn("Erase failed on a polygon:", result.error);
+          failed++;
+          return;
+        }
         if (!result.changed) return;
 
         if (!result.feature) {
+          // Fully erased
           if (layer === selected) deselect(false);
           targetGroup.removeLayer(layer);
           changed++;
           return;
         }
 
+        const geom = result.feature.geometry;
+        if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) {
+          console.warn("Erase: unexpected geometry type", geom && geom.type);
+          failed++;
+          return;
+        }
+
+        const level = geom.type === "MultiPolygon" ? 2 : 1;
+        const wasSelected = layer === selected;
         const name =
-          (ef.properties && ef.properties.Name) ||
           (layer.feature && layer.feature.properties && layer.feature.properties.Name) ||
           "Polygon";
 
-        if (!result.feature.properties) result.feature.properties = {};
-        result.feature.properties.Name = name;
-
-        const geom = result.feature.geometry;
-        const level = geom.type === "MultiPolygon" ? 2 : 1;
-        const wasSelected = layer === selected;
-
         if (wasSelected) layer.pm.disable();
 
-        layer.setLatLngs(
-          L.GeoJSON.coordsToLatLngs(geom.coordinates, level)
-        );
-        layer.feature = result.feature;
-        layer.feature.properties = Object.assign(
-          {},
-          result.feature.properties,
-          { Name: name }
-        );
-        layer.redraw();
+        try {
+          layer.setLatLngs(
+            L.GeoJSON.coordsToLatLngs(geom.coordinates, level)
+          );
+          layer.feature = result.feature;
+          if (!layer.feature.properties) layer.feature.properties = {};
+          layer.feature.properties.Name = name;
+          layer.redraw();
+          changed++;
+        } catch (e) {
+          console.warn("Erase: setLatLngs failed:", e);
+          failed++;
+        }
 
         if (wasSelected) layer.pm.enable();
-
-        changed++;
       });
 
       if (changed > 0) {
         saveHistory();
         renderSidebar();
-        setStatus("Erased part of " + changed + " polygon(s) in " + config(targetId)[1] + ".");
+        setStatus(
+          "Erased part of " + changed + " polygon(s) in " + config(targetId)[1] +
+          (failed ? " (" + failed + " failed)" : "") + "."
+        );
+      } else if (failed > 0) {
+        setStatus("Eraser failed on " + failed + " polygon(s). See console for details.");
       } else {
         setStatus("Nothing to erase on " + config(targetId)[1] + " in that area.");
       }
