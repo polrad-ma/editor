@@ -356,7 +356,7 @@
     <select id="drawLayer"></select>
     <button class="btn primary" id="draw">Draw a polygon</button>
     <button class="btn" id="drawFreehand">Draw freehand shape (drag)</button>
-    <div class="small" style="margin-top:6px">Freehand shapes are simplified automatically and added to the selected layer.</div>
+    <div class="small" style="margin-top:6px">Freehand shapes are simplified automatically and added to the selected layer. Overlapping parts of the same layer are cut out and merged with the shape it touches.</div>
   </div>
 
   <div class="box">
@@ -1918,6 +1918,123 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
+    // Merge a freehand shape with polygons in the SAME layer:
+    //  1. cut out overlapping parts of the layer's existing polygons,
+    //  2. union the remaining (trimmed) shape with polygons it touches so
+    //     the shape "snaps" into the existing territory.
+    function mergeFreehandWithSameLayer(newFeature, targetId) {
+      const targetGroup = groups[targetId];
+
+      if (!targetGroup) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      const existingLayers = targetGroup.getLayers().slice();
+      if (!existingLayers.length) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      const existingFeatures = existingLayers.map(function(layer) {
+        try {
+          return turf.cleanCoords(layer.toGeoJSON());
+        } catch (e) {
+          return layer.toGeoJSON();
+        }
+      });
+
+      const validExisting = existingFeatures.filter(function(f) {
+        return f && f.geometry &&
+          (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
+      });
+
+      if (!validExisting.length) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      // Which existing polygons does the new shape touch or overlap?
+      const touched = [];
+      existingLayers.forEach(function(layer, idx) {
+        const ef = existingFeatures[idx];
+        if (!ef || !ef.geometry) return;
+        if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
+        try {
+          if (turf.booleanIntersects(newFeature, ef)) {
+            touched.push({ layer: layer, feature: ef });
+          }
+        } catch (e) {}
+      });
+
+      const existingUnion = unionAll(validExisting);
+      if (!existingUnion) {
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+      }
+
+      // Cut the overlap out of the new shape.
+      let trimmed = null;
+      let wasTrimmed = false;
+
+      try {
+        trimmed = turf.difference(newFeature, existingUnion);
+
+        if (trimmed && trimmed.geometry) {
+          try {
+            const origArea = turf.area(newFeature);
+            const trimArea = turf.area(trimmed);
+            wasTrimmed = Math.abs(origArea - trimArea) > 0.5;
+          } catch (e) {
+            wasTrimmed = true;
+          }
+        }
+      } catch (e) {
+        trimmed = null;
+      }
+
+      if (!trimmed || !trimmed.geometry) {
+        return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
+      }
+
+      const name =
+        (newFeature.properties && newFeature.properties.Name) ||
+        ("New polygon " + polygonCounter);
+
+      if (!trimmed.properties) trimmed.properties = {};
+      trimmed.properties.Name = name;
+
+      if (!touched.length) {
+        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
+      }
+
+      // Union trimmed shape with every touched polygon so they snap together.
+      const parts = [trimmed];
+      touched.forEach(function(t) { parts.push(t.feature); });
+
+      let merged = unionAll(parts);
+
+      if (!merged) {
+        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
+      }
+
+      // Sometimes turf.union returns a FeatureCollection of disjoint
+      // pieces; re-union if that happens.
+      if (merged.type === "FeatureCollection") {
+        merged = unionAll(merged.features || []);
+      }
+
+      if (!merged || !merged.geometry) {
+        return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: wasTrimmed };
+      }
+
+      if (!merged.properties) merged.properties = {};
+      merged.properties.Name = name;
+
+      return {
+        feature: merged,
+        mergedLayers: touched.map(function(t) { return t.layer; }),
+        discarded: false,
+        wasTrimmed: wasTrimmed
+      };
+    }
+
     function freehandUp() {
       if (!freehandDrawing) return;
 
@@ -1981,19 +2098,50 @@
       }
 
       const targetId = $("drawLayer").value;
-      const feature = {
+      const originalName = "New polygon " + polygonCounter;
+
+      const originalFeature = {
         type: "Feature",
-        properties: { Name: "New polygon " + polygonCounter++ },
+        properties: { Name: originalName },
         geometry: geometry
       };
 
-      const layer = L.geoJSON(feature, {
+      const mergeResult = mergeFreehandWithSameLayer(originalFeature, targetId);
+
+      if (mergeResult.discarded) {
+        setStatus("The freehand shape is entirely inside existing polygons on this layer, so nothing was added.");
+        alert("The shape you drew is entirely inside existing polygons on this layer.\n\nNothing was added.");
+        return;
+      }
+
+      if (!mergeResult.feature) {
+        setStatus("The freehand shape could not be added.");
+        return;
+      }
+
+      // Only consume a polygon number now that we know we will add it.
+      polygonCounter++;
+
+      if (!mergeResult.feature.properties) mergeResult.feature.properties = {};
+      if (!mergeResult.feature.properties.Name) {
+        mergeResult.feature.properties.Name = originalName;
+      }
+
+      // Remove the polygons that were merged into the new one.
+      mergeResult.mergedLayers.forEach(function (l) {
+        if (l === selected) deselect(false);
+        if (groups[targetId] && groups[targetId].hasLayer(l)) {
+          groups[targetId].removeLayer(l);
+        }
+      });
+
+      const layer = L.geoJSON(mergeResult.feature, {
         pane: paneForLayer(targetId)
       }).getLayers()[0];
 
       if (!layer) return;
 
-      layer.feature = feature;
+      layer.feature = mergeResult.feature;
       layer._layer = targetId;
       layer._fid = "new-" + Date.now() + "-" + Math.random();
 
@@ -2006,7 +2154,17 @@
       saveHistory();
       select(layer);
 
-      setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
+      if (mergeResult.mergedLayers.length > 0) {
+        setStatus(
+          "Freehand polygon trimmed and merged with " +
+          mergeResult.mergedLayers.length +
+          " existing polygon(s) in " + config(targetId)[1] + "."
+        );
+      } else if (mergeResult.wasTrimmed) {
+        setStatus("Freehand polygon trimmed and added to " + config(targetId)[1] + ".");
+      } else {
+        setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
+      }
     }
 
     window.polradAdvanceDrawing = false;
@@ -3474,6 +3632,40 @@ if (advanceState.active) return;
 if (!map || !groups) {
   alert("The map has not finished loading yet.");
   return;
+}
+
+// Warn the user if advance polygons from previous advances still exist,
+// because those polygons will remain on the map while a new advance is created.
+var ruAdvanceCount = (groups.ru_advances && groups.ru_advances.getLayers)
+  ? groups.ru_advances.getLayers().length
+  : 0;
+var uaAdvanceCount = (groups.ua_advances && groups.ua_advances.getLayers)
+  ? groups.ua_advances.getLayers().length
+  : 0;
+var totalAdvancePolygons = ruAdvanceCount + uaAdvanceCount;
+
+if (totalAdvancePolygons > 0) {
+  var parts = [];
+  if (ruAdvanceCount > 0) {
+    parts.push(ruAdvanceCount + " Russian advance polygon(s)");
+  }
+  if (uaAdvanceCount > 0) {
+    parts.push(uaAdvanceCount + " Ukrainian advance polygon(s)");
+  }
+
+  var proceed = confirm(
+    "Warning: there " +
+    (totalAdvancePolygons === 1 ? "is" : "are") +
+    " already " + parts.join(" and ") +
+    " on the map from previous advances.\n\n" +
+    "Starting a new advance will ADD new polygons on top of these. " +
+    "The existing advance polygons will remain on the map.\n\n" +
+    "Do you want to continue creating a new advance?"
+  );
+
+  if (!proceed) {
+    return;
+  }
 }
 
 advanceState.active = true;
