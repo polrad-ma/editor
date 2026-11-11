@@ -1967,13 +1967,64 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
-    // Merge a freehand shape with polygons in the SAME layer:
-    //  1. figure out which existing polygons the shape actually touches,
-    //  2. cut out the overlapping parts (union of touched polygons only),
-    //  3. union the trimmed shape with those polygons so it "snaps" onto them.
-    // If the shape touches nothing, it is added untouched.
-    // If any Turf call fails, we fall back to keeping the shape instead of
-    // discarding it.
+    // Per-polygon subtract: cut the given cutter out of a single feature.
+    // Returns { feature: Feature|null, changed: boolean }.
+    function subtractFromFeature(feature, cutter) {
+      let remainder = null;
+      try {
+        remainder = turf.difference(feature, cutter);
+      } catch (e) {
+        console.warn("Difference failed:", e);
+        return { feature: feature, changed: false };
+      }
+
+      if (!remainder || !remainder.geometry) {
+        return { feature: null, changed: true };
+      }
+
+      // If difference returns a collection of disjoint pieces, keep all of
+      // them as a single MultiPolygon feature.
+      if (remainder.type === "FeatureCollection") {
+        const pieces = (remainder.features || []).filter(function (f) {
+          return f && f.geometry &&
+            (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon");
+        });
+        if (!pieces.length) {
+          return { feature: null, changed: true };
+        }
+        if (pieces.length === 1) {
+          remainder = pieces[0];
+        } else {
+          const unioned = unionAll(pieces);
+          remainder = unioned && unioned.geometry
+            ? unioned
+            : turf.multiPolygon(
+                pieces.map(function (p) {
+                  return p.geometry.type === "Polygon"
+                    ? p.geometry.coordinates
+                    : p.geometry.coordinates;
+                }).flat().reduce(function (acc, coords) {
+                  acc.push(coords);
+                  return acc;
+                }, [])
+              );
+        }
+      }
+
+      if (remainder.properties) {
+        delete remainder.properties;
+      }
+      remainder.properties = Object.assign(
+        {},
+        feature.properties || {}
+      );
+
+      return { feature: remainder, changed: true };
+    }
+
+    // Merge freehand with the SAME layer: for each touched existing polygon,
+    // subtract it from the new shape (so no overlap remains), and merge the
+    // trimmed new shape into the touched polygon it belongs to (snap).
     function mergeFreehandWithSameLayer(newFeature, targetId) {
       const targetGroup = groups[targetId];
 
@@ -1986,7 +2037,6 @@
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
-      // Collect only the existing polygons the new shape touches or overlaps.
       const touched = [];
 
       existingLayers.forEach(function (layer) {
@@ -1996,7 +2046,6 @@
         } catch (e) {
           ef = layer.toGeoJSON();
         }
-
         if (!ef || !ef.geometry) return;
         if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
 
@@ -2006,89 +2055,79 @@
         } catch (e) {
           hit = false;
         }
-
         if (hit) touched.push({ layer: layer, feature: ef });
       });
 
-      // Shape does not touch any existing polygon — nothing to trim or merge.
       if (!touched.length) {
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
       }
 
-      // Union only the polygons the shape actually touches.
-      let touchedUnion = null;
-      try {
-        touchedUnion = unionAll(touched.map(function (t) { return t.feature; }));
-        if (touchedUnion && touchedUnion.type === "FeatureCollection") {
-          touchedUnion = unionAll(touchedUnion.features || []);
+      // Subtract each touched polygon from the new shape individually.
+      let trimmed = newFeature;
+      let wasTrimmed = false;
+
+      for (let i = 0; i < touched.length; i++) {
+        const result = subtractFromFeature(trimmed, touched[i].feature);
+        if (result.changed) {
+          wasTrimmed = true;
         }
-      } catch (e) {
-        console.warn("Touched union failed:", e);
-        touchedUnion = null;
-      }
-
-      if (!touchedUnion || !touchedUnion.geometry) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
-      }
-
-      // Cut the overlap out of the new shape.
-      let trimmed = null;
-      try {
-        trimmed = turf.difference(newFeature, touchedUnion);
-        if (trimmed && trimmed.type === "FeatureCollection") {
-          trimmed = unionAll(trimmed.features || []);
+        if (!result.feature) {
+          // The remaining new shape has been completely consumed by the
+          // touched polygons. This is the only case we discard.
+          return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
         }
-      } catch (e) {
-        console.warn("Trim difference failed:", e);
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false };
+        trimmed = result.feature;
       }
 
-      if (!trimmed || !trimmed.geometry) {
-        return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true };
-      }
-
-      // Snap: union the trimmed shape with every polygon it touched.
-      let mergedFeature = null;
+      // Snap: pick the first touched polygon as the base, union it with
+      // the trimmed new shape.
+      let mergedFeature = touched[0].feature;
       try {
-        mergedFeature = unionAll(
-          [trimmed].concat(touched.map(function (t) { return t.feature; }))
-        );
-        if (mergedFeature && mergedFeature.type === "FeatureCollection") {
-          mergedFeature = unionAll(mergedFeature.features || []);
+        const unioned = turf.union(mergedFeature, trimmed);
+        if (unioned && unioned.geometry) {
+          mergedFeature = unioned;
         }
       } catch (e) {
         console.warn("Snap union failed:", e);
-        mergedFeature = null;
       }
 
-      if (!mergedFeature || !mergedFeature.geometry) {
-        mergedFeature = trimmed;
+      if (mergedFeature.properties) {
+        delete mergedFeature.properties;
       }
-
-      const name =
-        (newFeature.properties && newFeature.properties.Name) ||
-        ("New polygon " + polygonCounter);
-
-      if (!mergedFeature.properties) mergedFeature.properties = {};
-      mergedFeature.properties.Name = name;
+      mergedFeature.properties = Object.assign(
+        {},
+        (newFeature.properties && newFeature.properties.Name)
+          ? { Name: newFeature.properties.Name }
+          : (touched[0].feature.properties || {})
+      );
+      if (newFeature.properties && newFeature.properties.Name) {
+        mergedFeature.properties.Name = newFeature.properties.Name;
+      }
 
       return {
         feature: mergedFeature,
         mergedLayers: touched.map(function (t) { return t.layer; }),
         discarded: false,
-        wasTrimmed: true
+        wasTrimmed: wasTrimmed
       };
+    }
+
+    function rearmFreehandMode() {
+      if (!freehandDrawing) {
+        freehandDrawing = true;
+        drawing = true;
+        map.on("mousedown", freehandDown);
+        map.on("mousemove", freehandMove);
+        window.addEventListener("mouseup", freehandUp);
+        document.addEventListener("keydown", freehandKeydown);
+      }
+      map.dragging.disable();
+      map.getContainer().style.cursor = "crosshair";
+      showEraserButton(true);
     }
 
     function freehandUp() {
       if (!freehandDrawing || eraserActive) return;
-
-      freehandDrawing = false;
-
-      map.off("mousedown", freehandDown);
-      map.off("mousemove", freehandMove);
-      window.removeEventListener("mouseup", freehandUp);
-      document.removeEventListener("keydown", freehandKeydown);
 
       const points = freehandPoints.slice();
       freehandPoints = [];
@@ -2098,18 +2137,9 @@
         freehandPreview = null;
       }
 
-      drawing = false;
-
       if (points.length < 3) {
         setStatus("Freehand shape is too small. Drag a larger area.");
-        showEraserButton(true);
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-        map.on("mousedown", freehandDown);
-        map.on("mousemove", freehandMove);
-        window.addEventListener("mouseup", freehandUp);
-        document.addEventListener("keydown", freehandKeydown);
-        freehandDrawing = true;
+        rearmFreehandMode();
         return;
       }
 
@@ -2144,14 +2174,7 @@
         geometry.coordinates[0].length < 4
       ) {
         setStatus("Freehand shape could not be simplified. Try drawing a larger shape.");
-        showEraserButton(true);
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-        map.on("mousedown", freehandDown);
-        map.on("mousemove", freehandMove);
-        window.addEventListener("mouseup", freehandUp);
-        document.addEventListener("keydown", freehandKeydown);
-        freehandDrawing = true;
+        rearmFreehandMode();
         return;
       }
 
@@ -2169,27 +2192,13 @@
       if (mergeResult.discarded) {
         setStatus("The freehand shape is entirely inside existing polygons on this layer, so nothing was added.");
         alert("The shape you drew is entirely inside existing polygons on this layer.\n\nNothing was added.");
-        showEraserButton(true);
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-        map.on("mousedown", freehandDown);
-        map.on("mousemove", freehandMove);
-        window.addEventListener("mouseup", freehandUp);
-        document.addEventListener("keydown", freehandKeydown);
-        freehandDrawing = true;
+        rearmFreehandMode();
         return;
       }
 
       if (!mergeResult.feature) {
         setStatus("The freehand shape could not be added.");
-        showEraserButton(true);
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-        map.on("mousedown", freehandDown);
-        map.on("mousemove", freehandMove);
-        window.addEventListener("mouseup", freehandUp);
-        document.addEventListener("keydown", freehandKeydown);
-        freehandDrawing = true;
+        rearmFreehandMode();
         return;
       }
 
@@ -2211,7 +2220,10 @@
         pane: paneForLayer(targetId)
       }).getLayers()[0];
 
-      if (!layer) return;
+      if (!layer) {
+        rearmFreehandMode();
+        return;
+      }
 
       layer.feature = mergeResult.feature;
       layer._layer = targetId;
@@ -2238,48 +2250,23 @@
         setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
       }
 
-      // Stay in freehand mode so the user can draw again or use the eraser.
-      map.dragging.disable();
-      map.getContainer().style.cursor = "crosshair";
-      map.on("mousedown", freehandDown);
-      map.on("mousemove", freehandMove);
-      window.addEventListener("mouseup", freehandUp);
-      document.addEventListener("keydown", freehandKeydown);
-      freehandDrawing = true;
-      showEraserButton(true);
+      rearmFreehandMode();
     }
 
     // ---------- Eraser (freehand drag over the selected layer) ----------
 
     function cancelEraser() {
-      if (!eraserDrawing) {
-        // Make sure we're not leaving a stale preview.
-        if (eraserPreview) {
-          map.removeLayer(eraserPreview);
-          eraserPreview = null;
-        }
-        eraserPoints = [];
-        return;
+      if (eraserDrawing) {
+        map.off("mousedown", eraserDown);
+        map.off("mousemove", eraserMove);
+        window.removeEventListener("mouseup", eraserUp);
       }
-
       eraserDrawing = false;
       eraserPoints = [];
-
-      map.off("mousedown", eraserDown);
-      map.off("mousemove", eraserMove);
-      window.removeEventListener("mouseup", eraserUp);
 
       if (eraserPreview) {
         map.removeLayer(eraserPreview);
         eraserPreview = null;
-      }
-
-      if (freehandDrawing || eraserActive) {
-        map.dragging.disable();
-        map.getContainer().style.cursor = "crosshair";
-      } else {
-        map.dragging.enable();
-        map.getContainer().style.cursor = "";
       }
     }
 
@@ -2353,7 +2340,6 @@
         return;
       }
 
-      // Build eraser polygon exactly like the freehand draw tool.
       let ring = points.map(function (p) {
         return [p.lng, p.lat];
       });
@@ -2424,42 +2410,37 @@
 
         if (!hit) return;
 
-        let remainder = null;
-        try {
-          remainder = turf.difference(ef, eraserFeature);
-          if (remainder && remainder.type === "FeatureCollection") {
-            remainder = unionAll(remainder.features || []);
-          }
-        } catch (e) {
-          console.warn("Erase difference failed:", e);
-          return;
-        }
+        const result = subtractFromFeature(ef, eraserFeature);
+        if (!result.changed) return;
 
-        if (!remainder || !remainder.geometry) {
+        if (!result.feature) {
           if (layer === selected) deselect(false);
           targetGroup.removeLayer(layer);
           changed++;
           return;
         }
 
-        const name = (ef.properties && ef.properties.Name) ||
+        const name =
+          (ef.properties && ef.properties.Name) ||
           (layer.feature && layer.feature.properties && layer.feature.properties.Name) ||
           "Polygon";
-        if (!remainder.properties) remainder.properties = {};
-        remainder.properties.Name = name;
 
-        const level = remainder.geometry.type === "MultiPolygon" ? 2 : 1;
+        if (!result.feature.properties) result.feature.properties = {};
+        result.feature.properties.Name = name;
+
+        const geom = result.feature.geometry;
+        const level = geom.type === "MultiPolygon" ? 2 : 1;
         const wasSelected = layer === selected;
 
         if (wasSelected) layer.pm.disable();
 
         layer.setLatLngs(
-          L.GeoJSON.coordsToLatLngs(remainder.geometry.coordinates, level)
+          L.GeoJSON.coordsToLatLngs(geom.coordinates, level)
         );
-        layer.feature = remainder;
+        layer.feature = result.feature;
         layer.feature.properties = Object.assign(
           {},
-          remainder.properties,
+          result.feature.properties,
           { Name: name }
         );
         layer.redraw();
@@ -2816,8 +2797,6 @@
           deselect();
         });
 
-        // Right-click: only allow vertex deletion (Geoman vertex markers),
-        // not the browser context menu or any other action.
         map.on("contextmenu", function (event) {
           if (event.originalEvent) {
             event.originalEvent.preventDefault();
@@ -2828,14 +2807,11 @@
           if (target && target.classList &&
               target.classList.contains("leaflet-marker-icon") &&
               target.classList.contains("marker-icon")) {
-            // Allow Geoman's vertex right-click removal to work.
             return;
           }
-          // Swallow everywhere else.
           L.DomEvent.stopPropagation(event);
         });
 
-        // Guard: also stop the browser contextmenu from bubbling anywhere in the map container.
         map.getContainer().addEventListener("contextmenu", function (ev) {
           const target = ev.target;
           if (target && target.classList &&
