@@ -14,7 +14,7 @@
     html, body, #map { margin: 0; width: 100%; height: 100%; font-family: Arial, sans-serif; }
     #map { position: absolute; left: 340px; width: calc(100% - 340px); }
     #side { display: none; position: absolute; z-index: 2000; left: 0; top: 0; bottom: 0; width: 340px; background: #fff; border-right: 1px solid #ddd; overflow: auto; }
-    .head { height: 62px; padding: 12px 15px; border-bottom: 1px solid #ddd; font-weight: 600; font-size: 16px; }
+    .head { height: 62px; padding: 12px 15px; border-bottom: 1px solid #ddd; font-weight: 600; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
     .body { padding: 12px; }
     .tabs { display: flex; border-bottom: 1px solid #ddd; background: #f7f8f9; }
     .tab { flex: 1; border: 0; border-bottom: 2px solid transparent; background: none; padding: 10px 6px; font-size: 13px; font-weight: 600; color: #777; cursor: pointer; }
@@ -58,6 +58,49 @@
     .mapSearchResult:hover { background: #f1f5f9; }
     .btn.eraser-active { background: #b3261e; color: #fff; border-color: #b3261e; }
     .btn.freehand-active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    .mode-btn { border: 0; background: none; font-size: 20px; cursor: pointer; padding: 2px 6px; border-radius: 5px; }
+    .mode-btn:hover { background: #f1f3f4; }
+    .mode-btn.active { background: #e8f0fe; color: #1a73e8; }
+
+    /* ================ PHONE MODE ================ */
+    body.phone-mode #map { left: 0; width: 100%; }
+    body.phone-mode #side {
+      top: auto; bottom: 0; left: 0; right: 0;
+      width: 100%; height: 46vh; max-height: 46vh;
+      border-right: none;
+      border-top: 2px solid #1a73e8;
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -6px 22px rgba(0,0,0,0.25);
+      transition: transform 0.25s ease;
+    }
+    body.phone-mode #side.collapsed { transform: translateY(calc(46vh - 62px)); }
+    body.phone-mode .head {
+      border-radius: 14px 14px 0 0;
+      cursor: pointer;
+      position: sticky; top: 0;
+      background: #fff;
+      z-index: 5;
+    }
+    body.phone-mode .head::after {
+      content: '▾';
+      font-size: 20px;
+      color: #555;
+    }
+    body.phone-mode #side.collapsed .head::after { content: '▴'; }
+    body.phone-mode .body { padding-bottom: 20vh; }
+    body.phone-mode #mapSearchBox { top: 8px; width: calc(100% - 16px); }
+    body.phone-mode .leaflet-bottom.leaflet-left { left: 10px !important; }
+    body.phone-mode .leaflet-bottom.leaflet-right { bottom: 46vh !important; }
+    body.phone-mode .leaflet-control-attribution { display: none; }
+    body.phone-mode .btn { padding: 10px 11px; font-size: 14px; }
+    body.phone-mode .tab { padding: 12px 6px; font-size: 14px; }
+    body.phone-mode .box select { height: 40px; font-size: 14px; }
+    body.phone-mode .box button { padding: 11px; font-size: 14px; }
+    body.phone-mode .item { padding: 10px 8px; font-size: 14px; }
+    body.phone-mode .leaflet-bar a {
+      width: 36px !important; height: 36px !important;
+      line-height: 36px !important; font-size: 20px !important;
+    }
   </style>
 </head>
 
@@ -73,7 +116,10 @@
   </div>
 
   <div id="side">
-    <div class="head">POLRAD map editor 2.0</div>
+    <div class="head">
+      <span>POLRAD map editor 2.0</span>
+      <button class="mode-btn" id="phoneModeToggle" title="Toggle phone mode">📱</button>
+    </div>
 
     <div class="tabs">
       <button class="tab active" id="tabTools" type="button">Editor tools</button>
@@ -189,6 +235,44 @@
     const layerOpenState = {};
     const layerVisible = {};
 
+    // ====== PHONE MODE ======
+    function detectPhone() {
+      const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const narrow = window.innerWidth <= 768;
+      const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+      const ua = /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(navigator.userAgent);
+      return (coarsePointer && narrow) || (touch && ua && narrow);
+    }
+    function isPhoneMode() { return document.body.classList.contains('phone-mode'); }
+    function setPhoneMode(enabled) {
+      document.body.classList.toggle('phone-mode', !!enabled);
+      const side = $("side");
+      if (side) side.classList.toggle('collapsed', !!enabled);
+      const btn = $("phoneModeToggle");
+      if (btn) btn.classList.toggle('active', !!enabled);
+      try { localStorage.setItem('polrad_editor_phone_mode', enabled ? '1' : '0'); } catch (e) {}
+      if (map) setTimeout(function () { map.invalidateSize(); }, 260);
+    }
+    function initPhoneMode() {
+      let stored = null;
+      try { stored = localStorage.getItem('polrad_editor_phone_mode'); } catch (e) {}
+      if (stored === '1') { setPhoneMode(true); return; }
+      if (stored === '0') { setPhoneMode(false); return; }
+      setPhoneMode(detectPhone());
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      const btn = $("phoneModeToggle");
+      if (btn) btn.onclick = function (e) { e.stopPropagation(); setPhoneMode(!isPhoneMode()); };
+      const head = document.querySelector('#side .head');
+      if (head) head.addEventListener('click', function (e) {
+        if (!isPhoneMode()) return;
+        if (e.target && e.target.id === 'phoneModeToggle') return;
+        $("side").classList.toggle('collapsed');
+      });
+      initPhoneMode();
+    });
+    // ====== END PHONE MODE ======
+
     function createGroup(id) {
       const group = L.featureGroup();
       if (layerVisible[id] !== false) group.addTo(map);
@@ -211,14 +295,10 @@
       const features = groups[layerId]
         ? groups[layerId].getLayers().map(function(layer) {
             const feature = layer.toGeoJSON();
-            feature.properties = Object.assign(
-              {},
-              layer.feature && layer.feature.properties ? layer.feature.properties : {}
-            );
+            feature.properties = Object.assign({}, layer.feature && layer.feature.properties ? layer.feature.properties : {});
             return feature;
           })
         : [];
-
       return { type: "FeatureCollection", features: features };
     }
 
@@ -226,16 +306,11 @@
       if (!fc || !fc.features || !fc.features.length) return null;
       try {
         return turf.featureCollection(
-          fc.features
-            .map(function(feature) {
-              try { return turf.cleanCoords(feature); }
-              catch (e) { return feature; }
-            })
-            .filter(function(feature) {
-              return feature && feature.geometry &&
-                (feature.geometry.type === "Polygon" ||
-                 feature.geometry.type === "MultiPolygon");
-            })
+          fc.features.map(function(feature) {
+            try { return turf.cleanCoords(feature); } catch (e) { return feature; }
+          }).filter(function(feature) {
+            return feature && feature.geometry && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon");
+          })
         );
       } catch (e) { return null; }
     }
@@ -244,41 +319,28 @@
       if (!parts.length) return null;
       if (parts.length === 1) return parts[0];
       let result = parts[0];
-      for (let i = 1; i < parts.length; i++) {
-        try { result = turf.union(result, parts[i]); } catch (e) {}
-      }
+      for (let i = 1; i < parts.length; i++) { try { result = turf.union(result, parts[i]); } catch (e) {} }
       return result;
     }
 
     function smartBuffer(feature, km) {
       let simplified = feature;
-      try { simplified = turf.simplify(feature, { tolerance: 0.001, highQuality: true }); }
-      catch (e) { simplified = feature; }
-
+      try { simplified = turf.simplify(feature, { tolerance: 0.001, highQuality: true }); } catch (e) { simplified = feature; }
       let buffered = null;
       try { buffered = turf.buffer(simplified, km, { units: "kilometers", steps: 4 }); }
-      catch (e) {
-        try { buffered = turf.buffer(feature, km, { units: "kilometers", steps: 2 }); }
-        catch (e2) { return null; }
-      }
+      catch (e) { try { buffered = turf.buffer(feature, km, { units: "kilometers", steps: 2 }); } catch (e2) { return null; } }
       if (!buffered) return null;
-
-      try { return turf.simplify(buffered, { tolerance: 0.003, highQuality: false }); }
-      catch (e) { return buffered; }
+      try { return turf.simplify(buffered, { tolerance: 0.003, highQuality: false }); } catch (e) { return buffered; }
     }
 
-    function bboxOverlap(a, b) {
-      return !(a[0] > b[2] || a[2] < b[0] || a[1] > b[3] || a[3] < b[1]);
-    }
+    function bboxOverlap(a, b) { return !(a[0] > b[2] || a[2] < b[0] || a[1] > b[3] || a[3] < b[1]); }
 
     function generateGrayZone() {
       grayZoneData = null;
-
       const ru = safeFeatureCollection(getFeatureCollection("ru_territory"));
       const ruAdv = safeFeatureCollection(getFeatureCollection("ru_advances"));
       const ua = safeFeatureCollection(getFeatureCollection("ua_territory"));
       const uaAdv = safeFeatureCollection(getFeatureCollection("ua_advances"));
-
       if (!ru || !ua) { updateGrayZoneLayer(); return null; }
 
       function collect(fc, target) {
@@ -290,105 +352,51 @@
         });
       }
 
-      const ruSide = [];
-      const uaSide = [];
-      collect(ru, ruSide);
-      collect(ruAdv, ruSide);
-      collect(ua, uaSide);
-      collect(uaAdv, uaSide);
+      const ruSide = [], uaSide = [];
+      collect(ru, ruSide); collect(ruAdv, ruSide);
+      collect(ua, uaSide); collect(uaAdv, uaSide);
 
       if (!ruSide.length || !uaSide.length) { updateGrayZoneLayer(); return null; }
 
-      setStatus("Gray zone: preparing buffers for " + ruSide.length + " RU and " + uaSide.length + " UA features...");
-
       const ruBufs = [];
-      ruSide.forEach(function (f) {
-        const b = smartBuffer(f, 15);
-        if (b) ruBufs.push({ feature: f, buf: b, bbox: turf.bbox(b) });
-      });
-
-      const uaInfo = uaSide.map(function (f) {
-        return { feature: f, bbox: turf.bbox(f) };
-      });
+      ruSide.forEach(function (f) { const b = smartBuffer(f, 15); if (b) ruBufs.push({ feature: f, buf: b, bbox: turf.bbox(b) }); });
+      const uaInfo = uaSide.map(function (f) { return { feature: f, bbox: turf.bbox(f) }; });
 
       const pieces = [];
-      let pairsChecked = 0, pairsUsed = 0;
-
       ruBufs.forEach(function (ruEntry) {
         uaInfo.forEach(function (uaEntry) {
           if (!bboxOverlap(ruEntry.bbox, uaEntry.bbox)) return;
-          pairsChecked++;
-
           const uaBuf = smartBuffer(uaEntry.feature, 15);
           if (!uaBuf) return;
-
           let piece = null;
-          try { piece = turf.intersect(turf.featureCollection([ruEntry.buf, uaBuf])); }
-          catch (e) { return; }
+          try { piece = turf.intersect(turf.featureCollection([ruEntry.buf, uaBuf])); } catch (e) { return; }
           if (!piece) return;
-
           try { piece = turf.difference(piece, ruEntry.feature); } catch (e) {}
           if (!piece) return;
           try { piece = turf.difference(piece, uaEntry.feature); } catch (e) {}
           if (!piece) return;
-
-          if (piece.type === "FeatureCollection") {
-            (piece.features || []).forEach(function (f) { if (f && f.geometry) pieces.push(f); });
-          } else if (piece.geometry) {
-            pieces.push(piece);
-          }
-          pairsUsed++;
+          if (piece.type === "FeatureCollection") (piece.features || []).forEach(function (f) { if (f && f.geometry) pieces.push(f); });
+          else if (piece.geometry) pieces.push(piece);
         });
       });
 
       if (!pieces.length) { updateGrayZoneLayer(); return null; }
 
-      function unwrapToFeature(fc) {
-        if (!fc) return null;
-        if (fc.type === "Feature") return fc;
-        if (fc.type === "FeatureCollection" && Array.isArray(fc.features) && fc.features.length) {
-          if (fc.features.length === 1) return fc.features[0];
-          let merged = fc.features[0];
-          for (let i = 1; i < fc.features.length; i++) {
-            try { merged = turf.union(merged, fc.features[i]); } catch (e) {}
-          }
-          return merged && merged.type === "Feature" ? merged : null;
-        }
-        return null;
-      }
-
-      let ruUnion = null;
-      try { ruUnion = unwrapToFeature(turf.union(turf.featureCollection(ruSide))); } catch (e) {}
-      if (!ruUnion) { try { ruUnion = unwrapToFeature(unionAll(ruSide)); } catch (e) {} }
-
-      let uaUnion = null;
-      try { uaUnion = unwrapToFeature(turf.union(turf.featureCollection(uaSide))); } catch (e) {}
-      if (!uaUnion) { try { uaUnion = unwrapToFeature(unionAll(uaSide)); } catch (e) {} }
-
-      if (ruUnion) { try { ruUnion = turf.simplify(ruUnion, { tolerance: 0.001, highQuality: false }); } catch (e) {} }
-      if (uaUnion) { try { uaUnion = turf.simplify(uaUnion, { tolerance: 0.001, highQuality: false }); } catch (e) {} }
+      let ruUnion = null, uaUnion = null;
+      try { ruUnion = turf.union(turf.featureCollection(ruSide)); } catch (e) {}
+      try { uaUnion = turf.union(turf.featureCollection(uaSide)); } catch (e) {}
 
       const cleaned = [];
-      let subtractFailures = 0;
-
       pieces.forEach(function (p) {
         let q = p;
-        if (q && ruUnion && q.geometry) {
-          try { const r = turf.difference(q, ruUnion); if (r && r.geometry) q = r; }
-          catch (e) { subtractFailures++; }
-        }
-        if (q && uaUnion && q.geometry) {
-          try { const r = turf.difference(q, uaUnion); if (r && r.geometry) q = r; }
-          catch (e) { subtractFailures++; }
-        }
+        if (q && ruUnion && q.geometry) { try { const r = turf.difference(q, ruUnion); if (r && r.geometry) q = r; } catch (e) {} }
+        if (q && uaUnion && q.geometry) { try { const r = turf.difference(q, uaUnion); if (r && r.geometry) q = r; } catch (e) {} }
         if (!q || !q.geometry) return;
-        if (q.type === "FeatureCollection") {
-          (q.features || []).forEach(function (f) { if (f && f.geometry) cleaned.push(f); });
-        } else { cleaned.push(q); }
+        if (q.type === "FeatureCollection") (q.features || []).forEach(function (f) { if (f && f.geometry) cleaned.push(f); });
+        else cleaned.push(q);
       });
 
       if (!cleaned.length) { updateGrayZoneLayer(); return null; }
-
       grayZoneData = turf.featureCollection(cleaned);
       updateGrayZoneLayer();
       return grayZoneData;
@@ -407,9 +415,7 @@
     function toggleGrayZone() {
       grayZoneVisible = !grayZoneVisible;
       const button = $("grayZoneToggle");
-      if (button) {
-        button.textContent = grayZoneVisible ? "Hide Gray Zone" : "Show Gray Zone";
-      }
+      if (button) button.textContent = grayZoneVisible ? "Hide Gray Zone" : "Show Gray Zone";
       if (grayZoneVisible) {
         if (!grayZoneData) generateGrayZone();
         updateGrayZoneLayer();
@@ -493,8 +499,7 @@
     }
 
     function polygonName(layer) {
-      return (layer.feature && layer.feature.properties &&
-        (layer.feature.properties.Name || layer.feature.properties.name)) || "New polygon";
+      return (layer.feature && layer.feature.properties && (layer.feature.properties.Name || layer.feature.properties.name)) || "New polygon";
     }
 
     function setStatus(text) { $("status").textContent = text; }
@@ -503,10 +508,7 @@
       let n = 0;
       try {
         const geometry = layer.toGeoJSON().geometry;
-        (function walk(c) {
-          if (typeof c[0] === "number") n++;
-          else c.forEach(walk);
-        })(geometry.coordinates);
+        (function walk(c) { if (typeof c[0] === "number") n++; else c.forEach(walk); })(geometry.coordinates);
       } catch (e) {}
       return n;
     }
@@ -521,26 +523,11 @@
       const c = config(layer._layer);
       if (!c) return;
       const opts = layerStyleOptions(layer._layer);
-      const style = {
-        color: c[3],
-        fillColor: c[3],
-        fillOpacity: opts ? opts.fillOpacity : 0.4,
-        weight: isSelected ? 4 : 2
-      };
+      const style = { color: c[3], fillColor: c[3], fillOpacity: opts ? opts.fillOpacity : 0.4, weight: isSelected ? 4 : 2 };
       if (opts && opts.stroke === false) {
-        if (isSelected) {
-          style.stroke = true;
-          style.weight = 3;
-          style.color = "#1a73e8";
-          style.dashArray = "5 4";
-        } else {
-          style.stroke = false;
-          style.weight = 0;
-          style.dashArray = null;
-        }
-      } else if (isSelected) {
-        style.dashArray = null;
-      }
+        if (isSelected) { style.stroke = true; style.weight = 3; style.color = "#1a73e8"; style.dashArray = "5 4"; }
+        else { style.stroke = false; style.weight = 0; style.dashArray = null; }
+      } else if (isSelected) { style.dashArray = null; }
       layer.setStyle(style);
     }
 
@@ -570,9 +557,8 @@
       layerVisible[id] = visible;
       const group = groups[id];
       if (group && map) {
-        if (visible) {
-          if (!map.hasLayer(group)) map.addLayer(group);
-        } else {
+        if (visible) { if (!map.hasLayer(group)) map.addLayer(group); }
+        else {
           if (selected && selected._layer === id) deselect(false);
           if (map.hasLayer(group)) map.removeLayer(group);
         }
@@ -583,10 +569,7 @@
     function select(layer) {
       if (!layer || drawing) return;
       if (layerVisible[layer._layer] === false) setLayerVisible(layer._layer, true);
-      if (selected && selected !== layer) {
-        selected.pm.disable();
-        applyStyle(selected);
-      }
+      if (selected && selected !== layer) { selected.pm.disable(); applyStyle(selected); }
       selected = layer;
       layer.pm.enable();
       applyStyle(layer, true);
@@ -602,40 +585,25 @@
       layer._fid = layer._fid || ("p-" + Date.now() + "-" + Math.random().toString(36).slice(2));
       layer.feature = layer.feature || { type: "Feature", properties: {} };
       layer.feature.properties = layer.feature.properties || {};
-      if (!layer.feature.properties.Name) {
-        layer.feature.properties.Name = "New polygon " + polygonCounter++;
-      }
+      if (!layer.feature.properties.Name) layer.feature.properties.Name = "New polygon " + polygonCounter++;
       applyStyle(layer);
 
       layer.on("click", function(event) {
         L.DomEvent.stopPropagation(event);
         if (!drawing && !ignoreNextPolygonClick) select(layer);
       });
-
-      layer.on("pm:vertexadded", function() {
-        if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); }
-      });
-      layer.on("pm:vertexremoved", function() {
-        if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); }
-      });
-      layer.on("pm:markerdragstart", function() {
-        if (layer === selected) suppressNextMapClick();
-      });
-      layer.on("pm:markerdragend", function() {
-        if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); }
-      });
-      layer.on("pm:edit", function() {
-        if (!drawing && layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); }
-      });
+      layer.on("pm:vertexadded", function() { if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); } });
+      layer.on("pm:vertexremoved", function() { if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); } });
+      layer.on("pm:markerdragstart", function() { if (layer === selected) suppressNextMapClick(); });
+      layer.on("pm:markerdragend", function() { if (layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); } });
+      layer.on("pm:edit", function() { if (!drawing && layer === selected) { suppressNextMapClick(); scheduleNormalizeAndSave(); } });
     }
 
     function findPolygon(fid) {
       for (const c of LAYERS) {
         let found = null;
         if (!groups[c[0]]) continue;
-        groups[c[0]].eachLayer(function(layer) {
-          if (layer._fid === fid) found = layer;
-        });
+        groups[c[0]].eachLayer(function(layer) { if (layer._fid === fid) found = layer; });
         if (found) return found;
       }
       return null;
@@ -645,10 +613,7 @@
       if (!layer || !groups[targetId]) return;
       const sourceId = layer._layer;
       if (sourceId === targetId) { select(layer); return; }
-      if (layerVisible[targetId] === false) {
-        layerVisible[targetId] = true;
-        if (map && !map.hasLayer(groups[targetId])) map.addLayer(groups[targetId]);
-      }
+      if (layerVisible[targetId] === false) { layerVisible[targetId] = true; if (map && !map.hasLayer(groups[targetId])) map.addLayer(groups[targetId]); }
       const wasSelected = selected === layer;
       const sourceGroup = groups[sourceId];
       const targetGroup = groups[targetId];
@@ -656,10 +621,7 @@
       layer._layer = targetId;
       targetGroup.addLayer(layer);
       applyStyle(layer, wasSelected);
-      if (wasSelected) {
-        selected = layer;
-        $("selectedLayer").value = targetId;
-      }
+      if (wasSelected) { selected = layer; $("selectedLayer").value = targetId; }
       normalizeControlTerritoryOverlaps();
       saveHistory();
       renderSidebar();
@@ -673,12 +635,7 @@
         layer.bringToFront();
         const c = config(layer._layer);
         const opts = layerStyleOptions(layer._layer);
-        const st = {
-          color: c[3],
-          fillColor: c[3],
-          fillOpacity: opts ? Math.min(0.85, opts.fillOpacity + 0.25) : 0.6,
-          weight: 5
-        };
+        const st = { color: c[3], fillColor: c[3], fillOpacity: opts ? Math.min(0.85, opts.fillOpacity + 0.25) : 0.6, weight: 5 };
         if (opts && opts.stroke === false) { st.stroke = false; st.weight = 0; }
         layer.setStyle(st);
       } catch (e) {}
@@ -740,12 +697,7 @@
         list.hidden = layerOpenState[id] !== true;
         arrow.textContent = list.hidden ? "▸" : "▾";
 
-        function toggleLayer() {
-          list.hidden = !list.hidden;
-          layerOpenState[id] = !list.hidden;
-          arrow.textContent = list.hidden ? "▸" : "▾";
-        }
-
+        function toggleLayer() { list.hidden = !list.hidden; layerOpenState[id] = !list.hidden; arrow.textContent = list.hidden ? "▸" : "▾"; }
         arrow.onclick = toggleLayer;
         layerName.onclick = toggleLayer;
 
@@ -773,22 +725,14 @@
               event.dataTransfer.setData("text/polygon", layer._fid);
               item.classList.add("dragging");
             };
-            item.ondragend = function() {
-              item.classList.remove("dragging");
-              document.querySelectorAll(".layer.drop").forEach(el => el.classList.remove("drop"));
-            };
+            item.ondragend = function() { item.classList.remove("dragging"); document.querySelectorAll(".layer.drop").forEach(el => el.classList.remove("drop")); };
 
             list.appendChild(item);
           });
 
         row.appendChild(list);
 
-        header.ondragover = function(event) {
-          if (drawing) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          row.classList.add("drop");
-        };
+        header.ondragover = function(event) { if (drawing) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; row.classList.add("drop"); };
         header.ondragleave = function() { row.classList.remove("drop"); };
         header.ondrop = function(event) {
           if (drawing) return;
@@ -840,20 +784,13 @@
       controlExpandPreview = L.polygon(points, {
         color: "#ffffff",
         fillColor: $("controlExpandSide").value === "ru" ? "#a52714" : "#1a237e",
-        fillOpacity: 0.35,
-        weight: 2,
-        dashArray: "7 5",
-        interactive: false,
-        pane: "frontlinePane"
+        fillOpacity: 0.35, weight: 2, dashArray: "7 5", interactive: false, pane: "frontlinePane"
       }).addTo(map);
     }
 
     function startControlExpansion() {
       if (controlExpandDrawing) return;
-      if (!map || !groups.ru_territory || !groups.ua_territory) {
-        alert("The territory layers have not finished loading yet.");
-        return;
-      }
+      if (!map || !groups.ru_territory || !groups.ua_territory) { alert("The territory layers have not finished loading yet."); return; }
       deselect(false);
       drawing = true;
       controlExpandDrawing = true;
@@ -869,10 +806,7 @@
 
     function finishControlExpansion() {
       if (!controlExpandDrawing) return;
-      if (controlExpandPoints.length < 3) {
-        alert("A control expansion needs at least 3 points.");
-        return;
-      }
+      if (controlExpandPoints.length < 3) { alert("A control expansion needs at least 3 points."); return; }
 
       const side = $("controlExpandSide").value;
       const targetId = CONTROL_TERRITORY[side];
@@ -882,12 +816,8 @@
       coordinates.push(coordinates[0]);
 
       let expansion;
-      try {
-        expansion = turf.polygon([coordinates], { Name: "Controlled territory expansion" });
-      } catch (error) {
-        alert("The control expansion polygon is invalid.");
-        return;
-      }
+      try { expansion = turf.polygon([coordinates], { Name: "Controlled territory expansion" }); }
+      catch (error) { alert("The control expansion polygon is invalid."); return; }
 
       clearControlExpandPreview();
       let opposingChanged = false;
@@ -903,22 +833,14 @@
         try { result = turf.difference(feature, expansion); }
         catch (error) { console.warn("Could not trim opposing control polygon:", error); return; }
 
-        if (!result) {
-          if (selected === layer) deselect(false);
-          groups[opposingId].removeLayer(layer);
-          opposingChanged = true;
-          return;
-        }
+        if (!result) { if (selected === layer) deselect(false); groups[opposingId].removeLayer(layer); opposingChanged = true; return; }
 
         let beforeArea = 0, afterArea = 0;
-        try { beforeArea = turf.area(feature); afterArea = turf.area(result); }
-        catch (error) { return; }
-
+        try { beforeArea = turf.area(feature); afterArea = turf.area(result); } catch (error) { return; }
         if (Math.abs(beforeArea - afterArea) < 1) return;
 
         const geometry = result.geometry;
         const level = geometry.type === "MultiPolygon" ? 2 : 1;
-
         if (selected === layer) layer.pm.disable();
         layer.setLatLngs(L.GeoJSON.coordsToLatLngs(geometry.coordinates, level));
         layer.redraw();
@@ -964,25 +886,18 @@
       return true;
     }
 
-    // ---- Core addFeature: handles MultiPolygon correctly ----
+    // ===== addFeature: splits MultiPolygon into separate Leaflet layers =====
     function addFeature(feature, layerId) {
       if (!feature || !feature.geometry) return [];
-
       let jsonLayer;
-      try {
-        jsonLayer = L.geoJSON(feature, { pane: paneForLayer(layerId) });
-      } catch (e) {
-        console.warn("Could not parse feature:", e);
-        return [];
-      }
+      try { jsonLayer = L.geoJSON(feature, { pane: paneForLayer(layerId) }); }
+      catch (e) { console.warn("Could not parse feature:", e); return []; }
 
       const children = jsonLayer.getLayers();
       if (!children.length) return [];
 
       const added = [];
-      const baseName =
-        (feature.properties && feature.properties.Name) ||
-        ("New polygon " + polygonCounter++);
+      const baseName = (feature.properties && feature.properties.Name) || ("New polygon " + polygonCounter++);
 
       if (children.length === 1) {
         const layer = children[0];
@@ -997,7 +912,6 @@
         return added;
       }
 
-      // MultiPolygon — split into separate Leaflet layers so nothing is lost.
       children.forEach(function (layer, i) {
         const partName = baseName + (i > 0 ? " (part " + (i + 1) + ")" : "");
         layer.feature = {
@@ -1052,12 +966,7 @@
           try { result = turf.difference(feature, cutter); }
           catch (error) { console.warn('Control overlap cleanup failed:', error); return; }
 
-          if (!result) {
-            if (layer === selected) deselect(false);
-            group.removeLayer(layer);
-            changed = true;
-            return;
-          }
+          if (!result) { if (layer === selected) deselect(false); group.removeLayer(layer); changed = true; return; }
 
           try { if (JSON.stringify(result.geometry) === JSON.stringify(feature.geometry)) return; }
           catch (error) {}
@@ -1073,10 +982,7 @@
           layer.redraw();
           layer.feature = result;
           layer.feature.properties = Object.assign({}, feature.properties || {}, result.properties || {});
-          layer.feature.properties.Name =
-            (feature.properties && feature.properties.Name) ||
-            layer.feature.properties.Name ||
-            'Controlled territory';
+          layer.feature.properties.Name = (feature.properties && feature.properties.Name) || layer.feature.properties.Name || 'Controlled territory';
           if (wasSelected) layer.pm.enable();
           changed = true;
         });
@@ -1110,9 +1016,7 @@
       return result;
     }
 
-    function snapshot() {
-      return JSON.parse(JSON.stringify(getEditableGeoJSON()));
-    }
+    function snapshot() { return JSON.parse(JSON.stringify(getEditableGeoJSON())); }
 
     function saveHistory() {
       const snap = snapshot();
@@ -1124,19 +1028,8 @@
       historyIndex = history.length - 1;
     }
 
-    function undo() {
-      if (historyIndex <= 0) return;
-      historyIndex--;
-      restore(history[historyIndex]);
-      setStatus("Undid last change.");
-    }
-
-    function redo() {
-      if (historyIndex >= history.length - 1) return;
-      historyIndex++;
-      restore(history[historyIndex]);
-      setStatus("Redid change.");
-    }
+    function undo() { if (historyIndex <= 0) return; historyIndex--; restore(history[historyIndex]); setStatus("Undid last change."); }
+    function redo() { if (historyIndex >= history.length - 1) return; historyIndex++; restore(history[historyIndex]); setStatus("Redid change."); }
 
     function restore(state, preserveTowns) {
       deselect(false);
@@ -1182,7 +1075,6 @@
         });
         if (!pieces.length) return null;
         if (pieces.length === 1) return pieces[0];
-
         const polys = [];
         pieces.forEach(function (p) {
           if (p.geometry.type === "Polygon") polys.push(p.geometry.coordinates);
@@ -1202,7 +1094,6 @@
       if (!features || !features.length) return null;
       if (features.length === 1) return features[0];
 
-      // Strategy 1: pairwise
       try {
         let acc = features[0];
         for (let i = 1; i < features.length; i++) {
@@ -1213,14 +1104,12 @@
         if (acc && acc.geometry) return acc;
       } catch (e) { console.warn("robustUnion pairwise:", e); }
 
-      // Strategy 2: featureCollection form
       try {
         const u = turf.union(turf.featureCollection(features));
         const norm = normalizeGeometryResult(u);
         if (norm && norm.geometry) return norm;
       } catch (e) { console.warn("robustUnion FC:", e); }
 
-      // Strategy 3: buffer(0) clean, retry
       try {
         const cleaned = features.map(function (f) {
           try { return turf.buffer(f, 0, { units: "meters" }) || f; }
@@ -1235,7 +1124,6 @@
         if (acc && acc.geometry) return acc;
       } catch (e) { console.warn("robustUnion cleaned:", e); }
 
-      // Strategy 4: simplify then pairwise
       try {
         const simplified = features.map(function (f) {
           try { return turf.simplify(f, { tolerance: 0.0005, highQuality: false }) || f; }
@@ -1265,27 +1153,22 @@
         }
       } catch (e) {}
 
-      let raw = null;
-      let err = null;
+      let raw = null, err = null;
 
-      try { raw = turf.difference(feature, cutter); }
-      catch (e) { err = e; }
+      try { raw = turf.difference(feature, cutter); } catch (e) { err = e; }
 
       if (err) {
         try {
           const fc = turf.buffer(feature, 0, { units: "meters" }) || feature;
           const cc = turf.buffer(cutter, 0, { units: "meters" }) || cutter;
-          raw = turf.difference(fc, cc);
-          err = null;
+          raw = turf.difference(fc, cc); err = null;
         } catch (e) { err = e; }
       }
-
       if (err) {
         try {
           const fs = turf.simplify(feature, { tolerance: 0.001, highQuality: false }) || feature;
           const cs = turf.simplify(cutter, { tolerance: 0.001, highQuality: false }) || cutter;
-          raw = turf.difference(fs, cs);
-          err = null;
+          raw = turf.difference(fs, cs); err = null;
         } catch (e) { err = e; }
       }
 
@@ -1311,14 +1194,10 @@
     // ============================================================
     function mergeFreehandWithSameLayer(newFeature, targetId) {
       const targetGroup = groups[targetId];
-      if (!targetGroup) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: null };
-      }
+      if (!targetGroup) return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: null };
 
       const existingLayers = targetGroup.getLayers().slice();
-      if (!existingLayers.length) {
-        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: null };
-      }
+      if (!existingLayers.length) return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: null };
 
       let newBbox;
       try { newBbox = turf.bbox(newFeature); }
@@ -1333,59 +1212,35 @@
 
         let bbox;
         try { bbox = turf.bbox(ef); } catch (e) { return; }
-        if (newBbox[0] > bbox[2] || newBbox[2] < bbox[0] ||
-            newBbox[1] > bbox[3] || newBbox[3] < bbox[1]) return;
+        if (newBbox[0] > bbox[2] || newBbox[2] < bbox[0] || newBbox[1] > bbox[3] || newBbox[3] < bbox[1]) return;
 
         overlapping.push({ layer: layer, feature: ef });
       });
 
       if (!overlapping.length) {
-        console.log("[MERGE] No bbox overlap — adding as-is.");
         return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: null };
       }
 
-      console.log("[MERGE] " + overlapping.length + " candidate(s) from bbox.");
-
-      // Strategy 1: direct union of everything
       try {
         const fc = turf.featureCollection([newFeature].concat(overlapping.map(o => o.feature)));
         const u = turf.union(fc);
-        const merged = (u && u.type === "FeatureCollection" && u.features && u.features.length === 1)
-          ? u.features[0] : u;
+        const merged = (u && u.type === "FeatureCollection" && u.features && u.features.length === 1) ? u.features[0] : u;
         if (merged && merged.geometry) {
-          console.log("[MERGE] ✓ Direct union succeeded (" + merged.geometry.type + ").");
           const name = (newFeature.properties && newFeature.properties.Name) || "New polygon";
           if (!merged.properties) merged.properties = {};
           merged.properties.Name = name;
-          return {
-            feature: merged,
-            mergedLayers: overlapping.map(o => o.layer),
-            discarded: false,
-            wasTrimmed: true,
-            warning: null
-          };
+          return { feature: merged, mergedLayers: overlapping.map(o => o.layer), discarded: false, wasTrimmed: true, warning: null };
         }
-        console.warn("[MERGE] Direct union returned empty.");
       } catch (e) { console.warn("[MERGE] Direct union threw:", e); }
 
-      // Strategy 2: robustUnion
       const robust = robustUnion([newFeature].concat(overlapping.map(o => o.feature)));
       if (robust && robust.geometry) {
-        console.log("[MERGE] ✓ robustUnion succeeded.");
         const name = (newFeature.properties && newFeature.properties.Name) || "New polygon";
         if (!robust.properties) robust.properties = {};
         robust.properties.Name = name;
-        return {
-          feature: robust,
-          mergedLayers: overlapping.map(o => o.layer),
-          discarded: false,
-          wasTrimmed: true,
-          warning: null
-        };
+        return { feature: robust, mergedLayers: overlapping.map(o => o.layer), discarded: false, wasTrimmed: true, warning: null };
       }
 
-      // Strategy 3: trim only (no overlap, but not merged)
-      console.log("[MERGE] Union failed — falling back to trim-only.");
       let trimmed = newFeature;
       let anyTrimmed = false;
 
@@ -1393,36 +1248,20 @@
         const r = subtractFromFeature(trimmed, o.feature);
         if (r.error) { console.warn("[MERGE] Trim error:", r.error); continue; }
         if (!r.changed) continue;
-        if (!r.feature) {
-          console.log("[MERGE] Shape entirely inside existing — discarding.");
-          return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true, warning: null };
-        }
+        if (!r.feature) return { feature: null, mergedLayers: [], discarded: true, wasTrimmed: true, warning: null };
         trimmed = r.feature;
         anyTrimmed = true;
       }
 
       if (!anyTrimmed) {
-        console.warn("[MERGE] Trim did not detect any real overlap — adding untrimmed.");
-        return {
-          feature: newFeature,
-          mergedLayers: [],
-          discarded: false,
-          wasTrimmed: false,
-          warning: "Could not detect overlap with existing polygons."
-        };
+        return { feature: newFeature, mergedLayers: [], discarded: false, wasTrimmed: false, warning: "Could not detect overlap with existing polygons." };
       }
 
       const name = (newFeature.properties && newFeature.properties.Name) || "New polygon";
       if (!trimmed.properties) trimmed.properties = {};
       trimmed.properties.Name = name;
 
-      return {
-        feature: trimmed,
-        mergedLayers: [],
-        discarded: false,
-        wasTrimmed: true,
-        warning: "Union failed — shape trimmed (no overlap) but not merged. Use Fix Overlaps."
-      };
+      return { feature: trimmed, mergedLayers: [], discarded: false, wasTrimmed: true, warning: "Union failed — shape trimmed (no overlap) but not merged. Use Fix Overlaps." };
     }
 
     // ============================================================
@@ -1431,6 +1270,7 @@
     let freehandDrawing = false;
     let freehandPoints = [];
     let freehandPreview = null;
+    let freehandTargetLayer = null; // override target layer for advance mode
 
     function freehandKeydown(event) {
       if (event.key === "Escape") {
@@ -1457,13 +1297,8 @@
     function updateFreehandButton() {
       const btn = $("drawFreehand");
       if (!btn) return;
-      if (freehandDrawing) {
-        btn.textContent = "✓ Freehand active — click to stop";
-        btn.classList.add("freehand-active");
-      } else {
-        btn.textContent = "Draw freehand shape (drag)";
-        btn.classList.remove("freehand-active");
-      }
+      if (freehandDrawing) { btn.textContent = "✓ Freehand active — click to stop"; btn.classList.add("freehand-active"); }
+      else { btn.textContent = "Draw freehand shape (drag)"; btn.classList.remove("freehand-active"); }
     }
 
     function showEraserButton(show) {
@@ -1472,7 +1307,7 @@
       btn.style.display = show ? "block" : "none";
     }
 
-    function startFreehandDrawing() {
+    function startFreehandDrawing(targetOverride) {
       if (freehandDrawing) return;
       if (drawing || controlExpandDrawing || window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) {
         setStatus("Stop the current drawing mode first.");
@@ -1482,14 +1317,19 @@
       drawing = true;
       freehandDrawing = true;
       freehandPoints = [];
+      freehandTargetLayer = targetOverride || null;
+
       if (freehandPreview) { map.removeLayer(freehandPreview); freehandPreview = null; }
-      const target = $("drawLayer").value;
+
+      const target = freehandTargetLayer || $("drawLayer").value;
       if (layerVisible[target] === false) setLayerVisible(target, true);
+
       map.dragging.disable();
       map.getContainer().style.cursor = "crosshair";
       bindFreehandHandlers();
-      showEraserButton(true);
+      showEraserButton(!targetOverride);
       updateFreehandButton();
+
       setStatus("Freehand mode ON. Drag on the map to draw. Click the freehand button again or press Esc to stop.");
     }
 
@@ -1498,6 +1338,7 @@
       freehandDrawing = false;
       drawing = false;
       freehandPoints = [];
+      freehandTargetLayer = null;
       unbindFreehandHandlers();
       if (freehandPreview) { map.removeLayer(freehandPreview); freehandPreview = null; }
       if (eraserActive) setEraserActive(false);
@@ -1514,13 +1355,12 @@
       if (event.originalEvent && event.originalEvent.button !== 0) return;
       freehandPoints = [event.latlng];
       if (freehandPreview) map.removeLayer(freehandPreview);
-      const c = config($("drawLayer").value);
+      const target = freehandTargetLayer || $("drawLayer").value;
+      const c = config(target);
       freehandPreview = L.polyline(freehandPoints, {
         color: c ? c[3] : "#000000",
-        weight: 2,
-        dashArray: "6 4",
-        interactive: false,
-        pane: paneForLayer($("drawLayer").value)
+        weight: 2, dashArray: "6 4", interactive: false,
+        pane: paneForLayer(target)
       }).addTo(map);
       if (event.originalEvent) L.DomEvent.stop(event.originalEvent);
     }
@@ -1544,10 +1384,7 @@
       freehandPoints = [];
       if (freehandPreview) { map.removeLayer(freehandPreview); freehandPreview = null; }
 
-      if (points.length < 3) {
-        setStatus("Freehand shape is too small. Drag a larger area.");
-        return;
-      }
+      if (points.length < 3) { setStatus("Freehand shape is too small. Drag a larger area."); return; }
 
       let ring = points.map(p => [p.lng, p.lat]);
       ring.push(ring[0]);
@@ -1567,7 +1404,7 @@
         return;
       }
 
-      const targetId = $("drawLayer").value;
+      const targetId = freehandTargetLayer || $("drawLayer").value;
       const originalName = "New polygon " + polygonCounter;
 
       const originalFeature = {
@@ -1583,14 +1420,9 @@
         alert("The shape you drew is entirely inside existing polygons on this layer.\n\nNothing was added.");
         return;
       }
-
-      if (!mergeResult.feature) {
-        setStatus("The freehand shape could not be added.");
-        return;
-      }
+      if (!mergeResult.feature) { setStatus("The freehand shape could not be added."); return; }
 
       polygonCounter++;
-
       if (!mergeResult.feature.properties) mergeResult.feature.properties = {};
       if (!mergeResult.feature.properties.Name) mergeResult.feature.properties.Name = originalName;
 
@@ -1600,26 +1432,20 @@
       });
 
       const added = addFeature(mergeResult.feature, targetId);
-
       suppressNextMapClick();
       suppressNextPolygonClick();
       saveHistory();
       renderSidebar();
       if (added.length) select(added[0]);
 
-      if (mergeResult.warning) {
-        setStatus("⚠ " + mergeResult.warning);
-      } else if (mergeResult.mergedLayers.length > 0) {
-        setStatus("Merged with " + mergeResult.mergedLayers.length + " existing polygon(s) in " + config(targetId)[1] + ".");
-      } else if (mergeResult.wasTrimmed) {
-        setStatus("Freehand polygon trimmed and added to " + config(targetId)[1] + ".");
-      } else {
-        setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
-      }
+      if (mergeResult.warning) setStatus("⚠ " + mergeResult.warning);
+      else if (mergeResult.mergedLayers.length > 0) setStatus("Merged with " + mergeResult.mergedLayers.length + " existing polygon(s) in " + config(targetId)[1] + ".");
+      else if (mergeResult.wasTrimmed) setStatus("Freehand polygon trimmed and added to " + config(targetId)[1] + ".");
+      else setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
     }
 
     // ============================================================
-    // ============ ERASER ========================================
+    // ============ ERASER (fixed) ================================
     // ============================================================
     let eraserActive = false;
     let eraserDrawing = false;
@@ -1637,21 +1463,13 @@
       }
 
       if (eraserActive && !wasActive) {
-        if (!freehandDrawing) {
-          setStatus("Freehand mode must be active to use the eraser.");
-          eraserActive = false;
-          return;
-        }
+        if (!freehandDrawing) { setStatus("Freehand mode must be active to use the eraser."); eraserActive = false; return; }
         map.dragging.disable();
         map.getContainer().style.cursor = "crosshair";
-        map.on("mousedown", eraserDown);
-        map.on("mousemove", eraserMove);
-        window.addEventListener("mouseup", eraserUp);
+        attachEraserDOMListeners();
         setStatus("Eraser active. Drag over the selected layer to erase. Click the eraser button again or press Esc to stop.");
       } else if (!eraserActive && wasActive) {
-        map.off("mousedown", eraserDown);
-        map.off("mousemove", eraserMove);
-        window.removeEventListener("mouseup", eraserUp);
+        detachEraserDOMListeners();
         cancelEraserStroke();
         if (!freehandDrawing) {
           map.dragging.enable();
@@ -1659,6 +1477,101 @@
         }
         setStatus("Eraser OFF.");
       }
+    }
+
+    // ====== Eraser: DOM-level events (fix) ======
+    function attachEraserDOMListeners() {
+      const el = map.getContainer();
+      el.addEventListener("mousedown", eraserDomDown, true);
+      el.addEventListener("mousemove", eraserDomMove, true);
+      window.addEventListener("mouseup", eraserDomUp, true);
+      el.addEventListener("touchstart", eraserDomTouchStart, { passive: false, capture: true });
+      el.addEventListener("touchmove", eraserDomTouchMove, { passive: false, capture: true });
+      el.addEventListener("touchend", eraserDomTouchEnd, { passive: false, capture: true });
+      el.addEventListener("touchcancel", eraserDomTouchEnd, { passive: false, capture: true });
+    }
+
+    function detachEraserDOMListeners() {
+      const el = map.getContainer();
+      el.removeEventListener("mousedown", eraserDomDown, true);
+      el.removeEventListener("mousemove", eraserDomMove, true);
+      window.removeEventListener("mouseup", eraserDomUp, true);
+      el.removeEventListener("touchstart", eraserDomTouchStart, true);
+      el.removeEventListener("touchmove", eraserDomTouchMove, true);
+      el.removeEventListener("touchend", eraserDomTouchEnd, true);
+      el.removeEventListener("touchcancel", eraserDomTouchEnd, true);
+    }
+
+    function eraserDomDown(ev) {
+      if (!eraserActive || eraserDrawing) return;
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const rect = map.getContainer().getBoundingClientRect();
+      const ll = map.containerPointToLatLng(L.point(ev.clientX - rect.left, ev.clientY - rect.top));
+      eraserStart(ll);
+    }
+
+    function eraserDomMove(ev) {
+      if (!eraserDrawing) return;
+      ev.preventDefault();
+      const rect = map.getContainer().getBoundingClientRect();
+      const ll = map.containerPointToLatLng(L.point(ev.clientX - rect.left, ev.clientY - rect.top));
+      eraserAdd(ll);
+    }
+
+    function eraserDomUp(ev) {
+      if (!eraserDrawing) return;
+      ev.preventDefault();
+      eraserFinish();
+    }
+
+    function eraserDomTouchStart(ev) {
+      if (!eraserActive || eraserDrawing) return;
+      if (ev.touches.length !== 1) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const rect = map.getContainer().getBoundingClientRect();
+      const t = ev.touches[0];
+      const ll = map.containerPointToLatLng(L.point(t.clientX - rect.left, t.clientY - rect.top));
+      eraserStart(ll);
+    }
+
+    function eraserDomTouchMove(ev) {
+      if (!eraserDrawing) return;
+      if (ev.touches.length !== 1) return;
+      ev.preventDefault();
+      const rect = map.getContainer().getBoundingClientRect();
+      const t = ev.touches[0];
+      const ll = map.containerPointToLatLng(L.point(t.clientX - rect.left, t.clientY - rect.top));
+      eraserAdd(ll);
+    }
+
+    function eraserDomTouchEnd(ev) {
+      if (!eraserDrawing) return;
+      if (ev.type === "touchcancel") { cancelEraserStroke(); return; }
+      if (ev.touches && ev.touches.length > 0) return;
+      ev.preventDefault();
+      eraserFinish();
+    }
+
+    function eraserStart(ll) {
+      eraserDrawing = true;
+      eraserPoints = [ll];
+      if (eraserPreview) map.removeLayer(eraserPreview);
+      eraserPreview = L.polyline(eraserPoints, {
+        color: "#b3261e", weight: 3, dashArray: "6 4", interactive: false,
+        pane: paneForLayer($("drawLayer").value)
+      }).addTo(map);
+    }
+
+    function eraserAdd(ll) {
+      const last = eraserPoints[eraserPoints.length - 1];
+      const lastPoint = map.latLngToContainerPoint(last);
+      const current = map.latLngToContainerPoint(ll);
+      if (lastPoint.distanceTo(current) < 5) return;
+      eraserPoints.push(ll);
+      if (eraserPreview) eraserPreview.setLatLngs(eraserPoints);
     }
 
     function toggleEraser() {
@@ -1673,34 +1586,7 @@
       if (eraserPreview) { map.removeLayer(eraserPreview); eraserPreview = null; }
     }
 
-    function eraserDown(event) {
-      if (!eraserActive) return;
-      if (event.originalEvent && event.originalEvent.button !== 0) return;
-      eraserDrawing = true;
-      eraserPoints = [event.latlng];
-      if (eraserPreview) map.removeLayer(eraserPreview);
-      eraserPreview = L.polyline(eraserPoints, {
-        color: "#b3261e",
-        weight: 3,
-        dashArray: "6 4",
-        interactive: false,
-        pane: paneForLayer($("drawLayer").value)
-      }).addTo(map);
-      if (event.originalEvent) L.DomEvent.stop(event.originalEvent);
-    }
-
-    function eraserMove(event) {
-      if (!eraserDrawing) return;
-      const last = eraserPoints[eraserPoints.length - 1];
-      const lastPoint = map.latLngToContainerPoint(last);
-      const current = map.latLngToContainerPoint(event.latlng);
-      if (lastPoint.distanceTo(current) < 5) return;
-      eraserPoints.push(event.latlng);
-      if (eraserPreview) eraserPreview.setLatLngs(eraserPoints);
-    }
-
-    function eraserUp() {
-      if (!eraserDrawing) return;
+    function eraserFinish() {
       const points = eraserPoints.slice();
       cancelEraserStroke();
       if (points.length < 3) { setStatus("Eraser shape is too small. Drag a larger area."); return; }
@@ -1719,8 +1605,7 @@
 
       if (!geometry || geometry.type !== "Polygon" || !geometry.coordinates ||
           !geometry.coordinates[0] || geometry.coordinates[0].length < 4) {
-        setStatus("Eraser shape could not be simplified.");
-        return;
+        setStatus("Eraser shape could not be simplified."); return;
       }
 
       const targetId = $("drawLayer").value;
@@ -1787,8 +1672,7 @@
       if (group.getLayers().length < 2) { setStatus("Nothing to fix — need at least 2 polygons."); return; }
 
       let fixed = 0, failed = 0;
-      let didSomething = true;
-      let safety = 0;
+      let didSomething = true, safety = 0;
 
       while (didSomething && safety < 500) {
         safety++;
@@ -1800,15 +1684,9 @@
           if (!group.hasLayer(current[i])) continue;
           for (let j = i + 1; j < current.length; j++) {
             if (!group.hasLayer(current[j])) continue;
-
             let f1, f2, b1, b2;
-            try {
-              f1 = current[i].toGeoJSON();
-              f2 = current[j].toGeoJSON();
-              b1 = turf.bbox(f1);
-              b2 = turf.bbox(f2);
-            } catch (e) { continue; }
-
+            try { f1 = current[i].toGeoJSON(); f2 = current[j].toGeoJSON(); b1 = turf.bbox(f1); b2 = turf.bbox(f2); }
+            catch (e) { continue; }
             if (b1[0] > b2[2] || b1[2] < b2[0] || b1[1] > b2[3] || b1[3] < b2[1]) continue;
 
             let overlaps = false;
@@ -1823,15 +1701,11 @@
 
             try {
               const u = turf.union(turf.featureCollection([f1, f2]));
-              const merged = (u && u.type === "FeatureCollection" && u.features && u.features.length === 1)
-                ? u.features[0] : u;
+              const merged = (u && u.type === "FeatureCollection" && u.features && u.features.length === 1) ? u.features[0] : u;
               if (!merged || !merged.geometry) { failed++; continue; }
-
-              const name = (f1.properties && f1.properties.Name) ||
-                           (f2.properties && f2.properties.Name) || "Merged polygon";
+              const name = (f1.properties && f1.properties.Name) || (f2.properties && f2.properties.Name) || "Merged polygon";
               if (!merged.properties) merged.properties = {};
               merged.properties.Name = name;
-
               if (current[i] === selected || current[j] === selected) deselect(false);
               group.removeLayer(current[i]);
               group.removeLayer(current[j]);
@@ -1839,23 +1713,14 @@
               fixed++;
               didSomething = true;
               break outer;
-            } catch (e) {
-              console.warn("[FIX] Union failed:", e);
-              failed++;
-            }
+            } catch (e) { console.warn("[FIX] Union failed:", e); failed++; }
           }
         }
       }
 
-      if (fixed) {
-        saveHistory();
-        renderSidebar();
-        setStatus("Fixed " + fixed + " overlapping pair(s)" + (failed ? " (" + failed + " failed)" : "") + ".");
-      } else if (failed) {
-        setStatus("Could not fix " + failed + " overlapping pair(s). See console (F12).");
-      } else {
-        setStatus("No overlaps found in " + config(layerId)[1] + ".");
-      }
+      if (fixed) { saveHistory(); renderSidebar(); setStatus("Fixed " + fixed + " overlapping pair(s)" + (failed ? " (" + failed + " failed)" : "") + "."); }
+      else if (failed) { setStatus("Could not fix " + failed + " overlapping pair(s). See console (F12)."); }
+      else { setStatus("No overlaps found in " + config(layerId)[1] + "."); }
     }
 
     window.polradAdvanceDrawing = false;
@@ -1884,10 +1749,7 @@
     const searchResults = document.getElementById("mapSearchResults");
     let searchMarker = null;
 
-    function hideSearchResults() {
-      searchResults.style.display = "none";
-      searchResults.innerHTML = "";
-    }
+    function hideSearchResults() { searchResults.style.display = "none"; searchResults.innerHTML = ""; }
 
     async function performMapSearch() {
       const q = searchInput.value.trim();
@@ -1960,17 +1822,13 @@
           if (!featureCollection || !featureCollection.features) return;
           featureCollection.features.forEach(function(feature) { addFeature(feature, c[0]); });
         });
-
-        try { await saveMapCache(remoteData); }
-        catch (storageError) { console.warn("Could not update editor cache:", storageError); }
+        try { await saveMapCache(remoteData); } catch (storageError) { console.warn("Could not update editor cache:", storageError); }
 
         try {
           const advancesResponse = await fetch(publishedPath("advances.json") + "?v=" + cacheBust, { cache: "no-store" });
           if (advancesResponse.ok) {
             const publishedAdvances = await advancesResponse.json();
-            const list = Array.isArray(publishedAdvances)
-              ? publishedAdvances.filter(item => item && item.snapshot) : [];
-
+            const list = Array.isArray(publishedAdvances) ? publishedAdvances.filter(item => item && item.snapshot) : [];
             list.sort(function(a, b) {
               const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
               const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
@@ -1978,7 +1836,6 @@
               if (byDate !== 0) return byDate;
               return String(a.id || "").localeCompare(String(b.id || ""));
             });
-
             const latest = list.length ? list[list.length - 1] : null;
             if (latest) {
               const separator = latest.snapshot.indexOf("?") === -1 ? "?" : "&";
@@ -1994,10 +1851,7 @@
           }
         } catch (snapshotError) { console.warn("Could not load the latest published advance snapshot:", snapshotError); }
 
-        saveHistory();
-        renderSidebar();
-        generateGrayZone();
-        setStatus("Loaded the current published map.");
+        saveHistory(); renderSidebar(); generateGrayZone(); setStatus("Loaded the current published map.");
         return;
       }
 
@@ -2011,17 +1865,13 @@
           if (!featureCollection || !featureCollection.features) return;
           featureCollection.features.forEach(function(feature) { addFeature(feature, c[0]); });
         });
-        saveHistory();
-        renderSidebar();
-        generateGrayZone();
+        saveHistory(); renderSidebar(); generateGrayZone();
         setStatus("Could not reach the published map files; loaded the saved browser copy.");
         return;
       }
 
       LAYERS.forEach(function(c) { groups[c[0]] = createGroup(c[0]); });
-      saveHistory();
-      renderSidebar();
-      generateGrayZone();
+      saveHistory(); renderSidebar(); generateGrayZone();
       setStatus("Could not load the published map files.");
     }
 
@@ -2102,17 +1952,11 @@
       } catch (error) { $("err").style.display = "block"; }
     }
 
-    window.addEventListener("load", function() {
-      setTimeout(function() { $("password").focus(); }, 50);
-    });
-
+    window.addEventListener("load", function() { setTimeout(function() { $("password").focus(); }, 50); });
     $("loginbtn").onclick = login;
     $("password").onkeydown = function(event) { if (event.key === "Enter") login(); };
     $("draw").onclick = startDrawing;
-    $("drawFreehand").onclick = function () {
-      if (freehandDrawing) stopFreehandDrawing();
-      else startFreehandDrawing();
-    };
+    $("drawFreehand").onclick = function () { if (freehandDrawing) stopFreehandDrawing(); else startFreehandDrawing(null); };
     $("eraserFreehand").onclick = toggleEraser;
     $("fixOverlaps").onclick = function () { fixOverlapsInLayer($("drawLayer").value); };
 
@@ -2121,15 +1965,11 @@
       groups[selected._layer].removeLayer(selected);
       selected = null;
       $("selectedBox").style.display = "none";
-      saveHistory();
-      renderSidebar();
+      saveHistory(); renderSidebar();
       setStatus("Feature deleted.");
     };
 
-    $("selectedLayer").onchange = function(event) {
-      if (selected) movePolygon(selected, event.target.value);
-    };
-
+    $("selectedLayer").onchange = function(event) { if (selected) movePolygon(selected, event.target.value); };
     $("controlExpandStart").onclick = startControlExpansion;
     $("controlExpandFinish").onclick = finishControlExpansion;
     $("controlExpandCancel").onclick = function() { cancelControlExpansion(false); };
@@ -2151,14 +1991,8 @@
 
     $("save").onclick = async function () {
       const all = getCurrentGeoJSON();
-      try {
-        await saveMapCache(all);
-        setStatus("Saved in this browser.");
-        alert("Changes saved successfully.");
-      } catch (error) {
-        console.error("Save failed:", error);
-        alert("Could not save: " + (error && error.message ? error.message : "Unknown error."));
-      }
+      try { await saveMapCache(all); setStatus("Saved in this browser."); alert("Changes saved successfully."); }
+      catch (error) { console.error("Save failed:", error); alert("Could not save: " + (error && error.message ? error.message : "Unknown error.")); }
     };
 
     $("download").onclick = function() {
@@ -2182,18 +2016,34 @@
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.error || "Publish failed");
-        try { await saveMapCache(currentFiles); }
-        catch (storageError) { console.warn("Could not update editor cache:", storageError); }
+        try { await saveMapCache(currentFiles); } catch (storageError) { console.warn("Could not update editor cache:", storageError); }
         setStatus("Published successfully.");
         alert("Published successfully!");
       } catch (error) { setStatus(error.message); }
     };
+
+    // Expose helpers used by the advance IIFE below
+    window.polradHelpers = {
+      $, config, setStatus, deselect, findPolygon, saveHistory, renderSidebar,
+      updatePointCount, paneForLayer, setupPolygon, unionAll, robustUnion,
+      subtractFromFeature, normalizeGeometryResult, startFreehandDrawing,
+      stopFreehandDrawing, applyStyle,
+      get selected() { return selected; },
+      get groups() { return groups; },
+      get drawing() { return drawing; },
+      set drawing(v) { drawing = v; },
+      get polygonCounter() { return polygonCounter; },
+      set polygonCounter(v) { polygonCounter = v; },
+      get freehandDrawing() { return freehandDrawing; }
+    };
   </script>
 
   <script>
-    // Advance editor IIFE — unchanged from prior version, but included for completeness.
+    // ============ ADVANCE EDITOR IIFE ============
+    // Uses window.polradHelpers exposed above.
     (function () {
       "use strict";
+      const H = window.polradHelpers;
       const ADVANCE_STORAGE_KEY = "polrad_editor_advances";
       const ADVANCE_TERRITORY = { ru_advances: ["ru_territory"], ua_advances: ["ua_territory"] };
       let advances = [];
@@ -2220,10 +2070,8 @@
           #advanceStatus.active { color:#b3261e; font-weight:600; }
           #advanceAreaPreview { margin-top:8px; padding:7px; border-radius:5px; background:#fff; border:1px solid #e1e1e1; font-size:12px; }
           .advance-effect { display:inline-block; margin:2px 4px 2px 0; padding:2px 5px; border-radius:4px; font-weight:600; }
-          .advance-effect.ru { color:#e53935; background:#ffebee; }
-          .advance-effect.ua { color:#1e88e5; background:#e3f2fd; }
-          .advance-effect.red { color:#e53935; background:#ffebee; }
-          .advance-effect.blue { color:#1e88e5; background:#e3f2fd; }
+          .advance-effect.ru, .advance-effect.red { color:#e53935; background:#ffebee; }
+          .advance-effect.ua, .advance-effect.blue { color:#1e88e5; background:#e3f2fd; }
           #advanceHistory { margin-top:8px; }
           .advance-history-item { position:relative; padding:7px; margin-bottom:6px; border:1px solid #e5e5e5; border-radius:5px; background:#fff; font-size:11px; line-height:1.35; }
           .advance-history-item button { float:right; font-size:11px; border:1px solid #ccc; background:#fff; border-radius:4px; cursor:pointer; padding:3px 6px; }
@@ -2232,73 +2080,59 @@
         document.head.appendChild(style);
       }
 
-      const ADVANCE_DB_NAME = "polrad_editor_advance_db";
-      const ADVANCE_DB_VERSION = 1;
-      const ADVANCE_SNAPSHOT_STORE = "snapshots";
-      let advanceSnapshotDB = null;
-
-      function openAdvanceSnapshotDB() {
-        return new Promise(function(resolve, reject) {
+      const DB = { name: "polrad_editor_advance_db", version: 1, store: "snapshots", db: null };
+      function openDB() {
+        return new Promise(function (resolve, reject) {
           if (!window.indexedDB) { reject(new Error("IndexedDB is not available.")); return; }
-          if (advanceSnapshotDB) { resolve(advanceSnapshotDB); return; }
-          const request = indexedDB.open(ADVANCE_DB_NAME, ADVANCE_DB_VERSION);
-          request.onupgradeneeded = function(event) {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(ADVANCE_SNAPSHOT_STORE)) {
-              db.createObjectStore(ADVANCE_SNAPSHOT_STORE, { keyPath: "id" });
-            }
+          if (DB.db) { resolve(DB.db); return; }
+          const req = indexedDB.open(DB.name, DB.version);
+          req.onupgradeneeded = function (e) {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains(DB.store)) d.createObjectStore(DB.store, { keyPath: "id" });
           };
-          request.onsuccess = function(event) { advanceSnapshotDB = event.target.result; resolve(advanceSnapshotDB); };
-          request.onerror = function() { reject(request.error || new Error("Could not open advance storage.")); };
+          req.onsuccess = function (e) { DB.db = e.target.result; resolve(DB.db); };
+          req.onerror = function () { reject(req.error || new Error("Could not open advance storage.")); };
         });
       }
-
-      function putAdvanceSnapshot(id, snapshotData) {
-        return openAdvanceSnapshotDB().then(function(db) {
-          return new Promise(function(resolve, reject) {
-            const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readwrite");
-            tx.objectStore(ADVANCE_SNAPSHOT_STORE).put({ id: id, snapshotData: snapshotData });
-            tx.oncomplete = function() { resolve(); };
-            tx.onerror = function() { reject(tx.error || new Error("Could not save advance snapshot.")); };
-            tx.onabort = function() { reject(tx.error || new Error("Advance snapshot save was aborted.")); };
+      function putSnapshot(id, data) {
+        return openDB().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            const tx = db.transaction(DB.store, "readwrite");
+            tx.objectStore(DB.store).put({ id: id, snapshotData: data });
+            tx.oncomplete = function () { resolve(); };
+            tx.onerror = function () { reject(tx.error); };
+            tx.onabort = function () { reject(tx.error); };
           });
         });
       }
-
-      function getAdvanceSnapshot(id) {
-        return openAdvanceSnapshotDB().then(function(db) {
-          return new Promise(function(resolve, reject) {
-            const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readonly");
-            const request = tx.objectStore(ADVANCE_SNAPSHOT_STORE).get(id);
-            request.onsuccess = function() { resolve(request.result ? request.result.snapshotData : null); };
-            request.onerror = function() { reject(request.error || new Error("Could not read advance snapshot.")); };
+      function getSnapshot(id) {
+        return openDB().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            const tx = db.transaction(DB.store, "readonly");
+            const req = tx.objectStore(DB.store).get(id);
+            req.onsuccess = function () { resolve(req.result ? req.result.snapshotData : null); };
+            req.onerror = function () { reject(req.error); };
           });
         });
       }
-
-      function deleteAdvanceSnapshot(id) {
-        return openAdvanceSnapshotDB().then(function(db) {
-          return new Promise(function(resolve, reject) {
-            const tx = db.transaction(ADVANCE_SNAPSHOT_STORE, "readwrite");
-            tx.objectStore(ADVANCE_SNAPSHOT_STORE).delete(id);
-            tx.oncomplete = function() { resolve(); };
-            tx.onerror = function() { reject(tx.error || new Error("Could not delete advance snapshot.")); };
+      function delSnapshot(id) {
+        return openDB().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            const tx = db.transaction(DB.store, "readwrite");
+            tx.objectStore(DB.store).delete(id);
+            tx.oncomplete = function () { resolve(); };
+            tx.onerror = function () { reject(tx.error); };
           });
         });
       }
-
-      function stripSnapshotData(item) {
-        const clean = Object.assign({}, item);
-        delete clean.snapshotData;
-        return clean;
-      }
+      function stripSnapshot(item) { const c = Object.assign({}, item); delete c.snapshotData; return c; }
 
       function loadAdvances() {
         try {
           const raw = localStorage.getItem(ADVANCE_STORAGE_KEY);
-          const parsed = raw ? JSON.parse(raw) : [];
-          advances = Array.isArray(parsed) ? parsed : [];
-          advances.forEach(function(item) {
+          advances = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(advances)) advances = [];
+          advances.forEach(function (item) {
             if (!item || typeof item !== "object") return;
             if (!item.text_en && item.text) item.text_en = item.text;
             if (!item.text_ru) item.text_ru = "";
@@ -2306,11 +2140,9 @@
           });
         } catch (e) { console.error("Could not load advance history:", e); advances = []; }
       }
-
       function saveAdvances() {
         try {
-          const metadata = advances.map(stripSnapshotData);
-          localStorage.setItem(ADVANCE_STORAGE_KEY, JSON.stringify(metadata));
+          localStorage.setItem(ADVANCE_STORAGE_KEY, JSON.stringify(advances.map(stripSnapshot)));
           return true;
         } catch (error) {
           console.error("Could not save advance history:", error);
@@ -2318,18 +2150,17 @@
           return false;
         }
       }
-
       async function mergeAdvancesWithGitHub() {
         try {
-          const response = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/advances.json?v=" + Date.now(), { cache: "no-store" });
-          if (!response.ok) return advances;
-          const remote = await response.json();
+          const r = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/advances.json?v=" + Date.now(), { cache: "no-store" });
+          if (!r.ok) return advances;
+          const remote = await r.json();
           if (!Array.isArray(remote)) return advances;
           const byId = {};
-          remote.forEach(function(item) { if (item && item.id) byId[item.id] = item; });
-          advances.forEach(function(item) { if (item && item.id) byId[item.id] = item; });
-          const merged = Object.keys(byId).map(function(k) { return byId[k]; });
-          merged.sort(function(a, b) {
+          remote.forEach(function (item) { if (item && item.id) byId[item.id] = item; });
+          advances.forEach(function (item) { if (item && item.id) byId[item.id] = item; });
+          const merged = Object.keys(byId).map(k => byId[k]);
+          merged.sort(function (a, b) {
             const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
             const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
             return ak.localeCompare(bk);
@@ -2340,114 +2171,179 @@
           return advances;
         } catch (e) { console.warn("Could not merge advances with GitHub:", e); return advances; }
       }
-
-      async function migrateAdvanceSnapshots() {
+      async function migrateSnapshots() {
         for (const item of advances.slice()) {
           if (!item || !item.id || !item.snapshotData) continue;
-          try { await putAdvanceSnapshot(item.id, item.snapshotData); delete item.snapshotData; saveAdvances(); }
+          try { await putSnapshot(item.id, item.snapshotData); delete item.snapshotData; saveAdvances(); }
           catch (error) { console.warn("Could not migrate advance snapshot:", item.id, error); }
         }
         for (const item of advances) {
           if (!item || !item.id || item.snapshotData) continue;
-          try { const snapshot = await getAdvanceSnapshot(item.id); if (snapshot) item.snapshotData = snapshot; }
+          try { const s = await getSnapshot(item.id); if (s) item.snapshotData = s; }
           catch (error) { console.warn("Could not load advance snapshot:", item.id, error); }
         }
         renderAdvanceHistory();
       }
 
-      function getLayerFeatures(layerId) {
-        if (!groups || !groups[layerId]) return [];
-        return groups[layerId].getLayers().map(function(layer) {
-          const feature = layer.toGeoJSON();
-          feature.properties = Object.assign({}, layer.feature && layer.feature.properties ? layer.feature.properties : {});
-          return feature;
-        });
-      }
-
+      // ===== Advance territory trim =====
       function territoryUnionFor(advanceLayerId) {
         const ids = ADVANCE_TERRITORY[advanceLayerId] || [];
         const parts = [];
-        ids.forEach(function(id) {
-          getLayerFeatures(id).forEach(function(feature) {
-            if (feature && feature.geometry && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon")) {
-              try { parts.push(turf.cleanCoords(feature)); } catch (e) { parts.push(feature); }
+        ids.forEach(function (id) {
+          const group = H.groups[id];
+          if (!group) return;
+          group.getLayers().forEach(function (layer) {
+            const f = layer.toGeoJSON();
+            f.properties = Object.assign({}, layer.feature && layer.feature.properties ? layer.feature.properties : {});
+            if (f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) {
+              try { parts.push(turf.cleanCoords(f)); } catch (e) { parts.push(f); }
             }
           });
         });
         if (!parts.length) return null;
-        return unionAll(parts);
+        return H.unionAll(parts);
       }
 
       function trimAdvanceToTerritory(layer) {
         if (!layer || !layer._layer) return "unchanged";
         const territory = territoryUnionFor(layer._layer);
         if (!territory) return "unchanged";
+
         let feature;
-        try { feature = turf.cleanCoords(layer.toGeoJSON()); } catch (e) { feature = layer.toGeoJSON(); }
-        let result;
-        try { result = turf.difference(feature, territory); }
-        catch (e) { console.warn("Advance trim failed:", e); return "unchanged"; }
-        if (!result) {
-          const groupId = layer._layer;
-          if (layer === selected) deselect(false);
-          if (groups[groupId]) groups[groupId].removeLayer(layer);
+        try { feature = turf.cleanCoords(layer.toGeoJSON()); }
+        catch (e) { feature = layer.toGeoJSON(); }
+
+        const result = H.subtractFromFeature(feature, territory);
+        if (result.error) return "unchanged";
+        if (!result.changed) return "unchanged";
+
+        if (!result.feature) {
+          const group = H.groups[layer._layer];
+          if (layer === H.selected) H.deselect(false);
+          if (group) group.removeLayer(layer);
           return "removed";
         }
-        let beforeArea = 0, afterArea = 0;
-        try { beforeArea = turf.area(feature); afterArea = turf.area(result); } catch (e) {}
-        if (Math.abs(beforeArea - afterArea) < 1) return "unchanged";
-        const geometry = result.geometry;
-        const level = geometry.type === "MultiPolygon" ? 2 : 1;
-        const wasSelected = layer === selected;
+
+        const geom = result.feature.geometry;
+        const level = geom.type === "MultiPolygon" ? 2 : 1;
+        const wasSelected = layer === H.selected;
         if (wasSelected) layer.pm.disable();
-        layer.setLatLngs(L.GeoJSON.coordsToLatLngs(geometry.coordinates, level));
+        layer.setLatLngs(L.GeoJSON.coordsToLatLngs(geom.coordinates, level));
+        layer.feature = result.feature;
+        if (!layer.feature.properties) layer.feature.properties = {};
+        const name = (feature.properties && feature.properties.Name) || "Advance polygon";
+        layer.feature.properties.Name = name;
         layer.redraw();
-        if (wasSelected) { layer.pm.enable(); updatePointCount(); }
+        if (wasSelected) { layer.pm.enable(); H.updatePointCount(); }
         return "trimmed";
+      }
+
+      // Merge same-side advance polygons that overlap each other
+      function mergeAdvanceOverlapsSameSide(layerId) {
+        const group = H.groups[layerId];
+        if (!group || group.getLayers().length < 2) return 0;
+
+        let fixed = 0, safety = 0;
+        let didSomething = true;
+
+        while (didSomething && safety < 500) {
+          safety++;
+          didSomething = false;
+          const current = group.getLayers().slice();
+          outer:
+          for (let i = 0; i < current.length; i++) {
+            if (!group.hasLayer(current[i])) continue;
+            for (let j = i + 1; j < current.length; j++) {
+              if (!group.hasLayer(current[j])) continue;
+              let f1, f2, b1, b2;
+              try {
+                f1 = current[i].toGeoJSON();
+                f2 = current[j].toGeoJSON();
+                b1 = turf.bbox(f1); b2 = turf.bbox(f2);
+              } catch (e) { continue; }
+              if (b1[0] > b2[2] || b1[2] < b2[0] || b1[1] > b2[3] || b1[3] < b2[1]) continue;
+
+              let overlaps = false;
+              try { overlaps = turf.booleanIntersects(f1, f2); }
+              catch (e) {
+                try {
+                  const inter = turf.intersect(f1, f2);
+                  overlaps = !!(inter && inter.geometry && turf.area(inter) > 1);
+                } catch (e2) { continue; }
+              }
+              if (!overlaps) continue;
+
+              try {
+                const u = turf.union(turf.featureCollection([f1, f2]));
+                const merged = (u && u.type === "FeatureCollection" && u.features && u.features.length === 1) ? u.features[0] : u;
+                if (!merged || !merged.geometry) continue;
+                if (!merged.properties) merged.properties = {};
+                merged.properties.Name = (f1.properties && f1.properties.Name) || (f2.properties && f2.properties.Name) || "Advance polygon";
+                if (current[i] === H.selected || current[j] === H.selected) H.deselect(false);
+                group.removeLayer(current[i]);
+                group.removeLayer(current[j]);
+                H.setupPolygon && H.paneForLayer && (function (m) {
+                  const layer = L.geoJSON(m, { pane: H.paneForLayer(layerId) }).getLayers()[0];
+                  if (!layer) return;
+                  layer.feature = m;
+                  layer._layer = layerId;
+                  layer._fid = "merged-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+                  H.setupPolygon(layer, layerId);
+                  group.addLayer(layer);
+                })(merged);
+                fixed++;
+                didSomething = true;
+                break outer;
+              } catch (e) { /* skip */ }
+            }
+          }
+        }
+        return fixed;
       }
 
       function trimCreatedAdvances() {
         let trimmed = 0, removed = 0;
         const kept = [];
-        advanceState.createdFids.forEach(function(fid) {
-          const layer = findPolygon(fid);
+        advanceState.createdFids.forEach(function (fid) {
+          const layer = H.findPolygon(fid);
           if (!layer) return;
           const result = trimAdvanceToTerritory(layer);
           if (result === "removed") removed++;
           else { if (result === "trimmed") trimmed++; kept.push(fid); }
         });
         advanceState.createdFids = kept;
-        if (trimmed || removed) { saveHistory(); renderSidebar(); }
+        const mergedRu = mergeAdvanceOverlapsSameSide("ru_advances");
+        const mergedUa = mergeAdvanceOverlapsSameSide("ua_advances");
+        if (trimmed || removed || mergedRu || mergedUa) { H.saveHistory(); H.renderSidebar(); }
         const notes = [];
-        if (trimmed) notes.push(trimmed + " polygon(s) trimmed to remove overlap with existing territory");
-        if (removed) notes.push(removed + " polygon(s) discarded (entirely inside existing territory)");
+        if (trimmed) notes.push(trimmed + " polygon(s) trimmed against own territory");
+        if (removed) notes.push(removed + " polygon(s) discarded (entirely inside own territory)");
+        if (mergedRu + mergedUa) notes.push((mergedRu + mergedUa) + " same-side advance pair(s) merged");
         return notes.join("; ");
       }
 
-      const ADVANCE_LAYER_IDS = ["ru_advances", "ua_advances"];
-
       function removeStrayAdvanceCopies() {
         let removed = 0, snapshotsCleaned = 0;
-        LAYERS.forEach(function(c) {
-          const id = c[0];
-          if (ADVANCE_LAYER_IDS.indexOf(id) !== -1 || !groups[id]) return;
-          groups[id].getLayers().slice().forEach(function(layer) {
+        Object.keys(H.groups).forEach(function (id) {
+          if (id === "ru_advances" || id === "ua_advances") return;
+          const group = H.groups[id];
+          group.getLayers().slice().forEach(function (layer) {
             const props = layer.feature && layer.feature.properties;
             if (!props || !props._advanceId) return;
-            if (layer === selected) deselect(false);
-            groups[id].removeLayer(layer);
+            if (layer === H.selected) H.deselect(false);
+            group.removeLayer(layer);
             const home = layer._layer;
-            if (home !== id && groups[home] && groups[home].hasLayer(layer)) groups[home].addLayer(layer);
+            if (home !== id && H.groups[home] && H.groups[home].hasLayer(layer)) H.groups[home].addLayer(layer);
             removed++;
           });
         });
-        advances.forEach(function(item) {
+        advances.forEach(function (item) {
           if (!item.snapshotData) return;
-          LAYERS.forEach(function(c) {
-            if (ADVANCE_LAYER_IDS.indexOf(c[0]) !== -1) return;
-            const fc = item.snapshotData[c[1]];
+          Object.keys(item.snapshotData).forEach(function (name) {
+            if (name === "Ukrainian advances" || name === "Russian advances") return;
+            const fc = item.snapshotData[name];
             if (!fc || !fc.features) return;
-            const kept = fc.features.filter(function(f) { return !(f.properties && f.properties._advanceId); });
+            const kept = fc.features.filter(function (f) { return !(f.properties && f.properties._advanceId); });
             if (kept.length !== fc.features.length) { fc.features = kept; snapshotsCleaned++; }
           });
         });
@@ -2456,59 +2352,58 @@
       }
 
       function trimAllAdvances() {
-        if (!groups) return;
         const stray = removeStrayAdvanceCopies();
         let trimmed = 0, removed = 0;
-        ADVANCE_LAYER_IDS.forEach(function(id) {
-          if (!groups[id]) return;
-          groups[id].getLayers().slice().forEach(function(layer) {
+        ["ru_advances", "ua_advances"].forEach(function (id) {
+          const group = H.groups[id];
+          if (!group) return;
+          group.getLayers().slice().forEach(function (layer) {
             const result = trimAdvanceToTerritory(layer);
             if (result === "trimmed") trimmed++;
             if (result === "removed") removed++;
           });
         });
-        if (stray.removed || trimmed || removed) {
-          saveHistory(); renderSidebar(); updatePointCount();
-          setStatus("Advance layers fixed: " + stray.removed + " stray copies removed, " + trimmed + " trimmed, " + removed + " discarded" + (stray.snapshotsCleaned ? ", " + stray.snapshotsCleaned + " saved snapshot layer(s) cleaned" : "") + ". Unsaved changes.");
-        } else { setStatus("No advance problems found."); }
+        const mergedRu = mergeAdvanceOverlapsSameSide("ru_advances");
+        const mergedUa = mergeAdvanceOverlapsSameSide("ua_advances");
+        if (stray.removed || trimmed || removed || mergedRu || mergedUa) {
+          H.saveHistory(); H.renderSidebar();
+          H.setStatus("Advance layers fixed: " + stray.removed + " stray copies removed, " + trimmed + " trimmed, " + removed + " discarded, " + (mergedRu + mergedUa) + " merged" + (stray.snapshotsCleaned ? ", " + stray.snapshotsCleaned + " snapshot(s) cleaned" : "") + ".");
+        } else {
+          H.setStatus("No advance problems found.");
+        }
       }
 
       function unionAreaKm2(layerIds) {
-        let features = [];
-        layerIds.forEach(function(layerId) {
-          getLayerFeatures(layerId).forEach(function(feature) {
-            if (feature && feature.geometry && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon")) features.push(feature);
+        const parts = [];
+        layerIds.forEach(function (id) {
+          const group = H.groups[id];
+          if (!group) return;
+          group.getLayers().forEach(function (layer) {
+            const f = layer.toGeoJSON();
+            f.properties = Object.assign({}, layer.feature && layer.feature.properties ? layer.feature.properties : {});
+            if (f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) parts.push(f);
           });
         });
-        if (!features.length) return 0;
-        let result = features[0];
-        for (let i = 1; i < features.length; i++) {
-          try { result = turf.union(result, features[i]); } catch (e) {}
-        }
+        if (!parts.length) return 0;
+        let result = parts[0];
+        for (let i = 1; i < parts.length; i++) { try { result = turf.union(result, parts[i]); } catch (e) {} }
         try { return turf.area(result) / 1000000; } catch (e) { return 0; }
       }
 
       function currentControlledAreas() {
-        return {
-          ru: unionAreaKm2(["ru_territory", "ru_advances"]),
-          ua: unionAreaKm2(["ua_territory", "ua_advances"])
-        };
+        return { ru: unionAreaKm2(["ru_territory", "ru_advances"]), ua: unionAreaKm2(["ua_territory", "ua_advances"]) };
       }
-
       function formatAreaEffects(effects, color) {
         if (!effects || !effects.length) return '<span style="color:#777">No controlled-area change detected.</span>';
-        return effects.map(function(effect) {
-          const value = Number(effect.value);
-          const sign = value > 0 ? "+" : "";
-          return '<span class="advance-effect ' + (color === "blue" ? "blue" : "red") + '">' + sign + value.toFixed(2) + " km²</span>";
+        return effects.map(function (e) {
+          const v = Number(e.value), s = v > 0 ? "+" : "";
+          return '<span class="advance-effect ' + (color === "blue" ? "blue" : "red") + '">' + s + v.toFixed(2) + " km²</span>";
         }).join(" ");
       }
-
       function areaDisplay(effects) {
-        return (effects || []).map(function(effect) {
-          const value = Number(effect.value);
-          const sign = value > 0 ? "+" : "";
-          return sign + value.toFixed(2) + " km²";
+        return (effects || []).map(function (e) {
+          const v = Number(e.value), s = v > 0 ? "+" : "";
+          return s + v.toFixed(2) + " km²";
         }).join(" ");
       }
 
@@ -2516,24 +2411,19 @@
         if (advanceFocusRectangle && map && map.hasLayer(advanceFocusRectangle)) map.removeLayer(advanceFocusRectangle);
         advanceFocusRectangle = null;
       }
-
       function setAdvanceFocus(bounds) {
         if (!bounds) return;
         clearAdvanceFocusRectangle();
         advanceFocusRectangle = L.rectangle(bounds, { color: "#7b1fa2", weight: 2, dashArray: "6 4", fillOpacity: 0.08, interactive: false }).addTo(map);
-        advanceState.focus = {
-          south: Number(bounds.getSouth()), west: Number(bounds.getWest()),
-          north: Number(bounds.getNorth()), east: Number(bounds.getEast())
-        };
+        advanceState.focus = { south: Number(bounds.getSouth()), west: Number(bounds.getWest()), north: Number(bounds.getNorth()), east: Number(bounds.getEast()) };
         if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "Focus rectangle selected.";
         setAdvanceStatus("Public map focus area selected. You can redraw it if needed.", true);
       }
-
       function selectAdvanceFocus() {
         if (!advanceState.active || !map) return;
         clearAdvanceFocusRectangle();
         window.polradAdvanceFocusDrawing = true;
-        drawing = true;
+        H.drawing = true;
         map.pm.enableDraw("Rectangle", { snappable: false });
         setAdvanceStatus("Draw a rectangle around the area the public map should zoom to.", true);
         function onCreate(event) {
@@ -2541,7 +2431,7 @@
           if (!window.polradAdvanceFocusDrawing) return;
           window.polradAdvanceFocusDrawing = false;
           map.pm.disableDraw();
-          drawing = false;
+          H.drawing = false;
           const layer = event.layer;
           const bounds = layer.getBounds();
           map.removeLayer(layer);
@@ -2549,7 +2439,6 @@
         }
         map.on("pm:create", onCreate);
       }
-
       function dateTimeNow() {
         const now = new Date();
         function pad(n) { return String(n).padStart(2, "0"); }
@@ -2558,58 +2447,40 @@
           time: pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds())
         };
       }
-
       function ensureAdvanceColors() {
-        const ru = config("ru_advances");
-        const ua = config("ua_advances");
+        const ru = H.config("ru_advances"); const ua = H.config("ua_advances");
         if (ru) ru[3] = "#ffd600";
         if (ua) ua[3] = "#1e88e5";
-        if (groups && groups.ru_advances) groups.ru_advances.eachLayer(function(layer) { applyStyle(layer, layer === selected); });
-        if (groups && groups.ua_advances) groups.ua_advances.eachLayer(function(layer) { applyStyle(layer, layer === selected); });
-        if (typeof renderSidebar === "function" && groups && groups.ru_advances) renderSidebar();
+        if (H.groups.ru_advances) H.groups.ru_advances.eachLayer(function (l) { H.applyStyle(l, l === H.selected); });
+        if (H.groups.ua_advances) H.groups.ua_advances.eachLayer(function (l) { H.applyStyle(l, l === H.selected); });
+        H.renderSidebar();
       }
 
       function createAdvanceUI() {
         const actions = document.querySelector(".actions");
         if (!actions || A("advanceEditorBox")) return;
-        const createButton = document.createElement("button");
-        createButton.className = "btn";
-        createButton.id = "createAdvanceButton";
-        createButton.textContent = "+ Create Advance";
-        actions.insertBefore(createButton, A("publish"));
-        const trimButton = document.createElement("button");
-        trimButton.className = "btn";
-        trimButton.id = "trimAdvancesButton";
-        trimButton.textContent = "Fix Advance Layers";
-        trimButton.title = "Remove accidental advance copies from other layers, then cut every advance polygon so it no longer overlaps its own side's territory";
-        actions.insertBefore(trimButton, A("publish"));
-        trimButton.onclick = trimAllAdvances;
+        const createBtn = document.createElement("button");
+        createBtn.className = "btn"; createBtn.id = "createAdvanceButton"; createBtn.textContent = "+ Create Advance";
+        actions.insertBefore(createBtn, A("publish"));
+        const trimBtn = document.createElement("button");
+        trimBtn.className = "btn"; trimBtn.id = "trimAdvancesButton"; trimBtn.textContent = "Fix Advance Layers";
+        actions.insertBefore(trimBtn, A("publish"));
+        trimBtn.onclick = trimAllAdvances;
 
         const box = document.createElement("div");
-        box.className = "box";
-        box.id = "advanceEditorBox";
+        box.className = "box"; box.id = "advanceEditorBox";
         box.innerHTML = `
           <h4>Advance / Gray Zone Update</h4>
           <label>Advance side</label>
-          <select id="advanceSide">
-            <option value="ru">🔴 Russia</option>
-            <option value="ua">🔵 Ukraine</option>
-          </select>
+          <select id="advanceSide"><option value="ru">🔴 Russia</option><option value="ua">🔵 Ukraine</option></select>
           <label>Area gain/loss color (shown on the public map)</label>
-          <select id="advanceColor">
-            <option value="red">🔴 Red</option>
-            <option value="blue">🔵 Blue</option>
-          </select>
+          <select id="advanceColor"><option value="red">🔴 Red</option><option value="blue">🔵 Blue</option></select>
           <div class="advance-row">
             <button class="btn primary" id="advanceStart">Create Advance</button>
             <button class="btn" id="advanceFinish" disabled>Finish Advance</button>
           </div>
           <div id="advanceStatus">No advance in progress.</div>
-          <div id="advanceAreaPreview">
-            Area changes will appear here after you click Finish Advance.
-            <br>
-            <span style="color:#777">Choose the area change color above (red or blue).</span>
-          </div>
+          <div id="advanceAreaPreview">Area changes will appear here after you click Finish Advance.<br><span style="color:#777">Choose the area change color above (red or blue).</span></div>
           <div id="advanceFocusWrap" style="margin-top:8px">
             <label>Public map focus area</label>
             <div class="advance-row">
@@ -2631,45 +2502,34 @@
         `;
         actions.parentNode.insertBefore(box, A("search"));
 
-        createButton.onclick = startAdvance;
+        createBtn.onclick = startAdvance;
         A("advanceStart").onclick = startAdvance;
         A("advanceFinish").onclick = finishAdvance;
         A("advanceFocusSelect").onclick = selectAdvanceFocus;
-        A("advanceFocusClear").onclick = function() { clearAdvanceFocusRectangle(); advanceState.focus = null; A("advanceFocusStatus").textContent = "No focus rectangle selected."; };
+        A("advanceFocusClear").onclick = function () { clearAdvanceFocusRectangle(); advanceState.focus = null; A("advanceFocusStatus").textContent = "No focus rectangle selected."; };
         A("advanceSave").onclick = saveAdvance;
         A("advanceCancel").onclick = cancelAdvance;
-        A("advanceSide").onchange = function() { A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red"; };
+        A("advanceSide").onchange = function () { A("advanceColor").value = A("advanceSide").value === "ua" ? "blue" : "red"; };
         A("advanceColor").onchange = renderAreaPreview;
         renderAdvanceHistory();
       }
-
       function setAdvanceStatus(text, active) {
-        const node = A("advanceStatus");
-        if (!node) return;
-        node.textContent = text;
-        node.className = active ? "active" : "";
+        const node = A("advanceStatus"); if (!node) return;
+        node.textContent = text; node.className = active ? "active" : "";
       }
 
       function startAdvance() {
         if (advanceState.active) return;
-        if (!map || !groups) { alert("The map has not finished loading yet."); return; }
-
-        var ruAdvanceCount = (groups.ru_advances && groups.ru_advances.getLayers) ? groups.ru_advances.getLayers().length : 0;
-        var uaAdvanceCount = (groups.ua_advances && groups.ua_advances.getLayers) ? groups.ua_advances.getLayers().length : 0;
-        var totalAdvancePolygons = ruAdvanceCount + uaAdvanceCount;
-
-        if (totalAdvancePolygons > 0) {
-          var parts = [];
-          if (ruAdvanceCount > 0) parts.push(ruAdvanceCount + " Russian advance polygon(s)");
-          if (uaAdvanceCount > 0) parts.push(uaAdvanceCount + " Ukrainian advance polygon(s)");
-          var proceed = confirm(
-            "Warning: there " + (totalAdvancePolygons === 1 ? "is" : "are") + " already " + parts.join(" and ") + " on the map from previous advances.\n\n" +
-            "Starting a new advance will ADD new polygons on top of these. The existing advance polygons will remain on the map.\n\n" +
-            "Do you want to continue creating a new advance?"
-          );
-          if (!proceed) return;
+        if (!map || !H.groups) { alert("The map has not finished loading yet."); return; }
+        const ruCount = (H.groups.ru_advances && H.groups.ru_advances.getLayers) ? H.groups.ru_advances.getLayers().length : 0;
+        const uaCount = (H.groups.ua_advances && H.groups.ua_advances.getLayers) ? H.groups.ua_advances.getLayers().length : 0;
+        const total = ruCount + uaCount;
+        if (total > 0) {
+          const parts = [];
+          if (ruCount > 0) parts.push(ruCount + " Russian advance polygon(s)");
+          if (uaCount > 0) parts.push(uaCount + " Ukrainian advance polygon(s)");
+          if (!confirm("Warning: there " + (total === 1 ? "is" : "are") + " already " + parts.join(" and ") + " on the map from previous advances.\n\nStarting a new advance will ADD new polygons on top of these.\n\nContinue?")) return;
         }
-
         advanceState.active = true;
         advanceState.side = A("advanceSide").value;
         advanceState.type = "normal";
@@ -2682,28 +2542,29 @@
         A("advanceStart").disabled = true;
         A("advanceFinish").disabled = false;
         A("advanceSide").disabled = true;
-        setAdvanceStatus("Advance mode active. Now draw the advance polygon below, or edit existing polygons as needed. When finished, click Finish Advance.", true);
-        addDrawAdvanceButton();
+        setAdvanceStatus("Advance mode active. Draw the advance polygon (or freehand) below, then Finish Advance.", true);
+        addDrawAdvanceButtons();
       }
 
-      function addDrawAdvanceButton() {
-        if (A("drawAdvancePolygon")) return;
+      function addDrawAdvanceButtons() {
+        if (A("advancePolygonRow")) return;
         const row = document.createElement("div");
-        row.className = "advance-row";
-        row.id = "advancePolygonRow";
+        row.className = "advance-row"; row.id = "advancePolygonRow";
         const sideName = advanceState.side === "ru" ? "Russian" : "Ukrainian";
-        row.innerHTML = '<button class="btn" id="drawAdvancePolygon">Draw ' + sideName + ' advance polygon</button>';
+        row.innerHTML =
+          '<button class="btn" id="drawAdvancePolygon">Draw ' + sideName + ' advance (click)</button>' +
+          '<button class="btn" id="drawAdvanceFreehand">Draw ' + sideName + ' advance (freehand)</button>';
         A("advanceTextWrap").parentNode.insertBefore(row, A("advanceTextWrap"));
         A("drawAdvancePolygon").onclick = drawAdvancePolygon;
+        A("drawAdvanceFreehand").onclick = drawAdvanceFreehand;
       }
 
       function drawAdvancePolygon() {
         if (!advanceState.active) return;
         const layerId = advanceState.side === "ru" ? "ru_advances" : "ua_advances";
-        if (!groups[layerId]) { alert("The advance layer is not loaded."); return; }
-        if (typeof setLayerVisible === "function" && layerVisible[layerId] === false) setLayerVisible(layerId, true);
-        deselect(false);
-        drawing = true;
+        if (!H.groups[layerId]) { alert("The advance layer is not loaded."); return; }
+        H.deselect(false);
+        H.drawing = true;
         window.polradAdvanceDrawing = true;
         map.pm.enableDraw("Polygon", { snappable: true, allowSelfIntersection: false });
         setAdvanceStatus("Drawing the " + (advanceState.side === "ru" ? "Russian" : "Ukrainian") + " advance polygon...", true);
@@ -2714,32 +2575,96 @@
           window.polradAdvanceDrawing = false;
           const layer = event.layer;
           map.pm.disableDraw();
-          drawing = false;
+          H.drawing = false;
           map.removeLayer(layer);
-          layer.options.pane = paneForLayer(layerId);
+          layer.options.pane = H.paneForLayer(layerId);
           const feature = layer.toGeoJSON();
           feature.properties = { Name: "Advance " + (advances.length + 1) };
           layer.feature = feature;
           layer._layer = layerId;
           layer._fid = "advance-" + Date.now() + "-" + Math.random().toString(36).slice(2);
           layer.feature.properties._advanceId = "pending";
-          setupPolygon(layer, layerId);
-          groups[layerId].addLayer(layer);
+          H.setupPolygon(layer, layerId);
+          H.groups[layerId].addLayer(layer);
           const trimResult = trimAdvanceToTerritory(layer);
           if (trimResult === "removed") {
-            saveHistory(); renderSidebar();
-            setAdvanceStatus("That polygon lies entirely inside already-controlled territory, so it was discarded. Draw another one, or click Finish Advance.", true);
+            H.saveHistory(); H.renderSidebar();
+            setAdvanceStatus("Polygon lies entirely inside already-controlled territory; discarded.", true);
             return;
           }
           advanceState.createdFids.push(layer._fid);
-          saveHistory(); renderSidebar(); ensureAdvanceColors(); select(layer);
-          setAdvanceStatus(trimResult === "trimmed" ? "Advance polygon created and trimmed so it does not overlap existing territory. You can reshape it with the normal editor handles, then click Finish Advance." : "Advance polygon created. You can reshape it with the normal editor handles, then click Finish Advance.", true);
+          H.saveHistory(); H.renderSidebar(); ensureAdvanceColors();
+          if (layer && H.groups[layerId].hasLayer(layer)) {
+            // Use the helper-select
+            const helperSelect = (function (l) {
+              try { if (typeof H.select === "function") { H.select(l); return true; } } catch (e) {}
+              return false;
+            })(layer);
+            if (!helperSelect) {
+              layer.pm.enable();
+              H.applyStyle(layer, true);
+            }
+          }
+          setAdvanceStatus(trimResult === "trimmed" ? "Advance polygon created and trimmed against own territory." : "Advance polygon created.", true);
         }
         map.on("pm:create", onCreate);
       }
 
+      function drawAdvanceFreehand() {
+        if (!advanceState.active) return;
+        const layerId = advanceState.side === "ru" ? "ru_advances" : "ua_advances";
+        if (!H.groups[layerId]) { alert("The advance layer is not loaded."); return; }
+
+        // Use the shared freehand pipeline with a target override + advance handling
+        H.deselect(false);
+        const originalTarget = H.freehandTargetLayer;
+        H.freehandTargetLayer = layerId;
+
+        const prevAfterAdd = null;
+
+        // Monkey-patch: when freehand finishes, mark the added layer as pending advance.
+        // Simplest reliable approach: reuse startFreehandDrawing with a custom callback
+        // is not available, so draw freehand and after each stroke the layer appears
+        // on the advance layer. Mark it as pending advance right away via the layer list.
+        setAdvanceStatus("Drawing the " + (advanceState.side === "ru" ? "Russian" : "Ukrainian") + " advance freehand polygon...", true);
+
+        // We wrap the merge callback by temporarily tracking added fids
+        const preFids = {};
+        H.groups[layerId].getLayers().forEach(function (l) { if (l._fid) preFids[l._fid] = true; });
+
+        const originalAfterAdd = H.__afterAdd;
+        // After the freehand finishes (deferred to next frame), pick up new layers.
+        const poll = setInterval(function () {
+          if (!H.freehandDrawing) {
+            clearInterval(poll);
+            // New fids
+            H.groups[layerId].getLayers().forEach(function (l) {
+              if (l._fid && !preFids[l._fid]) {
+                // Trim and mark
+                if (!l.feature) l.feature = { type: "Feature", properties: {} };
+                if (!l.feature.properties) l.feature.properties = {};
+                l.feature.properties._advanceId = "pending";
+                if (advanceState.createdFids.indexOf(l._fid) === -1) advanceState.createdFids.push(l._fid);
+                const trimResult = trimAdvanceToTerritory(l);
+                if (trimResult === "removed") {
+                  // already removed
+                }
+              }
+            });
+            // Also ensure pre-existing pre-advance polygons aren't in createdFids
+            advanceState.createdFids = advanceState.createdFids.filter(function (fid) { return H.findPolygon(fid); });
+            // Merge same-side overlaps
+            mergeAdvanceOverlapsSameSide(layerId);
+            H.saveHistory(); H.renderSidebar();
+            setAdvanceStatus(advanceState.createdFids.length ? "Advance freehand polygon(s) created and trimmed." : "No advance polygons were added.", true);
+          }
+        }, 100);
+
+        H.startFreehandDrawing(layerId);
+      }
+
       function chooseAdvanceType() {
-        return new Promise(function(resolve) {
+        return new Promise(function (resolve) {
           const sideName = advanceState.side === "ru" ? "Russian" : "Ukrainian";
           const otherName = advanceState.side === "ru" ? "Ukrainian" : "Russian";
           const overlay = document.createElement("div");
@@ -2753,23 +2678,20 @@
               '<button id="advTypeCancel" class="btn" style="width:100%">Cancel</button>' +
             '</div>';
           document.body.appendChild(overlay);
-          function done(value) { overlay.remove(); resolve(value); }
-          overlay.querySelector("#advTypeNormal").onclick = function() { done("normal"); };
-          overlay.querySelector("#advTypeGray").onclick = function() { done("gray"); };
-          overlay.querySelector("#advTypeCancel").onclick = function() { done(null); };
+          function done(v) { overlay.remove(); resolve(v); }
+          overlay.querySelector("#advTypeNormal").onclick = function () { done("normal"); };
+          overlay.querySelector("#advTypeGray").onclick = function () { done("gray"); };
+          overlay.querySelector("#advTypeCancel").onclick = function () { done(null); };
         });
       }
-
       function createdPolygonsAreaKm2() {
         let total = 0;
-        advanceState.createdFids.forEach(function(fid) {
-          const layer = findPolygon(fid);
-          if (!layer) return;
+        advanceState.createdFids.forEach(function (fid) {
+          const layer = H.findPolygon(fid); if (!layer) return;
           try { total += turf.area(layer.toGeoJSON()); } catch (e) {}
         });
         return total / 1000000;
       }
-
       function computeAdvanceEffects() {
         if (advanceState.type === "gray") {
           const other = advanceState.side === "ru" ? "ua" : "ru";
@@ -2777,20 +2699,17 @@
           const diff = Number((after[other] - advanceState.before[other]).toFixed(2));
           return Math.abs(diff) >= 0.005 ? [{ side: other, value: diff }] : [];
         }
-        const value = Number(createdPolygonsAreaKm2().toFixed(2));
-        return value >= 0.005 ? [{ side: advanceState.side, value: value }] : [];
+        const v = Number(createdPolygonsAreaKm2().toFixed(2));
+        return v >= 0.005 ? [{ side: advanceState.side, value: v }] : [];
       }
-
       function renderAreaPreview() {
         const effects = advanceState.lastEffects;
-        const box = A("advanceAreaPreview");
-        if (!effects || !box) return;
+        const box = A("advanceAreaPreview"); if (!effects || !box) return;
         const label = advanceState.type === "gray" ? "Gray zone expansion – area lost by " + (advanceState.side === "ru" ? "Ukraine" : "Russia") : "Advance polygon area";
         box.innerHTML = '<div style="font-size:11px;color:#777;margin-bottom:3px">' + label + '</div>' +
           formatAreaEffects(effects, A("advanceColor").value) +
           '<div style="margin-top:5px;color:#777;font-size:11px">This color is used for the area text on the public map.</div>';
       }
-
       async function finishAdvance() {
         if (!advanceState.active) return;
         const type = await chooseAdvanceType();
@@ -2807,7 +2726,6 @@
         A("advanceTextEn").focus();
         setAdvanceStatus(trimNote ? "Area calculated (" + trimNote + "). Write the update text and click Save Advance." : "Area calculated. Write the update text and click Save Advance.", false);
       }
-
       async function saveAdvance() {
         if (!advanceState.active) return;
         const textEn = A("advanceTextEn").value.trim();
@@ -2824,11 +2742,12 @@
           const effects = computeAdvanceEffects();
           const primaryValue = effects.length ? effects[0].value : 0;
           const id = "adv-" + Date.now();
-          advanceState.createdFids.forEach(function(fid) {
-            const layer = findPolygon(fid);
+          advanceState.createdFids.forEach(function (fid) {
+            const layer = H.findPolygon(fid);
             if (layer && layer.feature && layer.feature.properties) layer.feature.properties._advanceId = id;
           });
-          const snapshot = getCurrentGeoJSON();
+          const snapshot = (window.getCurrentGeoJSON ? window.getCurrentGeoJSON() : null);
+          if (!snapshot) throw new Error("Could not capture current geometry.");
           const item = {
             id: id, date: now.date, time: now.time,
             text_en: textEn, text_ru: textRu, text: textEn,
@@ -2841,15 +2760,14 @@
             snapshot: "history/advances/" + id + ".json",
             beforeAreas: advanceState.before
           };
-          await putAdvanceSnapshot(id, snapshot);
+          await putSnapshot(id, snapshot);
           advances.push(item);
           if (!saveAdvances()) {
             advances = advances.filter(a => a.id !== id);
-            try { await deleteAdvanceSnapshot(id); } catch (e) {}
+            try { await delSnapshot(id); } catch (e) {}
             throw new Error("The advance could not be saved to browser storage.");
           }
           item.snapshotData = snapshot;
-          try { await saveMapCache(getCurrentGeoJSON()); } catch (storageError) { console.warn("Could not update editor cache:", storageError); }
           renderAdvanceHistory();
           advanceState.active = false;
           advanceState.type = "normal";
@@ -2864,10 +2782,9 @@
           A("advanceTextEn").value = "";
           A("advanceTextRu").value = "";
           if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-          const polygonRow = A("advancePolygonRow");
-          if (polygonRow) polygonRow.remove();
-          setAdvanceStatus("Advance saved. Click the normal Publish button to send the map and advance history to GitHub.", false);
-          renderSidebar();
+          const row = A("advancePolygonRow"); if (row) row.remove();
+          setAdvanceStatus("Advance saved. Click Publish to send the map and advance history to GitHub.", false);
+          H.renderSidebar();
         } catch (error) {
           console.error("Save Advance failed:", error);
           setAdvanceStatus(error && error.message ? error.message : "Save Advance failed.", true);
@@ -2876,7 +2793,6 @@
           if (saveButton) { saveButton.disabled = false; saveButton.textContent = "Save Advance"; }
         }
       }
-
       function cancelAdvance() {
         window.polradAdvanceDrawing = false;
         if (!advanceState.active) return;
@@ -2893,8 +2809,7 @@
         A("advanceTextEn").value = "";
         A("advanceTextRu").value = "";
         if (A("advanceFocusStatus")) A("advanceFocusStatus").textContent = "No focus rectangle selected.";
-        const polygonRow = A("advancePolygonRow");
-        if (polygonRow) polygonRow.remove();
+        const row = A("advancePolygonRow"); if (row) row.remove();
         setAdvanceStatus("Advance cancelled. Any map geometry you changed remains changed; use Undo if necessary.", false);
       }
 
@@ -2905,15 +2820,15 @@
         const alsoPolygons = confirm("Also remove this advance's polygon(s) from the map?\n\nOK = remove polygons too\nCancel = keep polygons, delete only the history entry");
         let removed = 0;
         if (alsoPolygons) {
-          ADVANCE_LAYER_IDS.forEach(function(layerId) {
-            if (!groups[layerId]) return;
-            groups[layerId].getLayers().slice().forEach(function(layer) {
+          ["ru_advances", "ua_advances"].forEach(function (id) {
+            const group = H.groups[id]; if (!group) return;
+            group.getLayers().slice().forEach(function (layer) {
               const p = layer.feature && layer.feature.properties;
               const byId = p && p._advanceId === id;
               const byFid = (item.polygonFids || []).indexOf(layer._fid) !== -1;
               if (byId || byFid) {
-                if (layer === selected) deselect(false);
-                groups[layerId].removeLayer(layer);
+                if (layer === H.selected) H.deselect(false);
+                group.removeLayer(layer);
                 removed++;
               }
             });
@@ -2921,112 +2836,54 @@
         }
         advances = advances.filter(a => a.id !== id);
         saveAdvances();
-        if (alsoPolygons) { saveHistory(); renderSidebar(); }
+        if (alsoPolygons) { H.saveHistory(); H.renderSidebar(); }
         renderAdvanceHistory();
-        setStatus("Advance deleted" + (alsoPolygons ? " (" + removed + " polygon(s) removed)" : "") + ". Click Publish to update the public map.");
+        H.setStatus("Advance deleted" + (alsoPolygons ? " (" + removed + " polygon(s) removed)" : "") + ".");
       }
 
       async function loadAdvanceSnapshotForJump(item) {
         if (!item || !item.id) return null;
         if (item.snapshotData) return item.snapshotData;
-        try {
-          const localSnapshot = await getAdvanceSnapshot(item.id);
-          if (localSnapshot) { item.snapshotData = localSnapshot; return localSnapshot; }
-        } catch (error) { console.warn("Could not read local advance snapshot:", item.id, error); }
+        try { const s = await getSnapshot(item.id); if (s) { item.snapshotData = s; return s; } } catch (error) { console.warn("Could not read local advance snapshot:", item.id, error); }
         if (item.snapshot) {
           try {
             const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
-            const response = await fetch(publishedPath(item.snapshot) + separator + "v=" + Date.now(), { cache: "no-store" });
-            if (!response.ok) throw new Error("HTTP " + response.status);
-            const snapshot = await response.json();
-            item.snapshotData = snapshot;
-            try { await putAdvanceSnapshot(item.id, snapshot); } catch (storageError) { console.warn("Could not cache advance snapshot locally:", storageError); }
-            return snapshot;
+            const r = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/" + item.snapshot + separator + "v=" + Date.now(), { cache: "no-store" });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            const s = await r.json();
+            item.snapshotData = s;
+            try { await putSnapshot(item.id, s); } catch (e) {}
+            return s;
           } catch (error) { console.warn("Could not load published advance snapshot:", item.id, error); }
         }
         return null;
-      }
-
-      async function getLatestPublishedAdvance() {
-        const response = await fetch(publishedPath("advances.json") + "?v=" + Date.now(), { cache: "no-store" });
-        if (!response.ok) throw new Error("Could not load advances.json (HTTP " + response.status + ").");
-        const published = await response.json();
-        const list = Array.isArray(published) ? published.filter(item => item && item.id && item.snapshot) : [];
-        list.sort(function(a, b) {
-          const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
-          const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
-          const byDate = ak.localeCompare(bk);
-          if (byDate !== 0) return byDate;
-          return String(a.id || "").localeCompare(String(b.id || ""));
-        });
-        return list.length ? list[list.length - 1] : null;
-      }
-
-      async function returnToLatestAdvance() {
-        const button = A("latestAdvance");
-        if (button) button.disabled = true;
-        setStatus("Loading latest published advance...");
-        setAdvanceStatus("Loading latest published advance...", false);
-        try {
-          let latest = null;
-          if (Array.isArray(advances) && advances.length) {
-            const sorted = advances.filter(item => item && item.id).slice().sort(function(a, b) {
-              const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
-              const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
-              const byDate = ak.localeCompare(bk);
-              if (byDate !== 0) return byDate;
-              return String(a.id || "").localeCompare(String(b.id || ""));
-            });
-            latest = sorted.length ? sorted[sorted.length - 1] : null;
-          }
-          if (!latest) latest = await getLatestPublishedAdvance();
-          if (!latest) throw new Error("No latest advance was found.");
-          const snapshot = await loadAdvanceSnapshotForJump(latest);
-          if (!snapshot) throw new Error("The latest published advance snapshot is not available.");
-          saveHistory();
-          restore(snapshot, true);
-          setStatus("Viewing latest advance: " + latest.date + " " + latest.time + ".");
-          setAdvanceStatus("Showing the latest published advance (" + latest.date + " " + latest.time + ").", false);
-        } catch (error) {
-          console.error("Could not return to latest advance:", error);
-          setAdvanceStatus(error && error.message ? error.message : "Could not load the latest advance.", true);
-          alert("Could not load the latest advance.\n\n" + (error && error.message ? error.message : "Unknown error."));
-        } finally {
-          if (button) button.disabled = false;
-        }
       }
 
       async function jumpToAdvance(id) {
         const item = advances.find(a => a.id === id);
         if (!item) return;
         const buttons = document.querySelectorAll(".adv-jump");
-        buttons.forEach(button => button.disabled = true);
+        buttons.forEach(b => b.disabled = true);
         setAdvanceStatus("Loading map from " + item.date + " " + item.time + "...", false);
         try {
           const snapshot = await loadAdvanceSnapshotForJump(item);
-          if (!snapshot) throw new Error("The snapshot for this advance is not available locally or on the published site.");
-          saveHistory();
-          restore(snapshot, true);
-          setStatus("Viewing map at advance " + item.date + " " + item.time + ". Reload the editor to return to the latest published map.");
-          setAdvanceStatus("Viewing " + item.date + " " + item.time + ". The latest published map remains the default on reload.", false);
+          if (!snapshot) throw new Error("The snapshot is not available locally or on the published site.");
+          H.saveHistory();
+          if (typeof window.restore === "function") window.restore(snapshot, true);
+          H.setStatus("Viewing map at advance " + item.date + " " + item.time + ".");
+          setAdvanceStatus("Viewing " + item.date + " " + item.time + ".", false);
         } catch (error) {
           console.error("Jump to advance failed:", error);
           setAdvanceStatus(error && error.message ? error.message : "Could not load this advance.", true);
           alert("Could not load this advance.\n\n" + (error && error.message ? error.message : "Unknown error."));
-        } finally {
-          buttons.forEach(button => button.disabled = false);
-        }
+        } finally { buttons.forEach(b => b.disabled = false); }
       }
 
       function renderAdvanceHistory() {
-        const box = A("advanceHistory");
-        if (!box) return;
+        const box = A("advanceHistory"); if (!box) return;
         box.innerHTML = "";
-        if (!advances.length) {
-          box.innerHTML = '<div class="small">No advance history saved in this browser yet.</div>';
-          return;
-        }
-        advances.slice().reverse().forEach(function(item) {
+        if (!advances.length) { box.innerHTML = '<div class="small">No advance history saved in this browser yet.</div>'; return; }
+        advances.slice().reverse().forEach(function (item) {
           const row = document.createElement("div");
           row.className = "advance-history-item";
           const sideLabel = item.side === "ru" ? "🔴 Russia" : "🔵 Ukraine";
@@ -3040,9 +2897,9 @@
             '<div><b>EN:</b> ' + (item.text_en || item.text || "") + '</div>' +
             '<div><b>RU:</b> ' + (item.text_ru || "") + '</div>' +
             (item.areaDisplay ? '<div>Area: <span style="font-weight:700;color:' + color + '">' + item.areaDisplay + '</span></div>' : '');
-          row.querySelector(".adv-edit").onclick = function() { editAdvance(item.id); };
-          row.querySelector(".adv-del").onclick = function() { deleteAdvance(item.id); };
-          row.querySelector(".adv-jump").onclick = function() { jumpToAdvance(item.id); };
+          row.querySelector(".adv-edit").onclick = function () { editAdvance(item.id); };
+          row.querySelector(".adv-del").onclick = function () { deleteAdvance(item.id); };
+          row.querySelector(".adv-jump").onclick = function () { jumpToAdvance(item.id); };
           box.appendChild(row);
         });
       }
@@ -3052,13 +2909,12 @@
         if (!item) return;
         if (!item.text_en && item.text) item.text_en = item.text;
         if (!item.text_ru) item.text_ru = "";
-        const old = document.getElementById("polradAdvanceEditDialog");
-        if (old) old.remove();
+        const old = document.getElementById("polradAdvanceEditDialog"); if (old) old.remove();
         const overlay = document.createElement("div");
         overlay.id = "polradAdvanceEditDialog";
-        overlay.style.cssText = ["position:fixed", "inset:0", "z-index:100000", "background:rgba(0,0,0,.45)", "display:flex", "align-items:center", "justify-content:center", "padding:20px", "box-sizing:border-box"].join(";");
+        overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box";
         const dialog = document.createElement("div");
-        dialog.style.cssText = ["width:min(620px,100%)", "max-height:90vh", "overflow:auto", "background:#fff", "border-radius:10px", "box-shadow:0 12px 40px rgba(0,0,0,.3)", "padding:18px", "box-sizing:border-box", "font-family:Arial,sans-serif"].join(";");
+        dialog.style.cssText = "width:min(620px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:18px;box-sizing:border-box;font-family:Arial,sans-serif";
         dialog.innerHTML =
           '<h3 style="margin:0 0 14px 0">Edit Advance Description</h3>' +
           '<label style="display:block;font-weight:600;margin-bottom:5px">English advance description</label>' +
@@ -3066,24 +2922,18 @@
           '<label style="display:block;font-weight:600;margin-bottom:5px">Russian advance description</label>' +
           '<textarea id="advEditRu" style="width:100%;min-height:100px;resize:vertical;box-sizing:border-box;padding:9px;margin-bottom:15px;border:1px solid #ccc;border-radius:6px;font:14px Arial,sans-serif"></textarea>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="advEditCancel">Cancel</button><button class="btn primary" id="advEditSave">Save descriptions</button></div>';
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-        const enEl = dialog.querySelector("#advEditEn");
-        const ruEl = dialog.querySelector("#advEditRu");
+        overlay.appendChild(dialog); document.body.appendChild(overlay);
+        const enEl = dialog.querySelector("#advEditEn"), ruEl = dialog.querySelector("#advEditRu");
         enEl.value = item.text_en || item.text || "";
         ruEl.value = item.text_ru || "";
-        function closeDialog() { overlay.remove(); }
-        dialog.querySelector("#advEditCancel").onclick = closeDialog;
-        overlay.onclick = function(event) { if (event.target === overlay) closeDialog(); };
-        dialog.querySelector("#advEditSave").onclick = function() {
-          const cleanEn = enEl.value.trim();
-          const cleanRu = ruEl.value.trim();
+        dialog.querySelector("#advEditCancel").onclick = function () { overlay.remove(); };
+        overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+        dialog.querySelector("#advEditSave").onclick = function () {
+          const cleanEn = enEl.value.trim(), cleanRu = ruEl.value.trim();
           if (!cleanEn) { alert("Please enter the English advance description."); enEl.focus(); return; }
           if (!cleanRu) { alert("Please enter the Russian advance description."); ruEl.focus(); return; }
-          item.text_en = cleanEn;
-          item.text_ru = cleanRu;
-          item.text = cleanEn;
-          closeDialog();
+          item.text_en = cleanEn; item.text_ru = cleanRu; item.text = cleanEn;
+          overlay.remove();
           saveAdvances();
           renderAdvanceHistory();
           setAdvanceStatus("Advance descriptions updated.", false);
@@ -3093,95 +2943,81 @@
 
       async function snapshotExistsOnGitHub(id) {
         try {
-          const url = "https://raw.githubusercontent.com/polrad-ma/uawarmap/main/history/advances/" + id + ".json";
-          const response = await fetch(url, { method: "HEAD", cache: "no-store" });
-          return response.ok;
+          const r = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/history/advances/" + id + ".json", { method: "HEAD", cache: "no-store" });
+          return r.ok;
         } catch (e) { return false; }
       }
 
       function installAdvancePublish() {
         const publish = A("publish");
-        if (!publish) return;
-        if (publish.dataset.advancePublishInstalled === "1") return;
+        if (!publish || publish.dataset.advancePublishInstalled === "1") return;
         publish.dataset.advancePublishInstalled = "1";
 
         async function postWorker(payload) {
-          const requestBody = JSON.stringify(Object.assign({}, payload, { password: editorPassword }));
-          const response = await fetch(WORKER, {
-            method: "POST", cache: "no-store",
-            headers: { "Content-Type": "application/json" },
-            body: requestBody
-          });
-          const responseText = await response.text();
+          const r = await fetch(WORKER, { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({}, payload, { password: editorPassword })) });
+          const text = await r.text();
           let result;
-          try { result = JSON.parse(responseText); }
-          catch (error) { throw new Error("The publishing server returned invalid JSON (HTTP " + response.status + ").\n\n" + responseText.slice(0, 500)); }
-          if (!response.ok || !result.success) throw new Error(result.error || "Publish failed (HTTP " + response.status + ").");
+          try { result = JSON.parse(text); } catch (e) { throw new Error("Server returned invalid JSON (HTTP " + r.status + ")."); }
+          if (!r.ok || !result.success) throw new Error(result.error || "Publish failed.");
           return result;
         }
-
         async function loadSnapshotForPublish(item) {
           if (!item || !item.id) return null;
           if (item.snapshotData) return item.snapshotData;
-          try { const local = await getAdvanceSnapshot(item.id); if (local) { item.snapshotData = local; return local; } }
-          catch (error) { console.warn("Could not load local advance snapshot:", item.id, error); }
+          try { const l = await getSnapshot(item.id); if (l) { item.snapshotData = l; return l; } } catch (e) {}
           if (item.snapshot) {
             try {
-              const separator = item.snapshot.indexOf("?") === -1 ? "?" : "&";
-              const response = await fetch(publishedPath(item.snapshot) + separator + "v=" + Date.now(), { cache: "no-store" });
-              if (response.ok) { const remote = await response.json(); item.snapshotData = remote; return remote; }
-            } catch (error) { console.warn("Could not load published advance snapshot:", item.id, error); }
+              const sep = item.snapshot.indexOf("?") === -1 ? "?" : "&";
+              const r = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/" + item.snapshot + sep + "v=" + Date.now(), { cache: "no-store" });
+              if (r.ok) { const remote = await r.json(); item.snapshotData = remote; return remote; }
+            } catch (e) {}
           }
           return null;
         }
 
-        publish.onclick = async function() {
+        publish.onclick = async function () {
           publish.disabled = true;
           try {
-            setStatus("Merging advances with GitHub before publish...");
+            H.setStatus("Merging advances with GitHub before publish...");
             await mergeAdvancesWithGitHub();
-            const currentFiles = getCurrentGeoJSON();
-            const allEntries = Object.entries(currentFiles).filter(entry => entry[1] !== undefined && entry[1] !== null);
+            const currentFiles = (window.getCurrentGeoJSON ? window.getCurrentGeoJSON() : null);
+            if (!currentFiles) throw new Error("Could not capture current geometry.");
+            const allEntries = Object.entries(currentFiles).filter(e => e[1] !== undefined && e[1] !== null);
             const skipped = [];
-            const fileEntries = allEntries.filter(function(entry) {
-              if (SKIP_PUBLISH_LAYERS.has(entry[0])) { skipped.push(entry[0]); return false; }
-              return true;
-            });
+            const fileEntries = allEntries.filter(function (e) { if (SKIP_PUBLISH_LAYERS.has(e[0])) { skipped.push(e[0]); return false; } return true; });
             if (!fileEntries.length) throw new Error("There are no map files available to publish.");
 
             let snapshotsUploaded = 0, snapshotsSkipped = 0;
             for (const item of advances) {
               if (!item || !item.id) continue;
               let onGitHub = false;
-              try { onGitHub = await snapshotExistsOnGitHub(item.id); } catch (e) { onGitHub = false; }
+              try { onGitHub = await snapshotExistsOnGitHub(item.id); } catch (e) {}
               if (onGitHub) { snapshotsSkipped++; continue; }
               const snapshot = await loadSnapshotForPublish(item);
               if (!snapshot) { console.warn("Skipping snapshot with no data:", item.id); continue; }
-              setStatus("Uploading new advance snapshot: " + item.id + "...");
-              try {
-                await postWorker({ action: "publishSnapshots", snapshots: { [item.id]: snapshot } });
-                snapshotsUploaded++;
-              } catch (e) { console.warn("Could not upload snapshot " + item.id + ":", e); }
+              H.setStatus("Uploading new advance snapshot: " + item.id + "...");
+              try { await postWorker({ action: "publishSnapshots", snapshots: { [item.id]: snapshot } }); snapshotsUploaded++; }
+              catch (e) { console.warn("Could not upload snapshot " + item.id + ":", e); }
             }
 
-            const publishAdvances = advances.map(stripSnapshotData);
+            const publishAdvances = advances.map(stripSnapshot);
             for (let i = 0; i < fileEntries.length; i++) {
               const entry = fileEntries[i];
               const isLast = i === fileEntries.length - 1;
               const payload = { action: "publish", files: { [entry[0]]: entry[1] } };
               if (isLast) payload.advances = publishAdvances;
-              setStatus("Publishing map file " + (i + 1) + " / " + fileEntries.length + ": " + entry[0] + "...");
+              H.setStatus("Publishing map file " + (i + 1) + " / " + fileEntries.length + ": " + entry[0] + "...");
               await postWorker(payload);
             }
 
-            try { await saveMapCache(currentFiles); } catch (error) { console.warn("Could not update editor cache after publish:", error); }
+            try { await saveMapCache(currentFiles); } catch (e) { console.warn("Could not update editor cache:", e); }
             saveAdvances();
             const skipNote = skipped.length ? " Skipped (too big): " + skipped.join(", ") + "." : "";
-            setStatus("Published successfully. " + snapshotsUploaded + " new snapshot(s) uploaded, " + snapshotsSkipped + " existing snapshot(s) skipped, " + fileEntries.length + " map file(s) published. " + advances.length + " advances in file." + skipNote);
-            alert("Published successfully!\n\n" + advances.length + " advances in the file.\n" + snapshotsUploaded + " new advance snapshot(s) uploaded.\n" + snapshotsSkipped + " existing snapshot(s) already on GitHub (skipped).\n" + fileEntries.length + " map file(s) published." + (skipped.length ? "\n\nSkipped (too big to upload):\n" + skipped.join("\n") : ""));
+            H.setStatus("Published. " + snapshotsUploaded + " new snapshot(s) uploaded, " + snapshotsSkipped + " existing skipped, " + fileEntries.length + " map file(s) published." + skipNote);
+            alert("Published successfully!\n\n" + advances.length + " advances in the file.\n" + snapshotsUploaded + " new advance snapshot(s) uploaded.\n" + snapshotsSkipped + " existing snapshot(s) already on GitHub (skipped).\n" + fileEntries.length + " map file(s) published.");
           } catch (error) {
             console.error("Publish failed:", error);
-            setStatus(error && error.message ? error.message : "Publish failed.");
+            H.setStatus(error && error.message ? error.message : "Publish failed.");
             alert("Publish failed.\n\n" + (error && error.message ? error.message : "Unknown error."));
           } finally { publish.disabled = false; }
         };
@@ -3193,18 +3029,58 @@
         createAdvanceUI();
         ensureAdvanceColors();
         installAdvancePublish();
-        const latestAdvanceButton = A("latestAdvance");
-        if (latestAdvanceButton && latestAdvanceButton.dataset.installed !== "1") {
-          latestAdvanceButton.dataset.installed = "1";
-          latestAdvanceButton.onclick = returnToLatestAdvance;
+
+        const latest = A("latestAdvance");
+        if (latest && latest.dataset.installed !== "1") {
+          latest.dataset.installed = "1";
+          latest.onclick = async function () {
+            latest.disabled = true;
+            H.setStatus("Loading latest published advance...");
+            setAdvanceStatus("Loading latest published advance...", false);
+            try {
+              let latestItem = null;
+              if (advances.length) {
+                const sorted = advances.filter(i => i && i.id).slice().sort(function (a, b) {
+                  const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
+                  const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
+                  return ak.localeCompare(bk);
+                });
+                latestItem = sorted.length ? sorted[sorted.length - 1] : null;
+              }
+              if (!latestItem) {
+                const r = await fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/advances.json?v=" + Date.now(), { cache: "no-store" });
+                if (!r.ok) throw new Error("Could not load advances.json.");
+                const remote = await r.json();
+                const list = Array.isArray(remote) ? remote.filter(i => i && i.id && i.snapshot) : [];
+                list.sort(function (a, b) {
+                  const ak = String(a.date || "") + "T" + String(a.time || "00:00:00");
+                  const bk = String(b.date || "") + "T" + String(b.time || "00:00:00");
+                  return ak.localeCompare(bk);
+                });
+                latestItem = list.length ? list[list.length - 1] : null;
+              }
+              if (!latestItem) throw new Error("No latest advance was found.");
+              const snapshot = await loadAdvanceSnapshotForJump(latestItem);
+              if (!snapshot) throw new Error("The latest snapshot is not available.");
+              H.saveHistory();
+              if (typeof window.restore === "function") window.restore(snapshot, true);
+              H.setStatus("Viewing latest advance: " + latestItem.date + " " + latestItem.time + ".");
+              setAdvanceStatus("Showing the latest published advance (" + latestItem.date + " " + latestItem.time + ").", false);
+            } catch (e) {
+              console.error("Could not return to latest advance:", e);
+              setAdvanceStatus(e && e.message ? e.message : "Could not load the latest advance.", true);
+              alert("Could not load the latest advance.\n\n" + (e && e.message ? e.message : "Unknown error."));
+            } finally { latest.disabled = false; }
+          };
         }
+
         renderAdvanceHistory();
-        migrateAdvanceSnapshots();
+        migrateSnapshots();
         mergeAdvancesWithGitHub();
       }
 
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", function() { setTimeout(initAdvanceEditor, 150); });
+        document.addEventListener("DOMContentLoaded", function () { setTimeout(initAdvanceEditor, 150); });
       } else {
         setTimeout(initAdvanceEditor, 150);
       }
