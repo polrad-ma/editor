@@ -151,6 +151,8 @@
         <div class="small" style="margin-top:6px">
           Freehand shapes are simplified automatically and added to the selected layer.
           Overlapping parts of the same layer are merged with the shape they touch.
+          Freehand advances (Russian / Ukrainian) are automatically cut so they never overlap the controlled territory of their own side.
+          Choose the "Towns, villages and cities" layer to draw white freehand lines instead of polygons (the eraser also works on those lines).
           Click the freehand button again (or press Esc) to stop.
           The eraser is only available while freehand is active.
         </div>
@@ -212,13 +214,21 @@
     const WORKER = "https://polrad-editor-api.streetviewfun066.workers.dev/";
     let editorPassword = "";
 
+    const TOWNS_ID = "towns";
+    const TOWNS_NAME = "Towns, villages and cities (credit to PWM)";
+
     const LAYERS = [
       ["ru_territory", "Russian-controlled territory", "Russian-controlled%20territory.geojson", "#a52714"],
       ["ua_territory", "Ukrainian-controlled territory", "Ukrainian-controlled%20territory.geojson", "#1a237e"],
       ["ua_advances", "Ukrainian advances", "Ukrainian%20advances.geojson", "#0288d1"],
       ["ru_advances", "Russian advances", "Russian%20advances.geojson", "#ffd600"],
-      ["infiltration", "Infiltration area", "Infiltration%20area.geojson", "#000000"]
+      ["infiltration", "Infiltration area", "Infiltration%20area.geojson", "#000000"],
+      [TOWNS_ID, TOWNS_NAME, "neatogeo_Frontline%20towns%20%28from%20PWM%29.geojson", "#ffffff"]
     ];
+
+    const ADVANCE_OWN_TERRITORY = { ru_advances: "ru_territory", ua_advances: "ua_territory" };
+
+    window.polradTownsLoaded = false;
 
     const SKIP_PUBLISH_LAYERS = new Set([]);
 
@@ -283,6 +293,7 @@
       if (layerId === "ru_territory" || layerId === "ua_territory") return "territoryPane";
       if (layerId === "ru_advances" || layerId === "ua_advances") return "advancesPane";
       if (layerId === "infiltration") return "infiltrationPane";
+      if (layerId === TOWNS_ID) return "townsPane";
       return "overlayPane";
     }
 
@@ -495,6 +506,7 @@
 
     function layerStyleOptions(id) {
       if (id === "infiltration") return { stroke: false, fillOpacity: 0.35 };
+      if (id === TOWNS_ID) return { fillOpacity: 0 };
       return null;
     }
 
@@ -522,9 +534,16 @@
     function applyStyle(layer, isSelected = false) {
       const c = config(layer._layer);
       if (!c) return;
+      if (typeof layer.setStyle !== "function") return;
       const opts = layerStyleOptions(layer._layer);
       const style = { color: c[3], fillColor: c[3], fillOpacity: opts ? opts.fillOpacity : 0.4, weight: isSelected ? 4 : 2 };
-      if (opts && opts.stroke === false) {
+      if (layer._layer === TOWNS_ID) {
+        style.color = isSelected ? "#00e5ff" : "#ffffff";
+        style.fillColor = "#ffffff";
+        style.fillOpacity = 0;
+        style.weight = isSelected ? 4 : 2;
+        style.dashArray = null;
+      } else if (opts && opts.stroke === false) {
         if (isSelected) { style.stroke = true; style.weight = 3; style.color = "#1a73e8"; style.dashArray = "5 4"; }
         else { style.stroke = false; style.weight = 0; style.dashArray = null; }
       } else if (isSelected) { style.dashArray = null; }
@@ -613,6 +632,11 @@
       if (!layer || !groups[targetId]) return;
       const sourceId = layer._layer;
       if (sourceId === targetId) { select(layer); return; }
+      if (sourceId === TOWNS_ID || targetId === TOWNS_ID) {
+        if (selected === layer) $("selectedLayer").value = sourceId;
+        setStatus("Town lines can't be moved to other layers, and other shapes can't be moved into the towns layer.");
+        return;
+      }
       if (layerVisible[targetId] === false) { layerVisible[targetId] = true; if (map && !map.hasLayer(groups[targetId])) map.addLayer(groups[targetId]); }
       const wasSelected = selected === layer;
       const sourceGroup = groups[sourceId];
@@ -637,6 +661,7 @@
         const opts = layerStyleOptions(layer._layer);
         const st = { color: c[3], fillColor: c[3], fillOpacity: opts ? Math.min(0.85, opts.fillOpacity + 0.25) : 0.6, weight: 5 };
         if (opts && opts.stroke === false) { st.stroke = false; st.weight = 0; }
+        if (layer._layer === TOWNS_ID) { st.color = "#00e5ff"; st.fillOpacity = 0; st.weight = 5; }
         layer.setStyle(st);
       } catch (e) {}
     }
@@ -697,11 +722,13 @@
         list.hidden = layerOpenState[id] !== true;
         arrow.textContent = list.hidden ? "▸" : "▾";
 
-        function toggleLayer() { list.hidden = !list.hidden; layerOpenState[id] = !list.hidden; arrow.textContent = list.hidden ? "▸" : "▾"; }
+        function toggleLayer() { layerOpenState[id] = layerOpenState[id] !== true; renderSidebar(); }
         arrow.onclick = toggleLayer;
         layerName.onclick = toggleLayer;
 
-        layers
+        const showItems = layerOpenState[id] === true || !!query;
+
+        (showItems ? layers : [])
           .filter(layer => !query || polygonName(layer).toLowerCase().includes(query))
           .forEach(function(layer) {
             const item = document.createElement("div");
@@ -897,7 +924,8 @@
       if (!children.length) return [];
 
       const added = [];
-      const baseName = (feature.properties && feature.properties.Name) || ("New polygon " + polygonCounter++);
+      const defaultPrefix = layerId === TOWNS_ID ? "Town line " : "New polygon ";
+      const baseName = (feature.properties && (feature.properties.Name || feature.properties.name)) || (defaultPrefix + polygonCounter++);
 
       if (children.length === 1) {
         const layer = children[0];
@@ -1034,8 +1062,13 @@
     function restore(state, preserveTowns) {
       deselect(false);
       preserveTowns = preserveTowns === true;
-      LAYERS.forEach(function(c) { groups[c[0]].clearLayers(); });
+      const skipTowns = preserveTowns || !state[TOWNS_NAME];
       LAYERS.forEach(function(c) {
+        if (c[0] === TOWNS_ID && skipTowns) return;
+        groups[c[0]].clearLayers();
+      });
+      LAYERS.forEach(function(c) {
+        if (c[0] === TOWNS_ID && skipTowns) return;
         const featureCollection = state[c[1]];
         if (featureCollection && featureCollection.features) {
           featureCollection.features.forEach(function(feature) { addFeature(feature, c[0]); });
@@ -1046,6 +1079,10 @@
     }
 
     function startDrawing() {
+      if ($("drawLayer").value === TOWNS_ID) {
+        setStatus("The towns layer only uses freehand lines. Use \"Draw freehand shape (drag)\" instead.");
+        return;
+      }
       window.polradAdvanceDrawing = false;
       deselect(false);
       drawing = true;
@@ -1061,6 +1098,12 @@
     // ============================================================
     // ============ ROBUST GEOMETRY HELPERS =======================
     // ============================================================
+
+    function turfDifference(a, b) {
+      let firstError = null;
+      try { return turf.difference(turf.featureCollection([a, b])); } catch (e) { firstError = e; }
+      try { return turf.difference(a, b); } catch (e2) { throw firstError; }
+    }
 
     function normalizeGeometryResult(result) {
       if (!result) return null;
@@ -1138,6 +1181,15 @@
         if (acc && acc.geometry) return acc;
       } catch (e) { console.warn("robustUnion simplified:", e); }
 
+      try {
+        const u = turf.union(turf.featureCollection(features.map(function (f) {
+          try { return turf.simplify(f, { tolerance: 0.0005, highQuality: false }) || f; }
+          catch (e) { return f; }
+        })));
+        const norm = normalizeGeometryResult(u);
+        if (norm && norm.geometry) return norm;
+      } catch (e) { console.warn("robustUnion simplified FC:", e); }
+
       return null;
     }
 
@@ -1155,20 +1207,20 @@
 
       let raw = null, err = null;
 
-      try { raw = turf.difference(feature, cutter); } catch (e) { err = e; }
+      try { raw = turfDifference(feature, cutter); } catch (e) { err = e; }
 
       if (err) {
         try {
           const fc = turf.buffer(feature, 0, { units: "meters" }) || feature;
           const cc = turf.buffer(cutter, 0, { units: "meters" }) || cutter;
-          raw = turf.difference(fc, cc); err = null;
+          raw = turfDifference(fc, cc); err = null;
         } catch (e) { err = e; }
       }
       if (err) {
         try {
           const fs = turf.simplify(feature, { tolerance: 0.001, highQuality: false }) || feature;
           const cs = turf.simplify(cutter, { tolerance: 0.001, highQuality: false }) || cutter;
-          raw = turf.difference(fs, cs); err = null;
+          raw = turfDifference(fs, cs); err = null;
         } catch (e) { err = e; }
       }
 
@@ -1187,6 +1239,39 @@
       if (norm.properties) delete norm.properties;
       norm.properties = Object.assign({}, feature.properties || {});
       return { feature: norm, changed: true, error: null };
+    }
+
+    // ============================================================
+    // ============ OWN-TERRITORY CUTTER FOR ADVANCES =============
+    // ============================================================
+    // Returns the union of the same side's controlled territory
+    // (Russian advances -> Russian territory, Ukrainian advances -> Ukrainian territory),
+    // limited to the polygons near the new shape so it stays fast.
+    function ownTerritoryCutterFor(advanceLayerId, newFeature) {
+      const territoryId = ADVANCE_OWN_TERRITORY[advanceLayerId];
+      const group = territoryId ? groups[territoryId] : null;
+      if (!group) return null;
+
+      let newBbox;
+      try { newBbox = turf.bbox(newFeature); } catch (e) { return null; }
+
+      const parts = [];
+      group.getLayers().forEach(function (layer) {
+        let f;
+        try { f = turf.cleanCoords(layer.toGeoJSON()); }
+        catch (e) { try { f = layer.toGeoJSON(); } catch (e2) { return; } }
+        if (!f || !f.geometry) return;
+        if (f.geometry.type !== "Polygon" && f.geometry.type !== "MultiPolygon") return;
+
+        let b;
+        try { b = turf.bbox(f); } catch (e) { return; }
+        if (newBbox[0] > b[2] || newBbox[2] < b[0] || newBbox[1] > b[3] || newBbox[3] < b[1]) return;
+
+        parts.push(f);
+      });
+
+      if (!parts.length) return null;
+      return robustUnion(parts);
     }
 
     // ============================================================
@@ -1376,6 +1461,40 @@
       if (freehandPreview) freehandPreview.setLatLngs(freehandPoints);
     }
 
+    // Towns layer: the freehand stroke becomes a plain white line (not a polygon).
+    function addFreehandLine(points, targetId) {
+      if (points.length < 2) { setStatus("Freehand line is too short. Drag a longer line."); return; }
+
+      let geometry = { type: "LineString", coordinates: points.map(p => [p.lng, p.lat]) };
+
+      try {
+        const feature = { type: "Feature", properties: {}, geometry: geometry };
+        const tolerance = 1.5 * 360 / (256 * Math.pow(2, map.getZoom()));
+        const simplified = turf.simplify(feature, { tolerance: tolerance, highQuality: true });
+        if (simplified && simplified.geometry && simplified.geometry.coordinates && simplified.geometry.coordinates.length >= 2) {
+          geometry = simplified.geometry;
+        }
+      } catch (error) { console.warn("Freehand line simplification failed:", error); }
+
+      if (!geometry.coordinates || geometry.coordinates.length < 2) {
+        setStatus("Freehand line could not be created. Try drawing a longer line.");
+        return;
+      }
+
+      const lineFeature = {
+        type: "Feature",
+        properties: { Name: "Town line " + polygonCounter++ },
+        geometry: geometry
+      };
+
+      addFeature(lineFeature, targetId);
+      suppressNextMapClick();
+      suppressNextPolygonClick();
+      saveHistory();
+      renderSidebar();
+      setStatus("Freehand line added to " + config(targetId)[1] + ".");
+    }
+
     function freehandUp() {
       if (!freehandDrawing || eraserActive) return;
       if (!freehandPoints.length) return;
@@ -1383,6 +1502,10 @@
       const points = freehandPoints.slice();
       freehandPoints = [];
       if (freehandPreview) { map.removeLayer(freehandPreview); freehandPreview = null; }
+
+      const targetId = freehandTargetLayer || $("drawLayer").value;
+
+      if (targetId === TOWNS_ID) { addFreehandLine(points, targetId); return; }
 
       if (points.length < 3) { setStatus("Freehand shape is too small. Drag a larger area."); return; }
 
@@ -1404,14 +1527,34 @@
         return;
       }
 
-      const targetId = freehandTargetLayer || $("drawLayer").value;
       const originalName = "New polygon " + polygonCounter;
 
-      const originalFeature = {
+      let originalFeature = {
         type: "Feature",
         properties: { Name: originalName },
         geometry: geometry
       };
+
+      // Advances: cut away the part that overlaps the controlled territory of the same side
+      let trimNote = "";
+      if (ADVANCE_OWN_TERRITORY[targetId]) {
+        const cutter = ownTerritoryCutterFor(targetId, originalFeature);
+        if (cutter) {
+          const trimResult = subtractFromFeature(originalFeature, cutter);
+          if (trimResult.error) {
+            console.warn("Could not cut advance against own territory:", trimResult.error);
+          } else if (trimResult.changed) {
+            if (!trimResult.feature) {
+              setStatus("The freehand advance lies entirely inside the controlled territory of its own side — nothing added.");
+              alert("The shape you drew is entirely inside the controlled territory of its own side.\n\nNothing was added.");
+              return;
+            }
+            originalFeature = trimResult.feature;
+            originalFeature.properties = { Name: originalName };
+            trimNote = " The part overlapping its own controlled territory was cut away.";
+          }
+        }
+      }
 
       const mergeResult = mergeFreehandWithSameLayer(originalFeature, targetId);
 
@@ -1438,10 +1581,10 @@
       renderSidebar();
       if (added.length) select(added[0]);
 
-      if (mergeResult.warning) setStatus("⚠ " + mergeResult.warning);
-      else if (mergeResult.mergedLayers.length > 0) setStatus("Merged with " + mergeResult.mergedLayers.length + " existing polygon(s) in " + config(targetId)[1] + ".");
-      else if (mergeResult.wasTrimmed) setStatus("Freehand polygon trimmed and added to " + config(targetId)[1] + ".");
-      else setStatus("Freehand polygon added to " + config(targetId)[1] + ".");
+      if (mergeResult.warning) setStatus("⚠ " + mergeResult.warning + trimNote);
+      else if (mergeResult.mergedLayers.length > 0) setStatus("Merged with " + mergeResult.mergedLayers.length + " existing polygon(s) in " + config(targetId)[1] + "." + trimNote);
+      else if (mergeResult.wasTrimmed) setStatus("Freehand polygon trimmed and added to " + config(targetId)[1] + "." + trimNote);
+      else setStatus("Freehand polygon added to " + config(targetId)[1] + "." + trimNote);
     }
 
     // ============================================================
@@ -1586,6 +1729,100 @@
       if (eraserPreview) { map.removeLayer(eraserPreview); eraserPreview = null; }
     }
 
+    // ===== Line eraser (used for the towns layer) =====
+    function segmentIntersectionParam(a, b, c, d) {
+      const rX = b[0] - a[0], rY = b[1] - a[1];
+      const sX = d[0] - c[0], sY = d[1] - c[1];
+      const den = rX * sY - rY * sX;
+      if (Math.abs(den) < 1e-18) return null;
+      const t = ((c[0] - a[0]) * sY - (c[1] - a[1]) * sX) / den;
+      const u = ((c[0] - a[0]) * rY - (c[1] - a[1]) * rX) / den;
+      if (t > 0 && t < 1 && u >= 0 && u <= 1) return t;
+      return null;
+    }
+
+    function eraseFromLineCoords(coords, eraserFeature) {
+      const ring = eraserFeature.geometry.coordinates[0];
+      const runs = [];
+      let run = null;
+      let cut = false;
+
+      function lerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+
+      for (let i = 0; i < coords.length - 1; i++) {
+        const a = coords[i], b = coords[i + 1];
+        const cuts = [];
+        for (let k = 0; k < ring.length - 1; k++) {
+          const t = segmentIntersectionParam(a, b, ring[k], ring[k + 1]);
+          if (t !== null) cuts.push(t);
+        }
+        cuts.sort(function (x, y) { return x - y; });
+        const ts = [0].concat(cuts).concat([1]);
+
+        for (let k = 0; k < ts.length - 1; k++) {
+          const t0 = ts[k], t1 = ts[k + 1];
+          if (t1 - t0 < 1e-12) continue;
+          const p0 = lerp(a, b, t0), p1 = lerp(a, b, t1), mid = lerp(a, b, (t0 + t1) / 2);
+          let inside = false;
+          try { inside = turf.booleanPointInPolygon(turf.point(mid), eraserFeature); } catch (e) { inside = false; }
+
+          if (inside) {
+            cut = true;
+            if (run && run.length >= 2) runs.push(run);
+            run = null;
+          } else {
+            if (!run) run = [p0];
+            run.push(p1);
+          }
+        }
+      }
+      if (run && run.length >= 2) runs.push(run);
+      return { runs: runs, cut: cut };
+    }
+
+    // returns 1 = changed, 0 = untouched, -1 = failed
+    function eraseLineLayer(layer, group, eraserFeature) {
+      let gj;
+      try { gj = layer.toGeoJSON(); } catch (e) { return 0; }
+      if (!gj || !gj.geometry) return 0;
+
+      try {
+        const lb = turf.bbox(gj), eb = turf.bbox(eraserFeature);
+        if (lb[0] > eb[2] || lb[2] < eb[0] || lb[1] > eb[3] || lb[3] < eb[1]) return 0;
+      } catch (e) {}
+
+      const lines = gj.geometry.type === "LineString" ? [gj.geometry.coordinates] : gj.geometry.coordinates;
+      const runs = [];
+      let cut = false;
+      lines.forEach(function (coords) {
+        const r = eraseFromLineCoords(coords, eraserFeature);
+        if (r.cut) cut = true;
+        r.runs.forEach(function (run) { runs.push(run); });
+      });
+
+      if (!cut) return 0;
+
+      if (!runs.length) {
+        if (layer === selected) deselect(false);
+        group.removeLayer(layer);
+        return 1;
+      }
+
+      const wasSelected = layer === selected;
+      if (wasSelected) layer.pm.disable();
+      try {
+        if (runs.length === 1) layer.setLatLngs(L.GeoJSON.coordsToLatLngs(runs[0], 0));
+        else layer.setLatLngs(L.GeoJSON.coordsToLatLngs(runs, 1));
+        layer.redraw();
+      } catch (e) {
+        console.warn("Line erase setLatLngs failed:", e);
+        if (wasSelected) layer.pm.enable();
+        return -1;
+      }
+      if (wasSelected) layer.pm.enable();
+      return 1;
+    }
+
     function eraserFinish() {
       const points = eraserPoints.slice();
       cancelEraserStroke();
@@ -1620,6 +1857,14 @@
         try { ef = turf.cleanCoords(layer.toGeoJSON()); }
         catch (e) { ef = layer.toGeoJSON(); }
         if (!ef || !ef.geometry) return;
+
+        if (ef.geometry.type === "LineString" || ef.geometry.type === "MultiLineString") {
+          const lineResult = eraseLineLayer(layer, targetGroup, eraserFeature);
+          if (lineResult === 1) changed++;
+          else if (lineResult === -1) failed++;
+          return;
+        }
+
         if (ef.geometry.type !== "Polygon" && ef.geometry.type !== "MultiPolygon") return;
 
         const result = subtractFromFeature(ef, eraserFeature);
@@ -1655,9 +1900,9 @@
       if (changed > 0) {
         saveHistory();
         renderSidebar();
-        setStatus("Erased part of " + changed + " polygon(s) in " + config(targetId)[1] + (failed ? " (" + failed + " failed)" : "") + ".");
+        setStatus("Erased part of " + changed + " shape(s) in " + config(targetId)[1] + (failed ? " (" + failed + " failed)" : "") + ".");
       } else if (failed > 0) {
-        setStatus("Eraser failed on " + failed + " polygon(s). Check the browser console.");
+        setStatus("Eraser failed on " + failed + " shape(s). Check the browser console.");
       } else {
         setStatus("Nothing to erase on " + config(targetId)[1] + " in that area.");
       }
@@ -1667,6 +1912,7 @@
     // ============ FIX OVERLAPS ==================================
     // ============================================================
     function fixOverlapsInLayer(layerId) {
+      if (layerId === TOWNS_ID) { setStatus("Overlap fixing doesn't apply to the towns layer (it contains lines)."); return; }
       const group = groups[layerId];
       if (!group) { setStatus("Layer not loaded."); return; }
       if (group.getLayers().length < 2) { setStatus("Nothing to fix — need at least 2 polygons."); return; }
@@ -1816,6 +2062,7 @@
       }
 
       if (remoteLoaded) {
+        window.polradTownsLoaded = !!remoteData[TOWNS_NAME];
         LAYERS.forEach(function(c) {
           groups[c[0]] = createGroup(c[0]);
           const featureCollection = remoteData[c[1]];
@@ -1859,6 +2106,7 @@
       try { savedData = await loadMapCache(); } catch (error) { savedData = null; }
 
       if (savedData) {
+        window.polradTownsLoaded = !!savedData[TOWNS_NAME];
         LAYERS.forEach(function(c) {
           groups[c[0]] = createGroup(c[0]);
           const featureCollection = savedData[c[1]];
@@ -1893,6 +2141,7 @@
         map.createPane("territoryPane"); map.getPane("territoryPane").style.zIndex = 400;
         map.createPane("advancesPane"); map.getPane("advancesPane").style.zIndex = 450;
         map.createPane("infiltrationPane"); map.getPane("infiltrationPane").style.zIndex = 470;
+        map.createPane("townsPane"); map.getPane("townsPane").style.zIndex = 480;
         map.createPane("frontlinePane"); map.getPane("frontlinePane").style.zIndex = 520;
 
         const satellite = L.tileLayer(
@@ -2748,6 +2997,8 @@
           });
           const snapshot = (window.getCurrentGeoJSON ? window.getCurrentGeoJSON() : null);
           if (!snapshot) throw new Error("Could not capture current geometry.");
+          // The towns layer is not part of the advance timeline (the public map ignores it there)
+          delete snapshot[TOWNS_NAME];
           const item = {
             id: id, date: now.date, time: now.time,
             text_en: textEn, text_ru: textRu, text: textEn,
@@ -2984,7 +3235,12 @@
             if (!currentFiles) throw new Error("Could not capture current geometry.");
             const allEntries = Object.entries(currentFiles).filter(e => e[1] !== undefined && e[1] !== null);
             const skipped = [];
-            const fileEntries = allEntries.filter(function (e) { if (SKIP_PUBLISH_LAYERS.has(e[0])) { skipped.push(e[0]); return false; } return true; });
+            const fileEntries = allEntries.filter(function (e) {
+              if (SKIP_PUBLISH_LAYERS.has(e[0])) { skipped.push(e[0]); return false; }
+              // Safety: never overwrite the towns file with an empty layer if it never loaded
+              if (e[0] === TOWNS_NAME && !window.polradTownsLoaded && !(e[1].features && e[1].features.length)) { skipped.push(e[0]); return false; }
+              return true;
+            });
             if (!fileEntries.length) throw new Error("There are no map files available to publish.");
 
             let snapshotsUploaded = 0, snapshotsSkipped = 0;
@@ -3012,7 +3268,7 @@
 
             try { await saveMapCache(currentFiles); } catch (e) { console.warn("Could not update editor cache:", e); }
             saveAdvances();
-            const skipNote = skipped.length ? " Skipped (too big): " + skipped.join(", ") + "." : "";
+            const skipNote = skipped.length ? " Skipped: " + skipped.join(", ") + "." : "";
             H.setStatus("Published. " + snapshotsUploaded + " new snapshot(s) uploaded, " + snapshotsSkipped + " existing skipped, " + fileEntries.length + " map file(s) published." + skipNote);
             alert("Published successfully!\n\n" + advances.length + " advances in the file.\n" + snapshotsUploaded + " new advance snapshot(s) uploaded.\n" + snapshotsSkipped + " existing snapshot(s) already on GitHub (skipped).\n" + fileEntries.length + " map file(s) published.");
           } catch (error) {
