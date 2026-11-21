@@ -1575,6 +1575,16 @@
       });
 
       const added = addFeature(mergeResult.feature, targetId);
+
+      // Advance mode needs to know about the new polygon immediately.
+      // Do not wait for freehand mode to be stopped: the user can click
+      // Finish Advance while freehand mode is still active.
+      if (added.length && ADVANCE_OWN_TERRITORY[targetId] &&
+          typeof window.polradAdvanceFreehandAdded === "function") {
+        try { window.polradAdvanceFreehandAdded(added, targetId); }
+        catch (error) { console.error("Could not register freehand advance:", error); }
+      }
+
       suppressNextMapClick();
       suppressNextPolygonClick();
       saveHistory();
@@ -2864,50 +2874,47 @@
         const layerId = advanceState.side === "ru" ? "ru_advances" : "ua_advances";
         if (!H.groups[layerId]) { alert("The advance layer is not loaded."); return; }
 
-        // Use the shared freehand pipeline with a target override + advance handling
         H.deselect(false);
-        const originalTarget = H.freehandTargetLayer;
-        H.freehandTargetLayer = layerId;
-
-        const prevAfterAdd = null;
-
-        // Monkey-patch: when freehand finishes, mark the added layer as pending advance.
-        // Simplest reliable approach: reuse startFreehandDrawing with a custom callback
-        // is not available, so draw freehand and after each stroke the layer appears
-        // on the advance layer. Mark it as pending advance right away via the layer list.
         setAdvanceStatus("Drawing the " + (advanceState.side === "ru" ? "Russian" : "Ukrainian") + " advance freehand polygon...", true);
 
-        // We wrap the merge callback by temporarily tracking added fids
-        const preFids = {};
-        H.groups[layerId].getLayers().forEach(function (l) { if (l._fid) preFids[l._fid] = true; });
+        // Register each completed freehand stroke synchronously. The old
+        // interval waited until freehand mode was switched OFF, so clicking
+        // Finish Advance immediately after drawing produced an empty fid list
+        // and therefore a zero / undetected area change.
+        window.polradAdvanceFreehandAdded = function (addedLayers, addedLayerId) {
+          if (!advanceState.active || addedLayerId !== layerId) return;
 
-        const originalAfterAdd = H.__afterAdd;
-        // After the freehand finishes (deferred to next frame), pick up new layers.
-        const poll = setInterval(function () {
-          if (!H.freehandDrawing) {
-            clearInterval(poll);
-            // New fids
-            H.groups[layerId].getLayers().forEach(function (l) {
-              if (l._fid && !preFids[l._fid]) {
-                // Trim and mark
-                if (!l.feature) l.feature = { type: "Feature", properties: {} };
-                if (!l.feature.properties) l.feature.properties = {};
-                l.feature.properties._advanceId = "pending";
-                if (advanceState.createdFids.indexOf(l._fid) === -1) advanceState.createdFids.push(l._fid);
-                const trimResult = trimAdvanceToTerritory(l);
-                if (trimResult === "removed") {
-                  // already removed
-                }
-              }
-            });
-            // Also ensure pre-existing pre-advance polygons aren't in createdFids
-            advanceState.createdFids = advanceState.createdFids.filter(function (fid) { return H.findPolygon(fid); });
-            // Merge same-side overlaps
-            mergeAdvanceOverlapsSameSide(layerId);
-            H.saveHistory(); H.renderSidebar();
-            setAdvanceStatus(advanceState.createdFids.length ? "Advance freehand polygon(s) created and trimmed." : "No advance polygons were added.", true);
-          }
-        }, 100);
+          let registered = 0;
+          (addedLayers || []).forEach(function (layer) {
+            if (!layer || !H.groups[layerId] || !H.groups[layerId].hasLayer(layer)) return;
+
+            if (!layer.feature) layer.feature = { type: "Feature", properties: {} };
+            if (!layer.feature.properties) layer.feature.properties = {};
+            layer.feature.properties._advanceId = "pending";
+
+            const trimResult = trimAdvanceToTerritory(layer);
+            if (trimResult === "removed") return;
+
+            if (layer._fid && advanceState.createdFids.indexOf(layer._fid) === -1) {
+              advanceState.createdFids.push(layer._fid);
+              registered++;
+            }
+          });
+
+          // Keep only polygons that still exist after trimming.
+          advanceState.createdFids = advanceState.createdFids.filter(function (fid) {
+            return !!H.findPolygon(fid);
+          });
+
+          H.saveHistory();
+          H.renderSidebar();
+          setAdvanceStatus(
+            advanceState.createdFids.length
+              ? "Advance freehand polygon created" + (registered === 1 ? "" : " (updated)") + " and trimmed where necessary."
+              : "No advance polygon was added (the drawn area may already be controlled by this side).",
+            true
+          );
+        };
 
         H.startFreehandDrawing(layerId);
       }
@@ -3026,6 +3033,7 @@
           clearAdvanceFocusRectangle();
           advanceState.focus = null;
           advanceState.createdFids = [];
+          window.polradAdvanceFreehandAdded = null;
           A("advanceStart").disabled = false;
           A("advanceFinish").disabled = true;
           A("advanceSide").disabled = false;
@@ -3053,6 +3061,7 @@
         clearAdvanceFocusRectangle();
         advanceState.focus = null;
         advanceState.createdFids = [];
+        window.polradAdvanceFreehandAdded = null;
         A("advanceStart").disabled = false;
         A("advanceFinish").disabled = true;
         A("advanceSide").disabled = false;
