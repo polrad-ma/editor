@@ -1,3 +1,4 @@
+
 <!doctype html>
 
 <html lang="en">
@@ -146,7 +147,7 @@
         <select id="drawLayer"></select>
         <button class="btn primary" id="draw">Draw a polygon</button>
         <button class="btn" id="drawFreehand">Draw freehand shape (drag)</button>
-        <button class="btn" id="eraserFreehand" style="display:none">Erase freehand shape (drag)</button>
+        <button class="btn" id="eraserFreehand">Eraser — remove area by freehand (drag)</button>
         <button class="btn" id="fixOverlaps">Fix overlaps in selected layer</button>
         <div class="small" style="margin-top:6px">
           Freehand shapes are simplified automatically and added to the selected layer.
@@ -154,25 +155,10 @@
           Freehand advances (Russian / Ukrainian) are automatically cut so they never overlap the controlled territory of their own side.
           Choose the "Towns, villages and cities" layer to draw white freehand lines instead of polygons (the eraser also works on those lines).
           Click the freehand button again (or press Esc) to stop.
-          The eraser is only available while freehand is active.
+          The eraser works like the freehand shape tool: select the target layer above, activate the eraser, then hold the left mouse button and draw a closed loop around the area to remove. The loop closes automatically when you release. The cut-out is applied to polygons (and line features in the towns layer). Press Esc or click the eraser button again to stop.
         </div>
       </div>
 
-      <div class="box">
-        <b style="font-size:13px">Expand controlled territory</b>
-        <label style="display:block;margin-top:7px">Side</label>
-        <select id="controlExpandSide">
-          <option value="ru">🔴 Expand Russian-controlled territory</option>
-          <option value="ua">🔵 Expand Ukrainian-controlled territory</option>
-        </select>
-        <button class="btn primary" id="controlExpandStart">Draw control expansion</button>
-        <button class="btn" id="controlExpandFinish" style="display:none">Finish control expansion</button>
-        <button class="btn" id="controlExpandCancel" style="display:none">Cancel</button>
-        <div class="small" id="controlExpandStatus" style="margin-top:6px">
-          Draw a polygon over the area that should become controlled by the selected side.
-          The opposing controlled territory will be cut away automatically so the two control layers do not overlap.
-        </div>
-      </div>
 
       <div class="box" id="selectedBox" style="display:none">
         <b id="selectedName" style="font-size:13px"></b>
@@ -236,9 +222,6 @@
     let groups = {};
     let selected = null;
     let drawing = false;
-    let controlExpandDrawing = false;
-    let controlExpandPoints = [];
-    let controlExpandPreview = null;
     let polygonCounter = 1;
     let history = [];
     let historyIndex = -1;
@@ -787,132 +770,6 @@
       });
     }
 
-    const CONTROL_TERRITORY = { ru: "ru_territory", ua: "ua_territory" };
-    const CONTROL_OPPOSING = { ru: "ua_territory", ua: "ru_territory" };
-
-    function controlExpandStatus(text, active) {
-      const node = $("controlExpandStatus");
-      if (!node) return;
-      node.textContent = text;
-      node.style.color = active ? "#b3261e" : "";
-      node.style.fontWeight = active ? "600" : "";
-    }
-
-    function clearControlExpandPreview() {
-      if (controlExpandPreview && map && map.hasLayer(controlExpandPreview)) map.removeLayer(controlExpandPreview);
-      controlExpandPreview = null;
-    }
-
-    function updateControlExpandPreview() {
-      clearControlExpandPreview();
-      if (!controlExpandPoints.length) return;
-      const points = controlExpandPoints.map(p => [p.lat, p.lng]);
-      if (points.length < 2) return;
-      controlExpandPreview = L.polygon(points, {
-        color: "#ffffff",
-        fillColor: $("controlExpandSide").value === "ru" ? "#a52714" : "#1a237e",
-        fillOpacity: 0.35, weight: 2, dashArray: "7 5", interactive: false, pane: "frontlinePane"
-      }).addTo(map);
-    }
-
-    function startControlExpansion() {
-      if (controlExpandDrawing) return;
-      if (!map || !groups.ru_territory || !groups.ua_territory) { alert("The territory layers have not finished loading yet."); return; }
-      deselect(false);
-      drawing = true;
-      controlExpandDrawing = true;
-      controlExpandPoints = [];
-      clearControlExpandPreview();
-      $("controlExpandSide").disabled = true;
-      $("controlExpandStart").style.display = "none";
-      $("controlExpandFinish").style.display = "inline-block";
-      $("controlExpandCancel").style.display = "inline-block";
-      controlExpandStatus("Click points around the area that should become controlled by the selected side. Then click Finish control expansion.", true);
-      setStatus("Drawing controlled-territory expansion...");
-    }
-
-    function finishControlExpansion() {
-      if (!controlExpandDrawing) return;
-      if (controlExpandPoints.length < 3) { alert("A control expansion needs at least 3 points."); return; }
-
-      const side = $("controlExpandSide").value;
-      const targetId = CONTROL_TERRITORY[side];
-      const opposingId = CONTROL_OPPOSING[side];
-
-      const coordinates = controlExpandPoints.map(p => [p.lng, p.lat]);
-      coordinates.push(coordinates[0]);
-
-      let expansion;
-      try { expansion = turf.polygon([coordinates], { Name: "Controlled territory expansion" }); }
-      catch (error) { alert("The control expansion polygon is invalid."); return; }
-
-      clearControlExpandPreview();
-      let opposingChanged = false;
-
-      groups[opposingId].getLayers().slice().forEach(function(layer) {
-        let feature;
-        try { feature = turf.cleanCoords(layer.toGeoJSON()); }
-        catch (error) { feature = layer.toGeoJSON(); }
-
-        if (!feature.geometry || (feature.geometry.type !== "Polygon" && feature.geometry.type !== "MultiPolygon")) return;
-
-        let result;
-        try { result = turf.difference(feature, expansion); }
-        catch (error) { console.warn("Could not trim opposing control polygon:", error); return; }
-
-        if (!result) { if (selected === layer) deselect(false); groups[opposingId].removeLayer(layer); opposingChanged = true; return; }
-
-        let beforeArea = 0, afterArea = 0;
-        try { beforeArea = turf.area(feature); afterArea = turf.area(result); } catch (error) { return; }
-        if (Math.abs(beforeArea - afterArea) < 1) return;
-
-        const geometry = result.geometry;
-        const level = geometry.type === "MultiPolygon" ? 2 : 1;
-        if (selected === layer) layer.pm.disable();
-        layer.setLatLngs(L.GeoJSON.coordsToLatLngs(geometry.coordinates, level));
-        layer.redraw();
-        if (selected === layer) layer.pm.enable();
-        opposingChanged = true;
-      });
-
-      const targetLayer = L.geoJSON(expansion, { pane: paneForLayer(targetId) }).getLayers()[0];
-      if (!targetLayer) { cancelControlExpansion(false); return; }
-
-      targetLayer.feature = expansion;
-      targetLayer._layer = targetId;
-      targetLayer._fid = "control-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-
-      setupPolygon(targetLayer, targetId);
-      groups[targetId].addLayer(targetLayer);
-
-      normalizeControlTerritoryOverlaps();
-      saveHistory();
-      renderSidebar();
-
-      const sideName = side === "ru" ? "Russian" : "Ukrainian";
-      cancelControlExpansion(true);
-      setStatus(sideName + " controlled territory expanded. " + (opposingChanged ? "The opposing controlled territory was trimmed to prevent overlap." : "No opposing territory overlapped the new area."));
-    }
-
-    function cancelControlExpansion(finished) {
-      clearControlExpandPreview();
-      controlExpandPoints = [];
-      controlExpandDrawing = false;
-      drawing = false;
-      $("controlExpandSide").disabled = false;
-      $("controlExpandStart").style.display = "block";
-      $("controlExpandFinish").style.display = "none";
-      $("controlExpandCancel").style.display = "none";
-      controlExpandStatus(finished ? "Expansion added. Draw another one whenever you want." : "Draw a polygon over the area that should become controlled by the selected side. The opposing controlled territory will be cut away automatically so the two control layers do not overlap.", false);
-    }
-
-    function addControlExpandMapPoint(e) {
-      if (!controlExpandDrawing) return false;
-      controlExpandPoints.push(e.latlng);
-      updateControlExpandPreview();
-      return true;
-    }
-
     // ===== addFeature: splits MultiPolygon into separate Leaflet layers =====
     function addFeature(feature, layerId) {
       if (!feature || !feature.geometry) return [];
@@ -1360,6 +1217,7 @@
     function freehandKeydown(event) {
       if (event.key === "Escape") {
         if (eraserDrawing) { cancelEraserStroke(); return; }
+        if (eraserActive) { setEraserActive(false); return; }
         if (freehandDrawing) { stopFreehandDrawing(); return; }
       }
     }
@@ -1387,14 +1245,16 @@
     }
 
     function showEraserButton(show) {
+      // The eraser is a standalone editor tool; keep it available even
+      // when freehand drawing is not active.
       const btn = $("eraserFreehand");
       if (!btn) return;
-      btn.style.display = show ? "block" : "none";
+      btn.style.display = "block";
     }
 
     function startFreehandDrawing(targetOverride) {
       if (freehandDrawing) return;
-      if (drawing || controlExpandDrawing || window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) {
+      if (drawing || window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing) {
         setStatus("Stop the current drawing mode first.");
         return;
       }
@@ -1612,19 +1472,27 @@
       const btn = $("eraserFreehand");
       if (btn) {
         btn.classList.toggle("eraser-active", eraserActive);
-        btn.textContent = eraserActive ? "✓ Eraser active — click to stop" : "Erase freehand shape (drag)";
+        btn.textContent = eraserActive ? "✓ Eraser active — click to stop" : "Eraser — remove area by freehand (drag)";
       }
 
       if (eraserActive && !wasActive) {
-        if (!freehandDrawing) { setStatus("Freehand mode must be active to use the eraser."); eraserActive = false; return; }
+        if (!freehandDrawing && (drawing || window.polradAdvanceDrawing || window.polradAdvanceFocusDrawing)) {
+          eraserActive = false;
+          setStatus("Stop the current drawing mode before activating the eraser.");
+          return;
+        }
+        // Mark the editor as busy so polygon drawing tools cannot start
+        // while the standalone eraser is active.
+        drawing = true;
         map.dragging.disable();
         map.getContainer().style.cursor = "crosshair";
         attachEraserDOMListeners();
-        setStatus("Eraser active. Drag over the selected layer to erase. Click the eraser button again or press Esc to stop.");
+        setStatus("Eraser active. Drag around an area to cut it out of the selected layer. Click the eraser button again or press Esc to stop.");
       } else if (!eraserActive && wasActive) {
         detachEraserDOMListeners();
         cancelEraserStroke();
         if (!freehandDrawing) {
+          drawing = false;
           map.dragging.enable();
           map.getContainer().style.cursor = "";
         }
@@ -1728,7 +1596,6 @@
     }
 
     function toggleEraser() {
-      if (!freehandDrawing) return;
       if (eraserDrawing) return;
       setEraserActive(!eraserActive);
     }
@@ -2174,7 +2041,6 @@
         }).addTo(map);
 
         map.on("click", function(event) {
-          if (controlExpandDrawing) { addControlExpandMapPoint(event); return; }
           if (drawing || ignoreNextMapClick) return;
           deselect();
         });
@@ -2229,9 +2095,6 @@
     };
 
     $("selectedLayer").onchange = function(event) { if (selected) movePolygon(selected, event.target.value); };
-    $("controlExpandStart").onclick = startControlExpansion;
-    $("controlExpandFinish").onclick = finishControlExpansion;
-    $("controlExpandCancel").onclick = function() { cancelControlExpansion(false); };
 
     function showEditorTab(name) {
       const tools = name === "tools", advances = name === "advances";
