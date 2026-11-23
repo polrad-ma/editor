@@ -1,4 +1,3 @@
-
 <!doctype html>
 
 <html lang="en">
@@ -63,6 +62,14 @@
     .mode-btn:hover { background: #f1f3f4; }
     .mode-btn.active { background: #e8f0fe; color: #1a73e8; }
 
+    /* ===== Town markers tab ===== */
+    .box input[type=text] { width:100%; height:34px; margin-top:4px; border:1px solid #ccc; border-radius:5px; padding:0 8px; }
+    .tm-row { border-top:1px solid #e5e5e5; padding:7px 0; display:flex; flex-direction:column; gap:5px; }
+    .tm-row input { height:30px; border:1px solid #ccc; border-radius:5px; padding:0 7px; font-size:13px; }
+    .tm-line { display:flex; gap:4px; }
+    .tm-line select { flex:1; height:30px; border:1px solid #ccc; border-radius:5px; background:#fff; font-size:12px; }
+    .tm-line .btn { padding:4px 8px; }
+
     /* ================ PHONE MODE ================ */
     body.phone-mode #map { left: 0; width: 100%; }
     body.phone-mode #side {
@@ -125,6 +132,7 @@
     <div class="tabs">
       <button class="tab active" id="tabTools" type="button">Editor tools</button>
       <button class="tab" id="tabAdvances" type="button">Advances</button>
+      <button class="tab" id="tabMarkers" type="button">Town markers</button>
     </div>
 
     <div class="body" id="paneTools">
@@ -182,6 +190,32 @@
         Saved advance updates. New advances are created in the Editor tools tab.
       </div>
       <div id="advanceHistory"></div>
+    </div>
+
+    <div class="body" id="paneMarkers" style="display:none">
+      <b style="font-size:13px">Town markers</b>
+      <div class="small" style="margin-top:3px">Markers are saved into every advance snapshot and published with Publish. Drag a marker on the map to move it.</div>
+      <div class="box" style="margin-top:9px">
+        <label>Name</label>
+        <input type="text" id="tmName" placeholder="e.g. Pokrovsk">
+        <label style="display:block;margin-top:7px">Color</label>
+        <select id="tmColor">
+          <option value="red">🔴 Red (Russian controlled)</option>
+          <option value="blue">🔵 Blue (Ukrainian controlled)</option>
+          <option value="gray" selected>⚪ Gray (contested)</option>
+        </select>
+        <label style="display:block;margin-top:7px">Shape</label>
+        <select id="tmShape">
+          <option value="circle">● Small circle (village / town)</option>
+          <option value="square">■ Square (city)</option>
+          <option value="star">★ Star (major city)</option>
+        </select>
+        <button class="btn primary" id="tmAdd">📍 Add marker (then click the map)</button>
+        <button class="btn" id="tmCancel" style="display:none">Cancel placing</button>
+      </div>
+      <input id="tmFilter" placeholder="Filter markers..." style="width:100%;height:34px;border:1px solid #ccc;border-radius:6px;padding:0 9px;margin-bottom:6px">
+      <div id="tmList"></div>
+      <div class="small" id="tmStatus"></div>
     </div>
   </div>
 
@@ -898,6 +932,7 @@
     function getCurrentGeoJSON() {
       const result = getEditableGeoJSON();
       result["Gray Zone"] = grayZoneData || { type: "FeatureCollection", features: [] };
+      if (window.polradTM && window.polradTM.isLoaded()) result["Town markers"] = window.polradTM.toFC();
       return result;
     }
 
@@ -932,6 +967,7 @@
         }
       });
       normalizeControlTerritoryOverlaps();
+      if (window.polradTM) window.polradTM.fromState(state);
       renderSidebar();
     }
 
@@ -1101,9 +1137,6 @@
     // ============================================================
     // ============ OWN-TERRITORY CUTTER FOR ADVANCES =============
     // ============================================================
-    // Returns the union of the same side's controlled territory
-    // (Russian advances -> Russian territory, Ukrainian advances -> Ukrainian territory),
-    // limited to the polygons near the new shape so it stays fast.
     function ownTerritoryCutterFor(advanceLayerId, newFeature) {
       const territoryId = ADVANCE_OWN_TERRITORY[advanceLayerId];
       const group = territoryId ? groups[territoryId] : null;
@@ -1245,8 +1278,6 @@
     }
 
     function showEraserButton(show) {
-      // The eraser is a standalone editor tool; keep it available even
-      // when freehand drawing is not active.
       const btn = $("eraserFreehand");
       if (!btn) return;
       btn.style.display = "block";
@@ -1437,8 +1468,6 @@
       const added = addFeature(mergeResult.feature, targetId);
 
       // Advance mode needs to know about the new polygon immediately.
-      // Do not wait for freehand mode to be stopped: the user can click
-      // Finish Advance while freehand mode is still active.
       if (added.length && ADVANCE_OWN_TERRITORY[targetId] &&
           typeof window.polradAdvanceFreehandAdded === "function") {
         try { window.polradAdvanceFreehandAdded(added, targetId); }
@@ -1481,8 +1510,6 @@
           setStatus("Stop the current drawing mode before activating the eraser.");
           return;
         }
-        // Mark the editor as busy so polygon drawing tools cannot start
-        // while the standalone eraser is active.
         drawing = true;
         map.dragging.disable();
         map.getContainer().style.cursor = "crosshair";
@@ -2074,6 +2101,7 @@
 
         fillLayerSelects();
         await load();
+        if (window.polradTM) window.polradTM.init();
       } catch (error) { $("err").style.display = "block"; }
     }
 
@@ -2097,14 +2125,17 @@
     $("selectedLayer").onchange = function(event) { if (selected) movePolygon(selected, event.target.value); };
 
     function showEditorTab(name) {
-      const tools = name === "tools", advances = name === "advances";
+      const tools = name === "tools", advances = name === "advances", markers = name === "markers";
       $("paneTools").style.display = tools ? "block" : "none";
       $("paneAdvances").style.display = advances ? "block" : "none";
+      $("paneMarkers").style.display = markers ? "block" : "none";
       $("tabTools").classList.toggle("active", tools);
       $("tabAdvances").classList.toggle("active", advances);
+      $("tabMarkers").classList.toggle("active", markers);
     }
     $("tabTools").onclick = function() { showEditorTab("tools"); };
     $("tabAdvances").onclick = function() { showEditorTab("advances"); };
+    $("tabMarkers").onclick = function() { showEditorTab("markers"); };
     $("search").oninput = renderSidebar;
     $("undo").onclick = undo;
     $("redo").onclick = redo;
@@ -2158,6 +2189,187 @@
       set polygonCounter(v) { polygonCounter = v; },
       get freehandDrawing() { return freehandDrawing; }
     };
+  </script>
+
+  <script>
+// ============ TOWN MARKERS ============
+(function () {
+  "use strict";
+  var NAME = "Town markers";
+  var HEX = { red: "#d32f2f", blue: "#1e5fd8", gray: "#757575" };
+  var COLORS = [["red", "🔴 Red"], ["blue", "🔵 Blue"], ["gray", "⚪ Gray"]];
+  var SHAPES = [["circle", "● Town"], ["square", "■ City"], ["star", "★ Major"]];
+  var markers = [], objs = {}, layer = null;
+  var loaded = false, baseline = "", uid = 0, placing = false, listening = false;
+
+  function g(id) { return document.getElementById(id); }
+  function status(t) { var s = g("tmStatus"); if (s) s.textContent = t; }
+  function norm(c, s) {
+    c = String(c || "gray").toLowerCase(); s = String(s || "circle").toLowerCase();
+    return [HEX[c] ? c : "gray", (s === "square" || s === "star") ? s : "circle"];
+  }
+  function hash() {
+    return JSON.stringify(markers.map(function (m) {
+      return [m.name, m.color, m.shape, +m.lat.toFixed(5), +m.lng.toFixed(5)];
+    }).sort());
+  }
+  function toFC() {
+    return { type: "FeatureCollection", features: markers.map(function (m) {
+      return { type: "Feature", properties: { name: m.name, color: m.color, shape: m.shape },
+               geometry: { type: "Point", coordinates: [m.lng, m.lat] } };
+    }) };
+  }
+  function ensureLayer() {
+    if (!layer && typeof map !== "undefined" && map) layer = L.layerGroup().addTo(map);
+    return layer;
+  }
+  function starUrl(color) {
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='18' height='18'><polygon points='12,1 15.09,8.26 22.9,9.27 17.18,14.14 18.82,21.77 12,17.77 5.18,21.77 6.82,14.14 1.1,9.27 8.91,8.26' fill='" + HEX[color] + "' stroke='#fff' stroke-width='1.4' stroke-linejoin='round'/></svg>";
+    return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+  }
+  function icon(color, shape) {
+    var html, size, sh = "box-shadow:0 0 0 1px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.6);";
+    if (shape === "square") { size = [18, 18]; html = '<span style="display:block;width:14px;height:14px;border:2px solid #fff;background:' + HEX[color] + ';' + sh + '"></span>'; }
+    else if (shape === "star") { size = [20, 20]; html = '<span style="display:block;width:18px;height:18px;background:url(\'' + starUrl(color) + '\') center/contain no-repeat;filter:drop-shadow(0 0 1px #000)"></span>'; }
+    else { size = [16, 16]; html = '<span style="display:block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:' + HEX[color] + ';' + sh + '"></span>'; }
+    return L.divIcon({ className: "", html: html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] });
+  }
+  function drawMarker(m) {
+    if (!ensureLayer()) return;
+    if (objs[m.id]) layer.removeLayer(objs[m.id]);
+    var mk = L.marker([m.lat, m.lng], { icon: icon(m.color, m.shape), draggable: true, zIndexOffset: 1000 });
+    mk.bindTooltip(m.name || "(unnamed)");
+    mk.on("dragend", function () { var p = mk.getLatLng(); m.lat = p.lat; m.lng = p.lng; });
+    mk.addTo(layer);
+    objs[m.id] = mk;
+  }
+  function redrawAll() {
+    if (!ensureLayer()) return;
+    layer.clearLayers(); objs = {};
+    markers.forEach(drawMarker);
+    renderList();
+  }
+  function fromState(state) {
+    if (!state) return false;
+    var fc = state[NAME] || state.town_markers || state.townMarkers;
+    if (!fc || !fc.features) return false;
+    setFromFC(fc);
+    return true;
+  }
+  function setFromFC(fc) {
+    markers = [];
+    (fc.features || []).forEach(function (f) {
+      if (!f || !f.geometry || f.geometry.type !== "Point") return;
+      var p = f.properties || {}, n = norm(p.color, p.shape), c = f.geometry.coordinates;
+      if (!isFinite(c[0]) || !isFinite(c[1])) return;
+      markers.push({ id: ++uid, name: p.name || "", color: n[0], shape: n[1], lat: +c[1], lng: +c[0] });
+    });
+    loaded = true;
+    baseline = hash();
+    redrawAll();
+  }
+  function mkSelect(opts, val) {
+    var s = document.createElement("select");
+    opts.forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; s.appendChild(op); });
+    s.value = val; return s;
+  }
+  function renderList() {
+    var list = g("tmList"); if (!list) return;
+    list.innerHTML = "";
+    var q = ((g("tmFilter") || {}).value || "").toLowerCase();
+    var shown = markers.filter(function (m) { return !q || m.name.toLowerCase().indexOf(q) !== -1; });
+    if (!shown.length) { var e = document.createElement("div"); e.className = "small"; e.textContent = loaded ? "No markers." : "Loading markers..."; list.appendChild(e); return; }
+    shown.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (m) {
+      var row = document.createElement("div"); row.className = "tm-row";
+      var name = document.createElement("input"); name.value = m.name; name.placeholder = "Name";
+      name.onchange = function () { m.name = name.value.trim(); if (objs[m.id]) objs[m.id].setTooltipContent(m.name || "(unnamed)"); };
+      var line = document.createElement("div"); line.className = "tm-line";
+      var c = mkSelect(COLORS, m.color), s = mkSelect(SHAPES, m.shape);
+      c.onchange = function () { m.color = c.value; drawMarker(m); };
+      s.onchange = function () { m.shape = s.value; drawMarker(m); };
+      var go = document.createElement("button"); go.className = "btn"; go.textContent = "🎯"; go.title = "Show on map";
+      go.onclick = function () { map.setView([m.lat, m.lng], Math.max(map.getZoom(), 12)); if (objs[m.id]) objs[m.id].openTooltip(); };
+      var del = document.createElement("button"); del.className = "btn"; del.style.color = "#b3261e"; del.textContent = "✕"; del.title = "Delete";
+      del.onclick = function () {
+        if (!confirm('Delete marker "' + (m.name || "unnamed") + '"?')) return;
+        markers = markers.filter(function (x) { return x !== m; });
+        if (objs[m.id]) { layer.removeLayer(objs[m.id]); delete objs[m.id]; }
+        renderList();
+      };
+      line.append(c, s, go, del);
+      row.append(name, line);
+      list.appendChild(row);
+    });
+  }
+  function mapClick(ev) {
+    if (!placing) return;
+    if (ev.target.closest && ev.target.closest(".leaflet-control, .leaflet-popup, .leaflet-marker-icon")) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var r = map.getContainer().getBoundingClientRect();
+    var ll = map.containerPointToLatLng(L.point(ev.clientX - r.left, ev.clientY - r.top));
+    var m = { id: ++uid, name: g("tmName").value.trim(), color: g("tmColor").value, shape: g("tmShape").value, lat: ll.lat, lng: ll.lng };
+    markers.push(m); drawMarker(m);
+    g("tmName").value = "";
+    stopPlacing();
+    renderList();
+    status('Added "' + m.name + '". Drag it to adjust.');
+  }
+  function startPlacing() {
+    if (!loaded) { alert("Markers are still loading (or failed to load). Reload the editor if this persists."); return; }
+    if (!g("tmName").value.trim()) { alert("Please enter a name for the marker first."); g("tmName").focus(); return; }
+    placing = true;
+    map.getContainer().style.cursor = "crosshair";
+    g("tmAdd").style.display = "none"; g("tmCancel").style.display = "block";
+    status("Click on the map to place the marker.");
+  }
+  function stopPlacing() {
+    placing = false;
+    if (typeof map !== "undefined" && map) map.getContainer().style.cursor = "";
+    g("tmAdd").style.display = "block"; g("tmCancel").style.display = "none";
+  }
+  function loadFile() {
+    fetch("https://raw.githubusercontent.com/polrad-ma/uawarmap/main/Town%20markers.geojson?v=" + Date.now(), { cache: "no-store" })
+      .then(function (r) {
+        if (r.status === 404) { if (!loaded) setFromFC({ features: [] }); return null; }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (fc) { if (fc && !loaded) setFromFC(fc); })
+      .catch(function (e) {
+        console.warn("Could not load town markers:", e);
+        status("Could not load town markers from GitHub. They will not be published until they load.");
+      });
+  }
+  function check() {
+    return new Promise(function (resolve) {
+      if (!loaded || hash() !== baseline) { resolve(true); return; }
+      var ov = document.createElement("div");
+      ov.style.cssText = "position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;";
+      ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;width:380px;max-width:90vw;font-family:Arial,sans-serif">' +
+        '<div style="font-weight:700;font-size:16px;margin-bottom:8px">⚠️ No town marker was changed</div>' +
+        '<div style="font-size:13px;color:#444;margin-bottom:14px">You have not added, moved, recolored, renamed or deleted any town marker since the last advance. Finish the advance anyway?</div>' +
+        '<button id="tmChkEdit" class="btn primary" style="width:100%;margin-bottom:8px">Go back and edit markers</button>' +
+        '<button id="tmChkGo" class="btn" style="width:100%">Finish anyway</button></div>';
+      document.body.appendChild(ov);
+      ov.querySelector("#tmChkEdit").onclick = function () { ov.remove(); showEditorTab("markers"); resolve(false); };
+      ov.querySelector("#tmChkGo").onclick = function () { ov.remove(); resolve(true); };
+    });
+  }
+  function commit() { baseline = hash(); }
+  function init() {
+    ensureLayer();
+    if (!listening) {
+      listening = true;
+      map.getContainer().addEventListener("click", mapClick, true);
+      g("tmAdd").onclick = startPlacing;
+      g("tmCancel").onclick = function () { stopPlacing(); status("Cancelled."); };
+      g("tmFilter").oninput = renderList;
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && placing) stopPlacing(); });
+    }
+    if (!loaded) loadFile(); else renderList();
+  }
+  window.polradTM = { init: init, fromState: fromState, toFC: toFC, isLoaded: function () { return loaded; }, check: check, commit: commit };
+})();
   </script>
 
   <script>
@@ -2717,7 +2929,6 @@
           advanceState.createdFids.push(layer._fid);
           H.saveHistory(); H.renderSidebar(); ensureAdvanceColors();
           if (layer && H.groups[layerId].hasLayer(layer)) {
-            // Use the helper-select
             const helperSelect = (function (l) {
               try { if (typeof H.select === "function") { H.select(l); return true; } } catch (e) {}
               return false;
@@ -2740,10 +2951,6 @@
         H.deselect(false);
         setAdvanceStatus("Drawing the " + (advanceState.side === "ru" ? "Russian" : "Ukrainian") + " advance freehand polygon...", true);
 
-        // Register each completed freehand stroke synchronously. The old
-        // interval waited until freehand mode was switched OFF, so clicking
-        // Finish Advance immediately after drawing produced an empty fid list
-        // and therefore a zero / undetected area change.
         window.polradAdvanceFreehandAdded = function (addedLayers, addedLayerId) {
           if (!advanceState.active || addedLayerId !== layerId) return;
 
@@ -2764,7 +2971,6 @@
             }
           });
 
-          // Keep only polygons that still exist after trimming.
           advanceState.createdFids = advanceState.createdFids.filter(function (fid) {
             return !!H.findPolygon(fid);
           });
@@ -2833,6 +3039,7 @@
         if (!advanceState.active) return;
         const type = await chooseAdvanceType();
         if (!type) return;
+        if (!(await window.polradTM.check())) return;
         advanceState.type = type;
         if (!advanceState.focus) { alert("Please select a public map focus rectangle before finishing the advance."); return; }
         const trimNote = type === "normal" ? trimCreatedAdvances() : "";
@@ -2889,6 +3096,7 @@
             throw new Error("The advance could not be saved to browser storage.");
           }
           item.snapshotData = snapshot;
+          window.polradTM.commit();
           renderAdvanceHistory();
           advanceState.active = false;
           advanceState.type = "normal";
