@@ -1,3 +1,8 @@
+
+
+
+
+
 <!doctype html>
 
 <html lang="en">
@@ -69,6 +74,7 @@
     .tm-line { display:flex; gap:4px; }
     .tm-line select { flex:1; height:30px; border:1px solid #ccc; border-radius:5px; background:#fff; font-size:12px; }
     .tm-line .btn { padding:4px 8px; }
+    .tm-row.marker-focused { background:#e8f0fe; outline:2px solid #1a73e8; border-radius:6px; padding:8px; }
 
     /* ================ PHONE MODE ================ */
     body.phone-mode #map { left: 0; width: 100%; }
@@ -2239,6 +2245,7 @@
     if (objs[m.id]) layer.removeLayer(objs[m.id]);
     var mk = L.marker([m.lat, m.lng], { icon: icon(m.color, m.shape), draggable: true, zIndexOffset: 1000 });
     mk.bindTooltip(m.name || "(unnamed)");
+    mk.on("click", function (ev) { if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev); openMarkerEditor(m); });
     mk.on("dragend", function () { var p = mk.getLatLng(); m.lat = p.lat; m.lng = p.lng; });
     mk.addTo(layer);
     objs[m.id] = mk;
@@ -2273,6 +2280,20 @@
     opts.forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; s.appendChild(op); });
     s.value = val; return s;
   }
+  function openMarkerEditor(m) {
+    if (typeof showEditorTab === "function") showEditorTab("markers");
+    var filter = g("tmFilter");
+    if (filter) filter.value = "";
+    renderList();
+    var row = g("tmList") && g("tmList").querySelector('[data-marker-id="' + m.id + '"]');
+    if (row) {
+      row.classList.add("marker-focused");
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      var nameInput = row.querySelector("input");
+      if (nameInput) { nameInput.focus(); nameInput.select(); }
+    }
+    status('Editing "' + (m.name || "unnamed marker") + '". Change its name, color or shape below.');
+  }
   function renderList() {
     var list = g("tmList"); if (!list) return;
     list.innerHTML = "";
@@ -2280,7 +2301,7 @@
     var shown = markers.filter(function (m) { return !q || m.name.toLowerCase().indexOf(q) !== -1; });
     if (!shown.length) { var e = document.createElement("div"); e.className = "small"; e.textContent = loaded ? "No markers." : "Loading markers..."; list.appendChild(e); return; }
     shown.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (m) {
-      var row = document.createElement("div"); row.className = "tm-row";
+      var row = document.createElement("div"); row.className = "tm-row"; row.dataset.markerId = String(m.id);
       var name = document.createElement("input"); name.value = m.name; name.placeholder = "Name";
       name.onchange = function () { m.name = name.value.trim(); if (objs[m.id]) objs[m.id].setTooltipContent(m.name || "(unnamed)"); };
       var line = document.createElement("div"); line.className = "tm-line";
@@ -2815,6 +2836,7 @@
           </div>
           <div id="advanceStatus">No advance in progress.</div>
           <div id="advanceAreaPreview">Area changes will appear here after you click Finish Advance.<br><span style="color:#777">Choose the area change color above (red or blue).</span></div>
+          <button class="btn" id="advanceRecalculateArea" style="width:100%;margin-top:7px" disabled>↻ Recalculate advance polygon area</button>
           <div id="advanceFocusWrap" style="margin-top:8px">
             <label>Public map focus area</label>
             <div class="advance-row">
@@ -2839,6 +2861,7 @@
         createBtn.onclick = startAdvance;
         A("advanceStart").onclick = startAdvance;
         A("advanceFinish").onclick = finishAdvance;
+        A("advanceRecalculateArea").onclick = recalculateAdvanceArea;
         A("advanceFocusSelect").onclick = selectAdvanceFocus;
         A("advanceFocusClear").onclick = function () { clearAdvanceFocusRectangle(); advanceState.focus = null; A("advanceFocusStatus").textContent = "No focus rectangle selected."; };
         A("advanceSave").onclick = saveAdvance;
@@ -2873,6 +2896,7 @@
         A("advanceFocusStatus").textContent = "No focus rectangle selected.";
         advanceState.createdFids = [];
         advanceState.lastEffects = null;
+        A("advanceRecalculateArea").disabled = true;
         A("advanceStart").disabled = true;
         A("advanceFinish").disabled = false;
         A("advanceSide").disabled = true;
@@ -3035,12 +3059,28 @@
           formatAreaEffects(effects, A("advanceColor").value) +
           '<div style="margin-top:5px;color:#777;font-size:11px">This color is used for the area text on the public map.</div>';
       }
+      function recalculateAdvanceArea() {
+        if (!advanceState.active || !advanceState.type) {
+          setAdvanceStatus("Start an advance and create its polygons before recalculating the area.", true);
+          return;
+        }
+        try {
+          // Re-read the current Leaflet geometry for every polygon created in this advance.
+          advanceState.lastEffects = computeAdvanceEffects();
+          renderAreaPreview();
+          setAdvanceStatus("Advance area recalculated from the current polygon geometry.", false);
+        } catch (error) {
+          console.error("Advance area recalculation failed:", error);
+          setAdvanceStatus("Could not recalculate the advance area: " + (error.message || error), true);
+        }
+      }
       async function finishAdvance() {
         if (!advanceState.active) return;
         const type = await chooseAdvanceType();
         if (!type) return;
         if (!(await window.polradTM.check())) return;
         advanceState.type = type;
+        A("advanceRecalculateArea").disabled = false;
         if (!advanceState.focus) { alert("Please select a public map focus rectangle before finishing the advance."); return; }
         const trimNote = type === "normal" ? trimCreatedAdvances() : "";
         advanceState.lastEffects = computeAdvanceEffects();
@@ -3135,6 +3175,7 @@
         window.polradAdvanceFreehandAdded = null;
         A("advanceStart").disabled = false;
         A("advanceFinish").disabled = true;
+        A("advanceRecalculateArea").disabled = true;
         A("advanceSide").disabled = false;
         A("advanceTextWrap").style.display = "none";
         A("advanceTextEn").value = "";
@@ -3424,3 +3465,7 @@
   </script>
 </body>
 </html>
+
+
+
+
